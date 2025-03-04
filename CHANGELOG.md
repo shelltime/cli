@@ -1,5 +1,22 @@
 # Changelog
 
+## [0.1.15](https://github.com/shelltime/cli/compare/v0.1.14...v0.1.15) (2025-03-04)
+
+
+### Features
+
+* **alias:** add alias import cli ([3a02c33](https://github.com/shelltime/cli/commit/3a02c33c41a9801be785341f91d1287bacd9f4cd))
+
+
+### Bug Fixes
+
+* **alias:** add alias import command ([114ec91](https://github.com/shelltime/cli/commit/114ec9120950e36a1d73e469c36eabf296c38f4c))
+
+
+### Miscellaneous Chores
+
+* release 0.1.15 ([4c74f13](https://github.com/shelltime/cli/commit/4c74f134b84b7d009894fcc548623b4ff1c5822c))
+
 ## [0.1.14](https://github.com/malamtime/cli/compare/v0.1.13...v0.1.14) (2025-01-24)
 
 
