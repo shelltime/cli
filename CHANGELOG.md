@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.16](https://github.com/shelltime/cli/compare/v0.1.15...v0.1.16) (2025-03-04)
+
+
+### Bug Fixes
+
+* **ci:** rebrand to shelltime ([cbf61eb](https://github.com/shelltime/cli/commit/cbf61ebbeb7ec6ad98a9aa467c69bd1b5c20de39))
+
 ## [0.1.15](https://github.com/shelltime/cli/compare/v0.1.14...v0.1.15) (2025-03-04)
 
 
