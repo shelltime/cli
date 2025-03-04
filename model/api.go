@@ -1,18 +1,9 @@
 package model
 
 import (
-	"bytes"
 	"context"
-	"encoding/json"
-	"errors"
-	"fmt"
-	"io"
 	"net/http"
 	"sync"
-	"time"
-
-	"github.com/vmihailenco/msgpack/v5"
-	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 
 	"github.com/sirupsen/logrus"
 )
@@ -57,55 +48,22 @@ type PostTrackArgs struct {
 }
 
 func doSendData(ctx context.Context, endpoint Endpoint, data PostTrackArgs) error {
-	ctx, span := modelTracer.Start(ctx, "http.send")
-	defer span.End()
 
-	jsonData, err := msgpack.Marshal(data)
+	err := SendHTTPRequest(HTTPRequestOptions[PostTrackArgs, any]{
+		Context: ctx,
+		Endpoint: endpoint,
+		Method: http.MethodPost,
+		Path: "/api/v1/track",
+		Payload: data,
+		Response: nil,
+	})
+	logrus.Traceln("http: ", "/api/v1/track", len(data.Data), data.Meta)
+
 	if err != nil {
 		logrus.Errorln(err)
 		return err
 	}
-
-	client := &http.Client{
-		Timeout:   time.Second * 10,
-		Transport: otelhttp.NewTransport(http.DefaultTransport),
-	}
-	req, err := http.NewRequestWithContext(ctx, "POST", endpoint.APIEndpoint+"/api/v1/track", bytes.NewBuffer(jsonData))
-	if err != nil {
-		logrus.Errorln(err)
-		return err
-	}
-
-	req.Header.Set("Content-Type", "application/msgpack")
-	req.Header.Set("User-Agent", fmt.Sprintf("shelltimeCLI@%s", commitID))
-	req.Header.Set("Authorization", "CLI "+endpoint.Token)
-
-	logrus.Traceln("http: ", req.URL.String(), len(data.Data), data.Meta)
-
-	resp, err := client.Do(req)
-	if err != nil {
-		logrus.Errorln(err)
-		return err
-	}
-	defer resp.Body.Close()
-
-	logrus.Traceln("http: ", resp.Status)
-	if resp.StatusCode == http.StatusOK || resp.StatusCode == http.StatusNoContent {
-		return nil
-	}
-	buf, err := io.ReadAll(resp.Body)
-	if err != nil {
-		logrus.Errorln(err)
-		return err
-	}
-	var msg errorResponse
-	err = json.Unmarshal(buf, &msg)
-	if err != nil {
-		logrus.Errorln("Failed to parse error response:", err)
-		return err
-	}
-	logrus.Errorln("Error response:", msg.ErrorMessage)
-	return errors.New(msg.ErrorMessage)
+	return nil
 }
 
 // func SendLocalDataToServer(ctx context.Context, config ShellTimeConfig, cursor time.Time, trackingData []TrackingData, meta TrackingMetaData) error {
