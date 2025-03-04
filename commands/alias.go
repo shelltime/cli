@@ -51,12 +51,22 @@ func importAliases(c *cli.Context) error {
 	ctx, span := commandTracer.Start(c.Context, "alias-import", trace.WithSpanKind(trace.SpanKindClient))
 	defer span.End()
 	SetupLogger(os.ExpandEnv("$HOME/" + model.COMMAND_BASE_STORAGE_FOLDER))
+	logrus.SetLevel(logrus.TraceLevel)
 
 	isFullyRefresh := c.Bool("fully-refresh")
 	span.SetAttributes(attribute.Bool("fully-refresh", isFullyRefresh))
 
-	zshConfigFile := c.String("zsh-config")
-	fishConfigFile := c.String("fish-config")
+	zshConfigFile, err := expandPath(c.String("zsh-config"))
+	if err != nil {
+		logrus.Errorln(err)
+		return err
+	}
+	fishConfigFile, err := expandPath(c.String("fish-config"))
+	if err != nil {
+		logrus.Errorln(err)
+		return err
+	}
+
 	config, err := configService.ReadConfigFile(ctx)
 	if err != nil {
 		logrus.Errorln(err)
@@ -118,16 +128,14 @@ func parseZshAliases(ctx context.Context, zshConfigFile string) ([]string, error
 	ctx, span := commandTracer.Start(ctx, "parse-zsh-aliases")
 	defer span.End()
 
-	p := os.ExpandEnv(zshConfigFile)
-	return parseAliasFile(p, parseZshAliasLine)
+	return parseAliasFile(zshConfigFile, parseZshAliasLine)
 }
 
 func parseFishAliases(ctx context.Context, fishConfigFile string) ([]string, error) {
 	ctx, span := commandTracer.Start(ctx, "parse-fish-aliases")
 	defer span.End()
 
-	p := os.ExpandEnv(fishConfigFile)
-	return parseAliasFile(p, parseFishAliasLine)
+	return parseAliasFile(fishConfigFile, parseFishAliasLine)
 }
 
 func parseAliasFile(filePath string, lineParser func(string) (string, bool)) ([]string, error) {

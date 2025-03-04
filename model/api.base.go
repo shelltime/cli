@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/sirupsen/logrus"
@@ -97,10 +98,21 @@ func SendHTTPRequest[T any, R any](opts HTTPRequestOptions[T, R]) error {
 
 	// Only try to unmarshal if we have a response struct
 	if opts.Response != nil {
-		err = msgpack.Unmarshal(buf, opts.Response)
-		if err != nil {
-			logrus.Errorln("Failed to unmarshal response:", err)
-			return err
+		contentType := resp.Header.Get("Content-Type")
+		if strings.Contains(contentType, "json") {
+			err = json.Unmarshal(buf, opts.Response)
+			if err != nil {
+				logrus.Errorln("Failed to unmarshal JSON response:", err)
+				return err
+			}
+			return nil
+		}
+		if strings.Contains(contentType, "msgpack") {
+			err = msgpack.Unmarshal(buf, opts.Response)
+			if err != nil {
+				logrus.Errorln("Failed to unmarshal response:", err)
+				return err
+			}
 		}
 	}
 
