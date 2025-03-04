@@ -96,7 +96,7 @@ changelog:
 
 release:
   github:
-    owner: malamtime
+    owner: shelltime
     name: cli
   draft: false
   replace_existing_draft: false
@@ -108,7 +108,7 @@ release:
     Welcome to this new release!
     please install the latest cli by run command
     ```bash
-    curl -sSL https://raw.githubusercontent.com/malamtime/installation/master/install.bash | bash
+    curl -sSL https://raw.githubusercontent.com/shelltime/installation/master/install.bash | bash
     ```
   footer: |
     ## Thanks!
