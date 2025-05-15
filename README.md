@@ -1,6 +1,8 @@
 # ShellTime CLI [![codecov](https://codecov.io/gh/malamtime/cli/graph/badge.svg?token=N09WIJHNI2)](https://codecov.io/gh/malamtime/cli)
 
-The foundation CLI tool for shelltime.xyz - a platform for tracking DevOps work.
+deepwiki: [https://deepwiki.com/shelltime/cli]
+
+The CLI tool for shelltime.xyz - a platform for tracking DevOps work.
 
 AnnatarHe: [![shelltime](https://api.shelltime.xyz/badge/AnnatarHe/count)](https://shelltime.xyz/users/AnnatarHe)
 
