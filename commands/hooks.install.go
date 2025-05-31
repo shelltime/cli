@@ -1,6 +1,8 @@
 package commands
 
 import (
+	"os"
+
 	"github.com/gookit/color"
 	"github.com/malamtime/cli/model"
 	"github.com/urfave/cli/v2"
@@ -13,6 +15,13 @@ var HooksInstallCommand = &cli.Command{
 }
 
 func commandHooksInstall(c *cli.Context) error {
+	binFolder := os.ExpandEnv("$HOME/.shelltime/bin")
+	if _, err := os.Stat(binFolder); os.IsNotExist(err) {
+		color.Red.Println("📁 cannot find bin folder at", binFolder)
+		color.Red.Println("Please run 'curl -sSL https://raw.githubusercontent.com/malamtime/installation/master/install.bash | bash' first")
+		return nil
+	}
+
 	color.Yellow.Println("🔍 Starting hooks installation...")
 
 	// Create shell services
