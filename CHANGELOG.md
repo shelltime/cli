@@ -1,5 +1,25 @@
 # Changelog
 
+## [0.1.17](https://github.com/shelltime/cli/compare/v0.1.16...v0.1.17) (2025-05-31)
+
+
+### Features
+
+* **bash:** add bash shell hook support with install/uninstall functionality ([2af5d5f](https://github.com/shelltime/cli/commit/2af5d5fff6f2c15f2dc4131725c3903fd61b45c5))
+* **bash:** add hook file existence check before bash shell installation ([8a33f80](https://github.com/shelltime/cli/commit/8a33f80fef40a0e3891601499e54019db69f5d86))
+* **cli:** add doctor command and shell hook installation functionality ([504720b](https://github.com/shelltime/cli/commit/504720b421d5909198f80c6f9a4b69723de8f4e3))
+
+
+### Bug Fixes
+
+* **doctor:** add daemon service check and improve path handling with base folder validation ([6ca63c5](https://github.com/shelltime/cli/commit/6ca63c541aa8ee7e8dba6bf24262d7ebebb84397))
+* **install:** add bin folder check and GitHub issues permission for release workflow ([16feced](https://github.com/shelltime/cli/commit/16fecedb4cf2f0f2afe86228df650958d6407d10))
+
+
+### Miscellaneous Chores
+
+* release 0.1.17 ([a581bc7](https://github.com/shelltime/cli/commit/a581bc7aa087f9ad4442bddfa0a48d2abedc8437))
+
 ## [0.1.16](https://github.com/shelltime/cli/compare/v0.1.15...v0.1.16) (2025-03-04)
 
 
