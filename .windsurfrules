@@ -1,0 +1,5 @@
+CLI project.
+
+in 2 mode.
+- daemon mode will run in background. entry `cmd/daemon/main.go`
+- interactive mode will run in foreground. entry `cmd/cli/main.go`

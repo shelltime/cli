@@ -7,6 +7,7 @@ var HooksCommand = &cli.Command{
 	Name:  "hooks",
 	Usage: "shelltime hooks management",
 	Subcommands: []*cli.Command{
+		HooksInstallCommand,
 		HooksUninstallCommand,
 	},
 }

@@ -2,6 +2,8 @@
 package commands
 
 import (
+	"os"
+
 	"github.com/gookit/color"
 	"github.com/malamtime/cli/model"
 	"github.com/urfave/cli/v2"
@@ -15,6 +17,9 @@ var HooksUninstallCommand = &cli.Command{
 
 func commandHooksUninstall(c *cli.Context) error {
 	color.Yellow.Println("🔍 Starting hooks uninstallation...")
+
+	shell := os.Getenv("SHELL")
+	color.Blue.Println("Current shell:", shell)
 
 	// Create shell services
 	zshService := model.NewZshHookService()

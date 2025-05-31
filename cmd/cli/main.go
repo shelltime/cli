@@ -88,6 +88,7 @@ func main() {
 		commands.LsCommand,
 		commands.WebCommand,
 		commands.AliasCommand,
+		commands.DoctorCommand,
 	}
 	err = app.Run(os.Args)
 	if err != nil {
