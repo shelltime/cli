@@ -113,10 +113,12 @@ func commandDoctor(c *cli.Context) error {
 
 	zshHookService := model.NewZshHookService()
 	fishHookService := model.NewFishHookService()
+	bashHookService := model.NewBashHookService()
 
 	hookServices := []model.ShellHookService{
 		zshHookService,
 		fishHookService,
+		bashHookService,
 	}
 
 	for _, hookService := range hookServices {

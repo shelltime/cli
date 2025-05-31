@@ -24,8 +24,9 @@ func commandHooksUninstall(c *cli.Context) error {
 	// Create shell services
 	zshService := model.NewZshHookService()
 	fishService := model.NewFishHookService()
+	bashService := model.NewBashHookService()
 
-	// Uninstall hooks for both shells
+	// Uninstall hooks for all shells
 	if err := zshService.Uninstall(); err != nil {
 		color.Red.Printf("❌ Failed to uninstall zsh hook: %v\n", err)
 		return err
@@ -33,6 +34,11 @@ func commandHooksUninstall(c *cli.Context) error {
 
 	if err := fishService.Uninstall(); err != nil {
 		color.Red.Printf("❌ Failed to uninstall fish hook: %v\n", err)
+		return err
+	}
+
+	if err := bashService.Uninstall(); err != nil {
+		color.Red.Printf("❌ Failed to uninstall bash hook: %v\n", err)
 		return err
 	}
 

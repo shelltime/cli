@@ -28,8 +28,9 @@ func commandHooksInstall(c *cli.Context) error {
 	// Create shell services
 	zshService := model.NewZshHookService()
 	fishService := model.NewFishHookService()
+	bashService := model.NewBashHookService()
 
-	// Install hooks for both shells
+	// Install hooks for all shells
 	if err := zshService.Install(); err != nil {
 		color.Red.Printf("❌ Failed to install zsh hook: %v\n", err)
 		// return err // Decide if one failure should stop all
@@ -38,6 +39,11 @@ func commandHooksInstall(c *cli.Context) error {
 	if err := fishService.Install(); err != nil {
 		color.Red.Printf("❌ Failed to install fish hook: %v\n", err)
 		// return err // Decide if one failure should stop all
+	}
+
+	if err := bashService.Install(); err != nil {
+		color.Red.Printf("❌ Failed to install bash hook: %v\n", err)
+		// return err
 	}
 
 	color.Green.Println("✅ Shell hooks have been successfully installed!")
