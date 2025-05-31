@@ -25,19 +25,32 @@ func NewLinuxDaemonInstaller(baseFolder, user string) *LinuxDaemonInstaller {
 	return &LinuxDaemonInstaller{baseFolder: baseFolder, user: user}
 }
 
-func (l *LinuxDaemonInstaller) CheckAndStopExistingService() error {
-	color.Yellow.Println("🔍 Checking if service is running...")
+func (l *LinuxDaemonInstaller) Check() error {
 	cmd := exec.Command("systemctl", "is-active", "shelltime")
 	if err := cmd.Run(); err == nil {
-		color.Yellow.Println("🛑 Stopping existing service...")
-		if err := exec.Command("systemctl", "stop", "shelltime").Run(); err != nil {
-			return fmt.Errorf("failed to stop existing service: %w", err)
-		}
+		return nil
+	}
+	return fmt.Errorf("service shelltime is not running")
+}
+
+func (l *LinuxDaemonInstaller) CheckAndStopExistingService() error {
+	color.Yellow.Println("🔍 Checking if service is running...")
+
+	if err := l.Check(); err != nil {
+		return err
+	}
+
+	color.Yellow.Println("🛑 Stopping existing service...")
+	if err := exec.Command("systemctl", "stop", "shelltime").Run(); err != nil {
+		return fmt.Errorf("failed to stop existing service: %w", err)
 	}
 	return nil
 }
 
 func (l *LinuxDaemonInstaller) InstallService(username string) error {
+	if l.baseFolder == "" {
+		return fmt.Errorf("base folder is not set")
+	}
 	daemonPath := filepath.Join(l.baseFolder, "daemon")
 	// Create daemon directory if not exists
 	if err := os.MkdirAll(daemonPath, 0755); err != nil {
@@ -64,6 +77,9 @@ func (l *LinuxDaemonInstaller) InstallService(username string) error {
 }
 
 func (l *LinuxDaemonInstaller) RegisterService() error {
+	if l.baseFolder == "" {
+		return fmt.Errorf("base folder is not set")
+	}
 	servicePath := "/etc/systemd/system/shelltime.service"
 	if _, err := os.Stat(servicePath); err != nil {
 		sourceFile := filepath.Join(l.baseFolder, "daemon/shelltime.service")
@@ -93,6 +109,9 @@ func (l *LinuxDaemonInstaller) StartService() error {
 }
 
 func (l *LinuxDaemonInstaller) UnregisterService() error {
+	if l.baseFolder == "" {
+		return fmt.Errorf("base folder is not set")
+	}
 	color.Yellow.Println("🛑 Stopping and disabling service if running...")
 	// Try to stop and disable the service
 	_ = exec.Command("systemctl", "stop", "shelltime").Run()

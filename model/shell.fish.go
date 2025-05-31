@@ -18,10 +18,10 @@ type FishHookService struct {
 }
 
 func NewFishHookService() ShellHookService {
-	sourceContent := os.ExpandEnv("$HOME/.shelltime/hooks/fish.fish")
+	sourceContent := os.ExpandEnv(fmt.Sprintf("$HOME/%s/hooks/fish.fish", COMMAND_BASE_STORAGE_FOLDER))
 	hookLines := []string{
 		"# Added by shelltime CLI",
-		"fish_add_path $HOME/.shelltime/bin",
+		fmt.Sprintf("fish_add_path $HOME/%s/bin", COMMAND_BASE_STORAGE_FOLDER),
 		fmt.Sprintf("source %s", sourceContent),
 	}
 	configPath := os.ExpandEnv("$HOME/.config/fish/config.fish")

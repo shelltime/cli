@@ -8,6 +8,7 @@ import (
 
 // DaemonInstaller interface defines methods for daemon installation across different platforms
 type DaemonInstaller interface {
+	Check() error
 	CheckAndStopExistingService() error
 	InstallService(username string) error
 	RegisterService() error

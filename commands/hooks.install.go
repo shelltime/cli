@@ -1,6 +1,7 @@
 package commands
 
 import (
+	"fmt"
 	"os"
 
 	"github.com/gookit/color"
@@ -15,7 +16,7 @@ var HooksInstallCommand = &cli.Command{
 }
 
 func commandHooksInstall(c *cli.Context) error {
-	binFolder := os.ExpandEnv("$HOME/.shelltime/bin")
+	binFolder := os.ExpandEnv(fmt.Sprintf("$HOME/%s/bin", model.COMMAND_BASE_STORAGE_FOLDER))
 	if _, err := os.Stat(binFolder); os.IsNotExist(err) {
 		color.Red.Println("📁 cannot find bin folder at", binFolder)
 		color.Red.Println("Please run 'curl -sSL https://raw.githubusercontent.com/malamtime/installation/master/install.bash | bash' first")

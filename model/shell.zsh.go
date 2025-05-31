@@ -17,13 +17,13 @@ type ZshHookService struct {
 }
 
 func NewZshHookService() ShellHookService {
-	sourceContent := os.ExpandEnv("$HOME/.shelltime/hooks/zsh.zsh")
+	sourceContent := os.ExpandEnv(fmt.Sprintf("$HOME/%s/hooks/zsh.zsh", COMMAND_BASE_STORAGE_FOLDER))
 	return &ZshHookService{
 		shellName:  "zsh",
 		configPath: os.ExpandEnv("$HOME/.zshrc"),
 		hookLines: []string{
 			"# Added by shelltime CLI",
-			`export PATH="$HOME/.shelltime/bin:$PATH"`,
+			fmt.Sprintf("export PATH=\"$HOME/%s/bin:$PATH\"", COMMAND_BASE_STORAGE_FOLDER),
 			fmt.Sprintf("source %s", sourceContent),
 		},
 	}

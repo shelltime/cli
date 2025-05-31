@@ -30,19 +30,32 @@ func NewMacDaemonInstaller(baseFolder, user string) *MacDaemonInstaller {
 	}
 }
 
+func (m *MacDaemonInstaller) Check() error {
+	cmd := exec.Command("launchctl", "print", "system/"+m.serviceName)
+	if err := cmd.Run(); err == nil {
+		return nil
+	}
+	return fmt.Errorf("service %s is not running", m.serviceName)
+}
+
 func (m *MacDaemonInstaller) CheckAndStopExistingService() error {
 	color.Yellow.Println("🔍 Checking if service is running...")
-	cmd := exec.Command("launchctl", "list", m.serviceName)
-	if err := cmd.Run(); err == nil {
-		color.Yellow.Println("🛑 Stopping existing service...")
-		if err := exec.Command("launchctl", "unload", fmt.Sprintf("/Library/LaunchDaemons/%s.plist", m.serviceName)).Run(); err != nil {
-			return fmt.Errorf("failed to stop existing service: %w", err)
-		}
+
+	if err := m.Check(); err != nil {
+		return err
+	}
+
+	color.Yellow.Println("🛑 Stopping existing service...")
+	if err := exec.Command("launchctl", "unload", fmt.Sprintf("/Library/LaunchDaemons/%s.plist", m.serviceName)).Run(); err != nil {
+		return fmt.Errorf("failed to stop existing service: %w", err)
 	}
 	return nil
 }
 
 func (m *MacDaemonInstaller) InstallService(username string) error {
+	if m.baseFolder == "" {
+		return fmt.Errorf("base folder is not set")
+	}
 	daemonPath := filepath.Join(m.baseFolder, "daemon")
 	// Create daemon directory if not exists
 	if err := os.MkdirAll(daemonPath, 0755); err != nil {
@@ -68,6 +81,9 @@ func (m *MacDaemonInstaller) InstallService(username string) error {
 }
 
 func (m *MacDaemonInstaller) RegisterService() error {
+	if m.baseFolder == "" {
+		return fmt.Errorf("base folder is not set")
+	}
 	plistPath := fmt.Sprintf("/Library/LaunchDaemons/%s.plist", m.serviceName)
 	if _, err := os.Stat(plistPath); err != nil {
 		sourceFile := filepath.Join(m.baseFolder, fmt.Sprintf("daemon/%s.plist", m.serviceName))
@@ -87,6 +103,9 @@ func (m *MacDaemonInstaller) StartService() error {
 }
 
 func (m *MacDaemonInstaller) UnregisterService() error {
+	if m.baseFolder == "" {
+		return fmt.Errorf("base folder is not set")
+	}
 	color.Yellow.Println("🛑 Stopping service if running...")
 	// Try to stop the service first
 	_ = exec.Command("launchctl", "unload", fmt.Sprintf("/Library/LaunchDaemons/%s.plist", m.serviceName)).Run()

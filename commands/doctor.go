@@ -72,13 +72,35 @@ func commandDoctor(c *cli.Context) error {
 
 	// 4. Check configuration
 	printSectionHeader("Configuration")
-	// TODO: Implement configuration checks
-	printInfo("Configuration checks not yet implemented.")
+	cfg, err := configService.ReadConfigFile(ctx)
+	if err != nil {
+		printError(fmt.Sprintf("Error reading config file: %v", err))
+		return err
+	}
+	printSuccess("Configuration file is valid.")
+	if cfg.EnableMetrics != nil && *cfg.EnableMetrics {
+		printWarning("Metrics are enabled. it would has performance impact.")
+	}
+
+	if cfg.DataMasking != nil && *cfg.DataMasking {
+		printSuccess("Data masking is enabled.")
+	}
+	if cfg.Encrypted != nil && *cfg.Encrypted {
+		printSuccess("Encrypted is enabled.")
+	}
 
 	// 5. Check daemon process
 	printSectionHeader("Daemon Process")
-	// TODO: Implement daemon process check
-	printInfo("Daemon process check not yet implemented.")
+	daemonInstaller, err := model.NewDaemonInstaller("", "")
+	if err != nil {
+		printError(fmt.Sprintf("Error checking daemon installer: %v", err))
+		return err
+	}
+	if err := daemonInstaller.Check(); err != nil {
+		printWarning(fmt.Sprintf("Daemon is not running: %v. it's ok if you haven't installed it yet.", err))
+	} else {
+		printSuccess("Daemon is running.")
+	}
 
 	// 6. Check user's current shell and PATH
 	printSectionHeader("Shell Environment")
