@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.1.18](https://github.com/shelltime/cli/compare/v0.1.17...v0.1.18) (2025-06-30)
+
+
+### Bug Fixes
+
+* **docs:** add CLAUDE.md for AI-assisted development ([6eb7de4](https://github.com/shelltime/cli/commit/6eb7de4394c6fade0b5f3eacc3d6645d336fc79c))
+* update release workflow and go.mod dependencies ([6d44100](https://github.com/shelltime/cli/commit/6d44100a5a5418136fc11774440465907185b0a2))
+* update test files and configuration ([d3ef2be](https://github.com/shelltime/cli/commit/d3ef2be78e59b2e342f9b8ce9d9b861f4bd636c3))
+
 ## [0.1.17](https://github.com/shelltime/cli/compare/v0.1.16...v0.1.17) (2025-05-31)
 
 
