@@ -9,7 +9,6 @@ import (
 	"time"
 
 	"github.com/malamtime/cli/model"
-	"github.com/malamtime/cli/model/mocks"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/suite"
@@ -136,7 +135,7 @@ func (s *SyncHandlerTestSuite) TestHandlePubSubSync_Unencrypted() {
 		APIEndpoint: s.server.URL,
 		Encrypted:   nil, // unencrypted mode
 	}
-	mockedStConfig := mocks.NewConfigService(s.T())
+	mockedStConfig := model.NewMockConfigService(s.T())
 	mockedStConfig.On("ReadConfigFile", mock.Anything).Return(mockedConfig, nil)
 	stConfig = mockedStConfig
 
@@ -186,7 +185,7 @@ func (s *SyncHandlerTestSuite) TestHandlePubSubSync_Encrypted() {
 		APIEndpoint: s.server.URL,
 		Encrypted:   &encrypted,
 	}
-	mockedStConfig := mocks.NewConfigService(s.T())
+	mockedStConfig := model.NewMockConfigService(s.T())
 	mockedStConfig.On("ReadConfigFile", mock.Anything).Return(mockedConfig, nil)
 	stConfig = mockedStConfig
 
@@ -220,7 +219,7 @@ func (s *SyncHandlerTestSuite) TestHandlePubSubSync_ConfigError() {
 	}
 
 	// Mock config service to return error
-	mockedStConfig := mocks.NewConfigService(s.T())
+	mockedStConfig := model.NewMockConfigService(s.T())
 	mockedStConfig.On("ReadConfigFile", mock.Anything).Return(model.ShellTimeConfig{}, nil)
 	stConfig = mockedStConfig
 

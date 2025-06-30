@@ -37,3 +37,5 @@ model/mocks/
 codecov
 codecov.SHA256SUM
 codecov.SHA256SUM.sig
+
+model/mock_*.go

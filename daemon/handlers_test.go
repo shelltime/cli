@@ -9,7 +9,6 @@ import (
 
 	"github.com/ThreeDotsLabs/watermill/message"
 	"github.com/malamtime/cli/model"
-	"github.com/malamtime/cli/model/mocks"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/suite"
@@ -21,7 +20,7 @@ type handlersTestSuite struct {
 }
 
 func (s *handlersTestSuite) SetupSuite() {
-	mockedST := mocks.NewConfigService(s.T())
+	mockedST := model.NewMockConfigService(s.T())
 
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)

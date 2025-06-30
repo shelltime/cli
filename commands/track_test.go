@@ -16,7 +16,6 @@ import (
 	"time"
 
 	"github.com/malamtime/cli/model"
-	"github.com/malamtime/cli/model/mocks"
 	"github.com/sirupsen/logrus"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
@@ -41,7 +40,7 @@ func (s *trackTestSuite) SetupSuite() {
 }
 
 func (s *trackTestSuite) TestMultipTrackWithPre() {
-	cs := mocks.NewConfigService(s.T())
+	cs := model.NewMockConfigService(s.T())
 	mockedConfig := model.ShellTimeConfig{}
 	cs.On("ReadConfigFile", mock.Anything).Return(mockedConfig, nil)
 	model.UserShellTimeConfig = mockedConfig
@@ -124,7 +123,7 @@ func (s *trackTestSuite) TestTrackWithSendData() {
 		reqCursor = append(reqCursor, payload.CursorID)
 	}))
 	defer server.Close()
-	cs := mocks.NewConfigService(s.T())
+	cs := model.NewMockConfigService(s.T())
 	mockedConfig := model.ShellTimeConfig{
 		Token:       "TOKEN001",
 		APIEndpoint: server.URL,

@@ -11,7 +11,6 @@ import (
 
 var UserShellTimeConfig ShellTimeConfig
 
-//go:generate mockery --name ConfigService
 type ConfigService interface {
 	ReadConfigFile(ctx context.Context) (ShellTimeConfig, error)
 }
