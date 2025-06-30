@@ -36,9 +36,7 @@ func commandDaemonInstall(c *cli.Context) error {
 		return err
 	}
 
-	if err := installer.CheckAndStopExistingService(); err != nil {
-		return err
-	}
+	installer.CheckAndStopExistingService()
 
 	// check latest file exist or not
 	if _, err := os.Stat(filepath.Join(baseFolder, "bin/shelltime-daemon.bak")); err == nil {
