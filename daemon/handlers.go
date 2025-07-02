@@ -5,7 +5,7 @@ import (
 	"log/slog"
 
 	"github.com/ThreeDotsLabs/watermill/message"
-	"github.com/vmihailenco/msgpack/v5"
+	"github.com/malamtime/cli/model"
 )
 
 func SocketTopicProccessor(messages <-chan *message.Message) {
@@ -14,7 +14,7 @@ func SocketTopicProccessor(messages <-chan *message.Message) {
 		slog.InfoContext(ctx, "received message: ", slog.String("msg.uuid", msg.UUID))
 
 		var socketMsg SocketMessage
-		if err := msgpack.Unmarshal(msg.Payload, &socketMsg); err != nil {
+		if err := model.MsgpackDecode(msg.Payload, &socketMsg); err != nil {
 			slog.ErrorContext(ctx, "failed to parse socket message", slog.Any("err", err))
 			msg.Nack()
 		}

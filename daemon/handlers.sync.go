@@ -6,18 +6,17 @@ import (
 	"time"
 
 	"github.com/malamtime/cli/model"
-	"github.com/vmihailenco/msgpack/v5"
 )
 
 func handlePubSubSync(ctx context.Context, socketMsgPayload interface{}) error {
-	pb, err := msgpack.Marshal(socketMsgPayload)
+	pb, err := model.MsgpackEncode(socketMsgPayload)
 	if err != nil {
 		slog.Error("Failed to marshal the sync payload again for unmarshal", slog.Any("payload", socketMsgPayload))
 		return err
 	}
 
 	var syncMsg model.PostTrackArgs
-	err = msgpack.Unmarshal(pb, &syncMsg)
+	err = model.MsgpackDecode(pb, &syncMsg)
 	if err != nil {
 		slog.Error("Failed to parse sync payload", slog.Any("payload", socketMsgPayload))
 		return err
@@ -74,7 +73,7 @@ func handlePubSubSync(ctx context.Context, socketMsgPayload interface{}) error {
 				slog.Error("Failed to encrypt key", slog.Any("err", err))
 			}
 
-			buf, err := msgpack.Marshal(payload)
+			buf, err := model.MsgpackEncode(payload)
 
 			if err != nil {
 				slog.Error("Failed to marshal payload", slog.Any("err", err))

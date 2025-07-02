@@ -9,7 +9,6 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/suite"
-	"github.com/vmihailenco/msgpack/v5"
 )
 
 type apiTestSuite struct {
@@ -27,7 +26,7 @@ func (s *apiTestSuite) TestDoSendData() {
 
 			// Decode request body
 			var payload PostTrackArgs
-			err := msgpack.NewDecoder(r.Body).Decode(&payload)
+			err := MsgpackDecodeReader(r.Body, &payload)
 			assert.NoError(t, err)
 
 			// Verify payload

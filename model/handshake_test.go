@@ -8,7 +8,6 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/suite"
-	"github.com/vmihailenco/msgpack/v5"
 )
 
 type handshakeTestSuite struct {
@@ -26,7 +25,7 @@ func (s *handshakeTestSuite) TestHandshakeInitSuccess() {
 
 		// Decode request body
 		var payload handshakeInitRequest
-		err := msgpack.NewDecoder(r.Body).Decode(&payload)
+		err := MsgpackDecodeReader(r.Body, &payload)
 		assert.NoError(t, err)
 
 		// Verify payload
@@ -78,7 +77,7 @@ func (s *handshakeTestSuite) TestHandshakeCheckWithToken() {
 
 		// Decode request body
 		var payload handshakeCheckRequest
-		err := msgpack.NewDecoder(r.Body).Decode(&payload)
+		err := MsgpackDecodeReader(r.Body, &payload)
 		assert.NoError(t, err)
 
 		// Verify payload

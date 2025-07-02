@@ -12,7 +12,6 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/suite"
-	"github.com/vmihailenco/msgpack/v5"
 )
 
 type handlersTestSuite struct {
@@ -49,7 +48,7 @@ func (s *handlersTestSuite) TestSocketTopicProcessorValidSync() {
 			},
 		},
 	}
-	payload, err := msgpack.Marshal(socketMsg)
+	payload, err := model.MsgpackEncode(socketMsg)
 	assert.NoError(s.T(), err)
 
 	msg := message.NewMessage("test-uuid", payload)
@@ -91,7 +90,7 @@ func (s *handlersTestSuite) TestSocketTopicProcessorNonSync() {
 			},
 		},
 	}
-	payload, err := msgpack.Marshal(socketMsg)
+	payload, err := model.MsgpackEncode(socketMsg)
 	assert.NoError(s.T(), err)
 
 	msg := message.NewMessage("test-uuid", payload)
@@ -110,9 +109,9 @@ func (s *handlersTestSuite) TestSocketTopicProcessorInvalidPayload() {
 
 	socketMsg := SocketMessage{
 		Type:    "sync",
-		Payload: []byte(`invalid json`),
+		Payload: model.PostTrackArgs{},
 	}
-	payload, err := msgpack.Marshal(socketMsg)
+	payload, err := model.MsgpackEncode(socketMsg)
 	assert.NoError(s.T(), err)
 
 	msg := message.NewMessage("test-uuid", payload)
@@ -140,7 +139,7 @@ func (s *handlersTestSuite) TestSocketTopicProcessorMultipleMessages() {
 			},
 		},
 	}
-	payload1, err := msgpack.Marshal(socketMsg1)
+	payload1, err := model.MsgpackEncode(socketMsg1)
 	assert.NoError(s.T(), err)
 
 	socketMsg2 := SocketMessage{
@@ -154,7 +153,7 @@ func (s *handlersTestSuite) TestSocketTopicProcessorMultipleMessages() {
 			},
 		},
 	}
-	payload2, err := msgpack.Marshal(socketMsg2)
+	payload2, err := model.MsgpackEncode(socketMsg2)
 	assert.NoError(s.T(), err)
 
 	msg1 := message.NewMessage("test-uuid-1", payload1)
