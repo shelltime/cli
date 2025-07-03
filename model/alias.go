@@ -18,15 +18,15 @@ type Alias struct {
 }
 
 type importShellAliasRequest struct {
-	Aliases       []string `json:"aliases" msgpack:"aliases"`
-	IsFullRefresh bool     `json:"isFullRefresh" msgpack:"isFullRefresh"`
-	ShellType     string   `json:"shellType" msgpack:"shellType"`
-	FileLocation  string   `json:"fileLocation" msgpack:"fileLocation"`
+	Aliases       []string `json:"aliases" codec:"aliases"`
+	IsFullRefresh bool     `json:"isFullRefresh" codec:"isFullRefresh"`
+	ShellType     string   `json:"shellType" codec:"shellType"`
+	FileLocation  string   `json:"fileLocation" codec:"fileLocation"`
 
-	Hostname  string `json:"hostname" msgpack:"hostname"`
-	Username  string `json:"username" msgpack:"username"`
-	OS        string `json:"os" msgpack:"os"`
-	OSVersion string `json:"osVersion" msgpack:"osVersion"`
+	Hostname  string `json:"hostname" codec:"hostname"`
+	Username  string `json:"username" codec:"username"`
+	OS        string `json:"os" codec:"os"`
+	OSVersion string `json:"osVersion" codec:"osVersion"`
 }
 
 type importShellAliasResponse struct {

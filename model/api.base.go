@@ -12,7 +12,6 @@ import (
 	"time"
 
 	"github.com/sirupsen/logrus"
-	"github.com/vmihailenco/msgpack/v5"
 	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 )
 
@@ -33,7 +32,7 @@ func SendHTTPRequest[T any, R any](opts HTTPRequestOptions[T, R]) error {
 	ctx, span := modelTracer.Start(opts.Context, "http.send")
 	defer span.End()
 
-	jsonData, err := msgpack.Marshal(opts.Payload)
+	jsonData, err := MsgpackEncode(opts.Payload)
 	if err != nil {
 		logrus.Errorln(err)
 		return err
@@ -108,7 +107,7 @@ func SendHTTPRequest[T any, R any](opts HTTPRequestOptions[T, R]) error {
 			return nil
 		}
 		if strings.Contains(contentType, "msgpack") {
-			err = msgpack.Unmarshal(buf, opts.Response)
+			err = MsgpackDecode(buf, opts.Response)
 			if err != nil {
 				logrus.Errorln("Failed to unmarshal response:", err)
 				return err

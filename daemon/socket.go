@@ -7,7 +7,7 @@ import (
 
 	"github.com/ThreeDotsLabs/watermill"
 	"github.com/ThreeDotsLabs/watermill/message"
-	"github.com/vmihailenco/msgpack/v5"
+	"github.com/malamtime/cli/model"
 )
 
 type SocketMessageType string
@@ -17,9 +17,9 @@ const (
 )
 
 type SocketMessage struct {
-	Type SocketMessageType `msgpack:"type"`
+	Type SocketMessageType `codec:"type"`
 	// if parse from buffer, it will be the map[any]any
-	Payload interface{} `msgpack:"payload"`
+	Payload model.PostTrackArgs `codec:"payload"`
 }
 
 type SocketHandler struct {
@@ -89,9 +89,8 @@ func (p *SocketHandler) acceptConnections() {
 
 func (p *SocketHandler) handleConnection(conn net.Conn) {
 	defer conn.Close()
-	decoder := msgpack.NewDecoder(conn)
 	var msg SocketMessage
-	if err := decoder.Decode(&msg); err != nil {
+	if err := model.MsgpackDecodeReader(conn, &msg); err != nil {
 		slog.Error("Error decoding message", slog.Any("err", err))
 		return
 	}
@@ -102,7 +101,7 @@ func (p *SocketHandler) handleConnection(conn net.Conn) {
 	// case "track":
 	// 	p.handleTrack(conn, msg.Payload)
 	case SocketMessageTypeSync:
-		buf, err := msgpack.Marshal(msg)
+		buf, err := model.MsgpackEncode(msg)
 		if err != nil {
 			slog.Error("Error encoding message", slog.Any("err", err))
 		}

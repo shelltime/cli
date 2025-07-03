@@ -12,7 +12,6 @@ import (
 	"time"
 
 	"github.com/sirupsen/logrus"
-	"github.com/vmihailenco/msgpack/v5"
 	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 )
 
@@ -77,9 +76,9 @@ func (hs handshakeService) send(ctx context.Context, path string, jsonData []byt
 }
 
 type handshakeInitRequest struct {
-	Hostname  string `json:"hostname" msgpack:"hostname"`
-	OS        string `json:"os" msgpack:"os"`
-	OSVersion string `json:"osVersion" msgpack:"osVersion"`
+	Hostname  string `json:"hostname" codec:"hostname"`
+	OS        string `json:"os" codec:"os"`
+	OSVersion string `json:"osVersion" codec:"osVersion"`
 }
 
 func (hs handshakeService) Init(ctx context.Context) (string, error) {
@@ -103,7 +102,7 @@ func (hs handshakeService) Init(ctx context.Context) (string, error) {
 		OSVersion: sysInfo.Version,
 	}
 
-	jsonData, err := msgpack.Marshal(data)
+	jsonData, err := MsgpackEncode(data)
 	if err != nil {
 		logrus.Errorln(err)
 		return "", err
@@ -122,7 +121,7 @@ func (hs handshakeService) Init(ctx context.Context) (string, error) {
 }
 
 type handshakeCheckRequest struct {
-	EncodedID string `json:"hid" msgpack:"hid"`
+	EncodedID string `json:"hid" codec:"hid"`
 }
 
 func (hs handshakeService) Check(ctx context.Context, handshakeId string) (token string, err error) {
@@ -130,7 +129,7 @@ func (hs handshakeService) Check(ctx context.Context, handshakeId string) (token
 		EncodedID: handshakeId,
 	}
 
-	jsonData, err := msgpack.Marshal(data)
+	jsonData, err := MsgpackEncode(data)
 	if err != nil {
 		logrus.Errorln(err)
 		return "", err
