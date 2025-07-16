@@ -1,5 +1,24 @@
 # Changelog
 
+## [0.1.19](https://github.com/shelltime/cli/compare/v0.1.18...v0.1.19) (2025-07-16)
+
+
+### Features
+
+* add AI query feature support ([cbd6751](https://github.com/shelltime/cli/commit/cbd67516ca5922c125775e78bbf63fa8d625ec53))
+* add msgpack encode/decode module ([fa1c8bb](https://github.com/shelltime/cli/commit/fa1c8bb53b196cc7ffffd5a2254dce30c270d0f7))
+* add query command with AI integration ([a84869a](https://github.com/shelltime/cli/commit/a84869a770a9d03e38653fc78ced057c0cae41ac))
+
+
+### Bug Fixes
+
+* remove .windsurfrules file ([350a1ab](https://github.com/shelltime/cli/commit/350a1ab18097234071fc111697857accd9e4a3b1))
+
+
+### Miscellaneous Chores
+
+* release 0.1.19 ([034b856](https://github.com/shelltime/cli/commit/034b85679507f58b2cc6311521bafc7c98b2c7ae))
+
 ## [0.1.18](https://github.com/shelltime/cli/compare/v0.1.17...v0.1.18) (2025-06-30)
 
 
