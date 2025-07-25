@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.20](https://github.com/shelltime/cli/compare/v0.1.19...v0.1.20) (2025-07-25)
+
+
+### Bug Fixes
+
+* **gitignore:** add promptpal binary to gitignore ([bca12eb](https://github.com/shelltime/cli/commit/bca12ebc536ee6fb6d9698a910e650afad66b6cc))
+
 ## [0.1.19](https://github.com/shelltime/cli/compare/v0.1.18...v0.1.19) (2025-07-25)
 
 
