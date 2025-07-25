@@ -26,6 +26,9 @@ The CLI stores its configuration in `$HOME/.shelltime/config.toml`.
 | `dataMasking` | boolean | `true` | Enable/disable masking of sensitive data in tracked commands |
 | `enableMetrics` | boolean | `false` | Enable detailed command metrics tracking (WARNING: May impact performance) |
 | `endpoints` | array | `[]` | Additional API endpoints for development or testing |
+| `ai.agent.view` | boolean | `false` | Auto-run AI for view commands (e.g., ls, cat, show) |
+| `ai.agent.edit` | boolean | `false` | Auto-run AI for edit commands (e.g., vim, nano, code) |
+| `ai.agent.delete` | boolean | `false` | Auto-run AI for delete commands (e.g., rm, rmdir) |
 
 Example configuration:
 ```toml
@@ -36,9 +39,17 @@ flushCount = 10
 gcTime = 14
 dataMasking = true
 enableMetrics = false
+
+# AI configuration (optional)
+[ai.agent]
+view = false    # Auto-run AI for view commands
+edit = false    # Auto-run AI for edit commands
+delete = false  # Auto-run AI for delete commands
 ```
 
 ⚠️ Note: Setting `enableMetrics` to `true` will track detailed metrics for every command execution. Only enable this when requested by developers for debugging purposes, as it may impact shell performance.
+
+📤 AI Auto-run: When AI agent auto-run is enabled for specific command types, the AI will automatically analyze and provide suggestions when you run matching commands. This feature requires the AI service to be properly configured.
 
 ## Commands
 

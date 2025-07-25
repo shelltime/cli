@@ -62,6 +62,12 @@ func (cs *configService) ReadConfigFile(ctx context.Context) (config ShellTimeCo
 	if config.DataMasking == nil {
 		config.DataMasking = &truthy
 	}
+	
+	// Initialize AI config with defaults if not present
+	if config.AI == nil {
+		config.AI = DefaultAIConfig
+	}
+	
 	UserShellTimeConfig = config
 	return
 }

@@ -30,7 +30,7 @@ func NewAIService(config AIServiceConfig) AIService {
 	applyTokenFunc := func(ctx context.Context) (promptpal.ApplyTemporaryTokenResult, error) {
 		// Read the config to get the user's token
 		return promptpal.ApplyTemporaryTokenResult{
-			Token: config.UserToken,
+			Token: "Bearer " + config.UserToken,
 		}, nil
 	}
 

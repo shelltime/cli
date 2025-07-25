@@ -5,6 +5,17 @@ type Endpoint struct {
 	Token       string `token:"token"`
 }
 
+type AIAgentConfig struct {
+	// AutoRun settings for different command types
+	View   bool `toml:"view"`
+	Edit   bool `toml:"edit"`
+	Delete bool `toml:"delete"`
+}
+
+type AIConfig struct {
+	Agent AIAgentConfig `toml:"agent"`
+}
+
 type ShellTimeConfig struct {
 	Token       string
 	APIEndpoint string
@@ -29,6 +40,17 @@ type ShellTimeConfig struct {
 	EnableMetrics *bool `toml:"enableMetrics"`
 
 	Encrypted *bool `toml:"encrypted"`
+
+	// AI configuration
+	AI *AIConfig `toml:"ai"`
+}
+
+var DefaultAIConfig = &AIConfig{
+	Agent: AIAgentConfig{
+		View:   false,
+		Edit:   false,
+		Delete: false,
+	},
 }
 
 var DefaultConfig = ShellTimeConfig{
@@ -42,4 +64,5 @@ var DefaultConfig = ShellTimeConfig{
 	Endpoints:     nil,
 	EnableMetrics: nil,
 	Encrypted:     nil,
+	AI:            DefaultAIConfig,
 }
