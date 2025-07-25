@@ -39,3 +39,6 @@ codecov.SHA256SUM
 codecov.SHA256SUM.sig
 
 model/mock_*.go
+promptpal.local.yml
+model/pp.types.g.go
+schema.g.json

@@ -39,6 +39,14 @@ jobs:
 
       - name: Download dependencies
         run: go mod download
+      - uses: PromptPal/github-action@v1.0.3
+        env:
+          PROMPTPAL_ENDPOINT: ${{ secrets.PROMPTPAL_ENDPOINT }}
+          PROMPTPAL_API_TOKEN: ${{ secrets.PROMPTPAL_API_TOKEN }}
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          # generate types by PromptPal CLI
+          command: pp g
 
       - name: Generate mocks
         run: |

@@ -14,7 +14,7 @@ builds:
     env:
       - CGO_ENABLED=0
     ldflags:
-      - -s -w -X main.version={{.Version}} -X main.commit={{.Commit}} -X main.date={{.Date}} -X main.builtBy=goreleaser -X main.uptraceDsn={{.Env.UPTRACE_DSN}}
+      - -s -w -X main.version={{.Version}} -X main.commit={{.Commit}} -X main.date={{.Date}} -X main.builtBy=goreleaser -X main.uptraceDsn={{.Env.UPTRACE_DSN}} -X main.ppEndpoint={{.Env.PP_ENDPOINT}} -X main.ppToken={{.Env.PP_TOKEN}}
   - binary: "shelltime"
     id: mt-mac
     goos:
@@ -26,7 +26,7 @@ builds:
     env:
       - CGO_ENABLED=0
     ldflags:
-      - -s -w -X main.version={{.Version}} -X main.commit={{.Commit}} -X main.date={{.Date}} -X main.builtBy=goreleaser -X main.uptraceDsn={{.Env.UPTRACE_DSN}}
+      - -s -w -X main.version={{.Version}} -X main.commit={{.Commit}} -X main.date={{.Date}} -X main.builtBy=goreleaser -X main.uptraceDsn={{.Env.UPTRACE_DSN}} -X main.ppEndpoint={{.Env.PP_ENDPOINT}} -X main.ppToken={{.Env.PP_TOKEN}}
   - binary: "shelltime-daemon"
     id: mt-daemon-linux
     goos:
@@ -38,7 +38,7 @@ builds:
     env:
       - CGO_ENABLED=0
     ldflags:
-      - -s -w -X main.version={{.Version}} -X main.commit={{.Commit}} -X main.date={{.Date}} -X main.builtBy=goreleaser -X main.uptraceDsn={{.Env.UPTRACE_DSN}}
+      - -s -w -X main.version={{.Version}} -X main.commit={{.Commit}} -X main.date={{.Date}} -X main.builtBy=goreleaser -X main.uptraceDsn={{.Env.UPTRACE_DSN}} -X main.ppEndpoint={{.Env.PP_ENDPOINT}} -X main.ppToken={{.Env.PP_TOKEN}}
   - binary: "shelltime-daemon"
     id: mt-daemon-mac
     goos:
@@ -50,7 +50,7 @@ builds:
     env:
       - CGO_ENABLED=0
     ldflags:
-      - -s -w -X main.version={{.Version}} -X main.commit={{.Commit}} -X main.date={{.Date}} -X main.builtBy=goreleaser -X main.uptraceDsn={{.Env.UPTRACE_DSN}}
+      - -s -w -X main.version={{.Version}} -X main.commit={{.Commit}} -X main.date={{.Date}} -X main.builtBy=goreleaser -X main.uptraceDsn={{.Env.UPTRACE_DSN}} -X main.ppEndpoint={{.Env.PP_ENDPOINT}} -X main.ppToken={{.Env.PP_TOKEN}}
 archives:
   - format: tar.gz
     id: mt-common
