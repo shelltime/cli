@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.21](https://github.com/shelltime/cli/compare/v0.1.20...v0.1.21) (2025-07-25)
+
+
+### Bug Fixes
+
+* **cli:** update copyright year to 2025 ([f7648e4](https://github.com/shelltime/cli/commit/f7648e4ec877c3a35c1b6021d572d76f2ff3c0ce))
+
 ## [0.1.20](https://github.com/shelltime/cli/compare/v0.1.19...v0.1.20) (2025-07-25)
 
 
