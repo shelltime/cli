@@ -12,9 +12,10 @@ type AIService interface {
 }
 
 type AIServiceConfig struct {
-	Endpoint string
-	Token    string
-	Timeout  time.Duration
+	Endpoint  string
+	Token     string
+	Timeout   time.Duration
+	UserToken string
 }
 
 type promptPalAIService struct {
@@ -26,9 +27,19 @@ func NewAIService(config AIServiceConfig) AIService {
 		config.Timeout = 1 * time.Minute
 	}
 
-	client := promptpal.NewPromptPalClient(config.Endpoint, config.Token, promptpal.PromptPalClientOptions{
-		Timeout: &config.Timeout,
-	})
+	applyTokenFunc := func(ctx context.Context) (promptpal.ApplyTemporaryTokenResult, error) {
+		// Read the config to get the user's token
+		return promptpal.ApplyTemporaryTokenResult{
+			Token: config.UserToken,
+		}, nil
+	}
+
+	clientOptions := promptpal.PromptPalClientOptions{
+		Timeout:             &config.Timeout,
+		ApplyTemporaryToken: &applyTokenFunc,
+	}
+
+	client := promptpal.NewPromptPalClient(config.Endpoint, config.Token, clientOptions)
 
 	return &promptPalAIService{
 		client: client,

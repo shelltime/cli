@@ -67,9 +67,10 @@ func main() {
 	// Initialize AI service if configured
 	if ppEndpoint != "" && ppToken != "" {
 		aiService := model.NewAIService(model.AIServiceConfig{
-			Endpoint: ppEndpoint,
-			Token:    ppToken,
-			Timeout:  60 * time.Second,
+			Endpoint:  ppEndpoint,
+			Token:     ppToken,
+			Timeout:   60 * time.Second,
+			UserToken: cfg.Token,
 		})
 		commands.InjectAIService(aiService)
 	}
