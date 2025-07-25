@@ -142,7 +142,7 @@ func outputTable(commands []struct {
 	Hostname  string    `json:"hostname"`
 }) error {
 	w := tablewriter.NewWriter(os.Stdout)
-	w.SetHeader([]string{"COMMAND", "SHELL", "START TIME", "END TIME", "DURATION(ms)", "STATUS", "USER", "HOST"})
+	w.Header([]string{"COMMAND", "SHELL", "START TIME", "END TIME", "DURATION(ms)", "STATUS", "USER", "HOST"})
 
 	for _, cmd := range commands {
 		duration := cmd.EndTime.Sub(cmd.StartTime).Milliseconds()
