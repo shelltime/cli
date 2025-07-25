@@ -1,5 +1,30 @@
 # Changelog
 
+## [0.1.19](https://github.com/shelltime/cli/compare/v0.1.18...v0.1.19) (2025-07-25)
+
+
+### Features
+
+* add AI query feature support ([cbd6751](https://github.com/shelltime/cli/commit/cbd67516ca5922c125775e78bbf63fa8d625ec53))
+* add msgpack encode/decode module ([fa1c8bb](https://github.com/shelltime/cli/commit/fa1c8bb53b196cc7ffffd5a2254dce30c270d0f7))
+* add query command with AI integration ([a84869a](https://github.com/shelltime/cli/commit/a84869a770a9d03e38653fc78ced057c0cae41ac))
+* **ai:** add AI auto-run configuration and command classification ([8787fbb](https://github.com/shelltime/cli/commit/8787fbbd203dd37db0ba405803e1f5eb6504eec1))
+* **ai:** add PromptPal CI/CD integration ([96a9bda](https://github.com/shelltime/cli/commit/96a9bda9cf6b3bb09308b164db5f96e9e68ba339))
+* **ai:** use user token from config file for AI service ([eb7fc7b](https://github.com/shelltime/cli/commit/eb7fc7ba47914df069c62266a582dbdc74f2c37c))
+* **daemon:** add PromptPal configuration variables ([7647827](https://github.com/shelltime/cli/commit/7647827f5a604d419874baf0f065a8d7f89a3d57))
+
+
+### Bug Fixes
+
+* **ci:** use production PromptPal token in release workflow ([18f2f94](https://github.com/shelltime/cli/commit/18f2f949b5d7018480a45a2231f7e52c508e6ad2))
+* **config:** remove extra quotes from PromptPal token configuration ([aed01ec](https://github.com/shelltime/cli/commit/aed01ec4d857a6bf7ccd183593ea5ed58ee482d7))
+* remove .windsurfrules file ([350a1ab](https://github.com/shelltime/cli/commit/350a1ab18097234071fc111697857accd9e4a3b1))
+
+
+### Miscellaneous Chores
+
+* release 0.1.19 ([034b856](https://github.com/shelltime/cli/commit/034b85679507f58b2cc6311521bafc7c98b2c7ae))
+
 ## [0.1.18](https://github.com/shelltime/cli/compare/v0.1.17...v0.1.18) (2025-06-30)
 
 
