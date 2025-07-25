@@ -19,6 +19,9 @@ var (
 	commit     = "none"
 	date       = "unknown"
 	uptraceDsn = ""
+
+	ppEndpoint = ""
+	ppToken    = ""
 )
 
 func main() {
@@ -60,6 +63,16 @@ func main() {
 
 	model.InjectVar(version)
 	commands.InjectVar(version, configService)
+
+	// Initialize AI service if configured
+	if ppEndpoint != "" && ppToken != "" {
+		aiService := model.NewAIService(model.AIServiceConfig{
+			Endpoint: ppEndpoint,
+			Token:    ppToken,
+			Timeout:  60 * time.Second,
+		})
+		commands.InjectAIService(aiService)
+	}
 	app := cli.NewApp()
 	app.Name = "shelltime CLI"
 	app.Description = "shelltime.xyz CLI for track DevOps works"
