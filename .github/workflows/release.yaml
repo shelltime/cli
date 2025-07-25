@@ -53,7 +53,7 @@ jobs:
           args: release --clean
         env:
           PP_ENDPOINT: ${{ secrets.PROMPTPAL_ENDPOINT }}
-          PP_TOKEN: ${{ secrets.PROMPTPAL_API_TOKEN }}
+          PP_TOKEN: ${{ secrets.PROMPTPAL_API_TOKEN_PROD }}
           VERSION: ${{ steps.release.outputs.tag_name }}
           UPTRACE_DSN: ${{ secrets.UPTRACE_DSN }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
