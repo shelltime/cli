@@ -1,7 +1,7 @@
 input:
     http:
         url: 'https://pp.shelltime.xyz'
-        token: '"@env.PROMPTPAL_API_TOKEN"'
+        token: '@env.PROMPTPAL_API_TOKEN'
 output:
     schema: ./schema.g.json
     go_types:
