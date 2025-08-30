@@ -102,6 +102,7 @@ func main() {
 		commands.LsCommand,
 		commands.WebCommand,
 		commands.AliasCommand,
+		commands.DotfilesCommand,
 		commands.DoctorCommand,
 		commands.QueryCommand,
 	}
