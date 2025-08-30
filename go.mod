@@ -1,6 +1,6 @@
 module github.com/malamtime/cli
 
-go 1.24
+go 1.25
 
 require (
 	github.com/PromptPal/go-sdk v0.4.1
