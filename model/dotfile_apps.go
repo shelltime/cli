@@ -20,7 +20,6 @@ type DotfileApp interface {
 	IsEqual(ctx context.Context, files map[string]string) (map[string]bool, error)
 	Backup(ctx context.Context, paths []string) error
 	Save(ctx context.Context, files map[string]string) error
-	BackupAndSave(ctx context.Context, path string, content string) error // Deprecated: use Backup and Save separately
 }
 
 // BaseApp provides common functionality for dotfile apps
