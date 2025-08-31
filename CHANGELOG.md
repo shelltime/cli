@@ -1,5 +1,25 @@
 # Changelog
 
+## [0.1.22](https://github.com/shelltime/cli/compare/v0.1.21...v0.1.22) (2025-08-31)
+
+
+### Features
+
+* **cli:** add dotfiles command for managing configuration files ([d64d828](https://github.com/shelltime/cli/commit/d64d82856b16c2c85ebcc7e58c06ed4244af6da6))
+* **cli:** add dotfiles command for managing configuration files ([4926495](https://github.com/shelltime/cli/commit/49264955f8e33be4394a391e09a183e2ef328d3c))
+* **config:** support local config file override ([8613ffd](https://github.com/shelltime/cli/commit/8613ffd5d0014e4d5193b038b68b1ba65bd80439))
+* **dotfiles:** add pull command to sync dotfiles from server ([ba17256](https://github.com/shelltime/cli/commit/ba172563144d295fc6fcc538c63c912816ceca03))
+
+
+### Bug Fixes
+
+* **dotfiles:** update GraphQL endpoint path for dotfiles API ([aa7084e](https://github.com/shelltime/cli/commit/aa7084e275166f94e06ec87f8706e3ad070f879e))
+
+
+### Miscellaneous Chores
+
+* release 0.1.22 ([32e7cd2](https://github.com/shelltime/cli/commit/32e7cd25a4295196b076afcf369893f678355475))
+
 ## [0.1.21](https://github.com/shelltime/cli/compare/v0.1.20...v0.1.21) (2025-07-25)
 
 
