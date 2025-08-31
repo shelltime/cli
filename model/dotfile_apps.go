@@ -2,6 +2,8 @@ package model
 
 import (
 	"context"
+	"crypto/sha256"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -15,6 +17,10 @@ type DotfileApp interface {
 	Name() string
 	GetConfigPaths() []string
 	CollectDotfiles(ctx context.Context) ([]DotfileItem, error)
+	IsEqual(ctx context.Context, files map[string]string) (map[string]bool, error)
+	Backup(ctx context.Context, paths []string) error
+	Save(ctx context.Context, files map[string]string) error
+	BackupAndSave(ctx context.Context, path string, content string) error // Deprecated: use Backup and Save separately
 }
 
 // BaseApp provides common functionality for dotfile apps
@@ -78,7 +84,7 @@ func (b *BaseApp) CollectFromPaths(_ context.Context, appName string, paths []st
 				logrus.Debugf("Failed to collect from directory %s: %v", expandedPath, err)
 				continue
 			}
-			
+
 			for _, file := range files {
 				content, modTime, err := b.readFileContent(file)
 				if err != nil {
@@ -129,4 +135,114 @@ func (b *BaseApp) collectFromDirectory(dir string) ([]string, error) {
 		return nil
 	})
 	return files, err
+}
+
+// IsEqual checks if the provided files match the local files by comparing SHA256 hashes
+func (b *BaseApp) IsEqual(_ context.Context, files map[string]string) (map[string]bool, error) {
+	result := make(map[string]bool)
+
+	for path, remoteContent := range files {
+		expandedPath, err := b.expandPath(path)
+		if err != nil {
+			logrus.Debugf("Failed to expand path %s: %v", path, err)
+			result[path] = false
+			continue
+		}
+
+		// Read local file content
+		localContent, err := os.ReadFile(expandedPath)
+		if err != nil {
+			if os.IsNotExist(err) {
+				// File doesn't exist locally, so it's not equal
+				result[path] = false
+			} else {
+				logrus.Debugf("Failed to read file %s: %v", expandedPath, err)
+				result[path] = false
+			}
+			continue
+		}
+
+		// Calculate SHA256 hashes
+		localHash := sha256.Sum256(localContent)
+		remoteHash := sha256.Sum256([]byte(remoteContent))
+
+		// Compare hashes
+		result[path] = fmt.Sprintf("%x", localHash) == fmt.Sprintf("%x", remoteHash)
+	}
+
+	return result, nil
+}
+
+// Backup creates backups of files that don't match the provided content
+func (b *BaseApp) Backup(ctx context.Context, paths []string) error {
+	for _, path := range paths {
+		expandedPath, err := b.expandPath(path)
+		if err != nil {
+			logrus.Warnf("Failed to expand path %s: %v", path, err)
+			continue
+		}
+
+		// Check if file exists
+		if _, err := os.Stat(expandedPath); err != nil {
+			if !os.IsNotExist(err) {
+				logrus.Warnf("Failed to stat file %s: %v", expandedPath, err)
+			}
+			continue // Skip if file doesn't exist
+		}
+
+		// Create backup
+		backupPath := expandedPath + ".backup." + time.Now().Format("20060102-150405")
+		existingContent, err := os.ReadFile(expandedPath)
+		if err != nil {
+			logrus.Warnf("Failed to read existing file for backup: %v", err)
+			continue
+		}
+
+		if err := os.WriteFile(backupPath, existingContent, 0644); err != nil {
+			logrus.Warnf("Failed to create backup at %s: %v", backupPath, err)
+		} else {
+			logrus.Infof("Created backup at %s", backupPath)
+		}
+	}
+
+	return nil
+}
+
+// Save writes new content only for files that don't match
+func (b *BaseApp) Save(ctx context.Context, files map[string]string) error {
+	// First check which files need updating
+	equalityMap, err := b.IsEqual(ctx, files)
+	if err != nil {
+		return err
+	}
+
+	for path, content := range files {
+		// Skip if file content is equal
+		if isEqual, exists := equalityMap[path]; exists && isEqual {
+			logrus.Debugf("Skipping %s - content is identical", path)
+			continue
+		}
+
+		expandedPath, err := b.expandPath(path)
+		if err != nil {
+			logrus.Warnf("Failed to expand path %s: %v", path, err)
+			continue
+		}
+
+		// Ensure directory exists
+		dir := filepath.Dir(expandedPath)
+		if err := os.MkdirAll(dir, 0755); err != nil {
+			logrus.Warnf("Failed to create directory %s: %v", dir, err)
+			continue
+		}
+
+		// Write new content
+		if err := os.WriteFile(expandedPath, []byte(content), 0644); err != nil {
+			logrus.Warnf("Failed to save file %s: %v", expandedPath, err)
+		} else {
+			logrus.Infof("Saved new content to %s", expandedPath)
+		}
+	}
+
+	return nil
 }

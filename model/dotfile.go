@@ -1,10 +1,14 @@
 package model
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/sirupsen/logrus"
@@ -95,4 +99,142 @@ func SendDotfilesToServer(ctx context.Context, endpoint Endpoint, dotfiles []Dot
 	}
 
 	return resp.UserID, nil
+}
+
+// GraphQL types for fetching dotfiles
+type DotfileFilter struct {
+	Apps []string `json:"apps,omitempty"`
+}
+
+type DotfileRecord struct {
+	ID             int        `json:"id"`
+	Content        string     `json:"content"`
+	ContentHash    string     `json:"contentHash"`
+	Size           int64      `json:"size"`
+	FileModifiedAt *time.Time `json:"fileModifiedAt"`
+	FileType       string     `json:"fileType"`
+	Metadata       map[string]interface{} `json:"metadata"`
+	Host           struct {
+		ID       int    `json:"id"`
+		Hostname string `json:"hostname"`
+		Alias    string `json:"alias"`
+	} `json:"host"`
+	CreatedAt time.Time `json:"createdAt"`
+	UpdatedAt time.Time `json:"updatedAt"`
+}
+
+type DotfileFile struct {
+	Path    string          `json:"path"`
+	Records []DotfileRecord `json:"records"`
+}
+
+type DotfileAppResponse struct {
+	App   string        `json:"app"`
+	Files []DotfileFile `json:"files"`
+}
+
+type FetchDotfilesResponse struct {
+	Data struct {
+		FetchUser struct {
+			ID       int `json:"id"`
+			Dotfiles struct {
+				TotalCount int                  `json:"totalCount"`
+				Apps       []DotfileAppResponse `json:"apps"`
+			} `json:"dotfiles"`
+		} `json:"fetchUser"`
+	} `json:"data"`
+}
+
+// FetchDotfilesFromServer fetches dotfiles from the server using GraphQL
+func FetchDotfilesFromServer(ctx context.Context, endpoint Endpoint, filter *DotfileFilter) (*FetchDotfilesResponse, error) {
+	query := `query fetchUserDotfiles($filter: DotfileFilter) {
+		fetchUser {
+			id
+			dotfiles(filter: $filter) {
+				totalCount
+				apps {
+					app
+					files {
+						path
+						records {
+							id
+							content
+							contentHash
+							size
+							fileModifiedAt
+							fileType
+							metadata
+							host {
+								id
+								hostname
+								alias
+							}
+							createdAt
+							updatedAt
+						}
+					}
+				}
+			}
+		}
+	}`
+
+	variables := map[string]interface{}{}
+	if filter != nil {
+		variables["filter"] = filter
+	}
+
+	payload := map[string]interface{}{
+		"query":     query,
+		"variables": variables,
+	}
+
+	jsonData, err := json.Marshal(payload)
+	if err != nil {
+		return nil, err
+	}
+
+	client := &http.Client{
+		Timeout: time.Second * 30,
+	}
+
+	// Use web endpoint for GraphQL queries
+	graphQLEndpoint := endpoint.APIEndpoint
+	if strings.Contains(endpoint.APIEndpoint, "api.shelltime") {
+		graphQLEndpoint = strings.Replace(endpoint.APIEndpoint, "api.", "", 1)
+	}
+	graphQLEndpoint = strings.TrimSuffix(graphQLEndpoint, "/")
+	if !strings.HasSuffix(graphQLEndpoint, "/graphql") {
+		graphQLEndpoint += "/graphql"
+	}
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, graphQLEndpoint, bytes.NewBuffer(jsonData))
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "CLI "+endpoint.Token)
+	req.Header.Set("User-Agent", fmt.Sprintf("shelltimeCLI@%s", commitID))
+
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, err
+	}
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("GraphQL request failed with status %d: %s", resp.StatusCode, string(body))
+	}
+
+	var result FetchDotfilesResponse
+	if err := json.Unmarshal(body, &result); err != nil {
+		return nil, fmt.Errorf("failed to parse GraphQL response: %w", err)
+	}
+
+	return &result, nil
 }
