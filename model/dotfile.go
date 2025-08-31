@@ -90,7 +90,7 @@ func SendDotfilesToServer(ctx context.Context, endpoint Endpoint, dotfiles []Dot
 	}
 
 	logrus.Infof("Pushed dotfiles successfully - Success: %d, Failed: %d", resp.Success, resp.Failed)
-	
+
 	// Log any errors
 	for _, result := range resp.Results {
 		if result.Status == "error" {
@@ -107,12 +107,12 @@ type DotfileFilter struct {
 }
 
 type DotfileRecord struct {
-	ID             int        `json:"id"`
-	Content        string     `json:"content"`
-	ContentHash    string     `json:"contentHash"`
-	Size           int64      `json:"size"`
-	FileModifiedAt *time.Time `json:"fileModifiedAt"`
-	FileType       string     `json:"fileType"`
+	ID             int                    `json:"id"`
+	Content        string                 `json:"content"`
+	ContentHash    string                 `json:"contentHash"`
+	Size           int64                  `json:"size"`
+	FileModifiedAt *time.Time             `json:"fileModifiedAt"`
+	FileType       string                 `json:"fileType"`
 	Metadata       map[string]interface{} `json:"metadata"`
 	Host           struct {
 		ID       int    `json:"id"`
@@ -199,12 +199,9 @@ func FetchDotfilesFromServer(ctx context.Context, endpoint Endpoint, filter *Dot
 
 	// Use web endpoint for GraphQL queries
 	graphQLEndpoint := endpoint.APIEndpoint
-	if strings.Contains(endpoint.APIEndpoint, "api.shelltime") {
-		graphQLEndpoint = strings.Replace(endpoint.APIEndpoint, "api.", "", 1)
-	}
 	graphQLEndpoint = strings.TrimSuffix(graphQLEndpoint, "/")
-	if !strings.HasSuffix(graphQLEndpoint, "/graphql") {
-		graphQLEndpoint += "/graphql"
+	if !strings.HasSuffix(graphQLEndpoint, "/api/v2/graphql") {
+		graphQLEndpoint += "/api/v2/graphql"
 	}
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, graphQLEndpoint, bytes.NewBuffer(jsonData))
