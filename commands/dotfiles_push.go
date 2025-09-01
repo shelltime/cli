@@ -42,6 +42,7 @@ func pushDotfiles(c *cli.Context) error {
 		model.NewZshApp(),
 		model.NewBashApp(),
 		model.NewGhosttyApp(),
+		model.NewClaudeApp(),
 	}
 
 	// Filter apps based on user input
