@@ -64,6 +64,7 @@ func pullDotfiles(c *cli.Context) error {
 		"zsh":     model.NewZshApp(),
 		"bash":    model.NewBashApp(),
 		"ghostty": model.NewGhosttyApp(),
+		"claude":  model.NewClaudeApp(),
 	}
 
 	// Process fetched dotfiles
@@ -138,7 +139,7 @@ func pullDotfiles(c *cli.Context) error {
 		// Filter out files that are already equal
 		filesToUpdate := make(map[string]string)
 		var pathsToActuallyBackup []string
-		
+
 		for path, content := range filesToProcess {
 			if isEqual, exists := equalityMap[path]; exists && isEqual {
 				logrus.Debugf("Skipping %s - content is identical", path)
