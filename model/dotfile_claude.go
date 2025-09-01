@@ -18,11 +18,7 @@ func (c *ClaudeApp) Name() string {
 func (c *ClaudeApp) GetConfigPaths() []string {
 	return []string{
 		"~/.claude/settings.json",
-		"~/.config/claude/settings.json",
-		"~/.claude/config.json",
-		"~/.config/claude/config.json",
-		".claude/settings.json",
-		"CLAUDE.md",
+		"~/.claude/CLAUDE.md",
 	}
 }
 
