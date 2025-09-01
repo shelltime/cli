@@ -1,5 +1,23 @@
 # Changelog
 
+## [0.1.23](https://github.com/shelltime/cli/compare/v0.1.22...v0.1.23) (2025-09-01)
+
+
+### Features
+
+* add claude configuration support to dotfiles push/pull ([90515c4](https://github.com/shelltime/cli/commit/90515c4343ae00347a0b31b16d4d9344a879cfab))
+* add claude configuration support to dotfiles push/pull ([63a67f0](https://github.com/shelltime/cli/commit/63a67f0fc71e85500cc0b79bb82e50e937dbabe5)), closes [#84](https://github.com/shelltime/cli/issues/84)
+
+
+### Bug Fixes
+
+* **dotfiles:** update Claude config paths to match actual usage ([e738275](https://github.com/shelltime/cli/commit/e73827536b02b389d5005775c417664c0786bc91))
+
+
+### Miscellaneous Chores
+
+* release 0.1.23 ([124c950](https://github.com/shelltime/cli/commit/124c9502dcd8ffefdf543c413b2851286f69974e))
+
 ## [0.1.22](https://github.com/shelltime/cli/compare/v0.1.21...v0.1.22) (2025-08-31)
 
 
