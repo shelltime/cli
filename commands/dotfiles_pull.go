@@ -58,13 +58,14 @@ func pullDotfiles(c *cli.Context) error {
 
 	// Initialize all available app handlers
 	allApps := map[string]model.DotfileApp{
-		"nvim":    model.NewNvimApp(),
-		"fish":    model.NewFishApp(),
-		"git":     model.NewGitApp(),
-		"zsh":     model.NewZshApp(),
-		"bash":    model.NewBashApp(),
-		"ghostty": model.NewGhosttyApp(),
-		"claude":  model.NewClaudeApp(),
+		"nvim":     model.NewNvimApp(),
+		"fish":     model.NewFishApp(),
+		"git":      model.NewGitApp(),
+		"zsh":      model.NewZshApp(),
+		"bash":     model.NewBashApp(),
+		"ghostty":  model.NewGhosttyApp(),
+		"claude":   model.NewClaudeApp(),
+		"starship": model.NewStarshipApp(),
 	}
 
 	// Process fetched dotfiles
