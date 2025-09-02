@@ -44,6 +44,10 @@ func pushDotfiles(c *cli.Context) error {
 		model.NewGhosttyApp(),
 		model.NewClaudeApp(),
 		model.NewStarshipApp(),
+		model.NewNpmApp(),
+		model.NewSshApp(),
+		model.NewKittyApp(),
+		model.NewKubernetesApp(),
 	}
 
 	// Filter apps based on user input
