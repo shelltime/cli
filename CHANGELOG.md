@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.1.24](https://github.com/shelltime/cli/compare/v0.1.23...v0.1.24) (2025-09-03)
+
+
+### Features
+
+* add npm, ssh, kitty, and kubernetes dotfile support ([32c39a2](https://github.com/shelltime/cli/commit/32c39a2023631b307145fd8f63b16038b095051c))
+* add npm, ssh, kitty, and kubernetes dotfile support ([3bc5cb0](https://github.com/shelltime/cli/commit/3bc5cb0afb6aa05d4c2cf308a96e817c7f23ed3e))
+* add starship config support to dotfiles push/pull ([f7a7d1a](https://github.com/shelltime/cli/commit/f7a7d1a5543acbcae4238c19e720a9c9a9d8ac99))
+* add starship config support to dotfiles push/pull ([06e4104](https://github.com/shelltime/cli/commit/06e4104ed19a59782648229ee11d29be04784a1d))
+
+
+### Miscellaneous Chores
+
+* release 0.1.24 ([83ef433](https://github.com/shelltime/cli/commit/83ef433720e77881a6ff4f5ce12f5832a4126966))
+
 ## [0.1.23](https://github.com/shelltime/cli/compare/v0.1.22...v0.1.23) (2025-09-01)
 
 
