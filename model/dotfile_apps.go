@@ -236,6 +236,17 @@ func (b *BaseApp) Save(ctx context.Context, files map[string]string) error {
 			continue
 		}
 
+		// Create patches from the diffs and apply them to get merged content
+		patches := dmp.PatchMake(existingContent, diffs)
+		mergedContent, results := dmp.PatchApply(patches, existingContent)
+		
+		// Check if patches were applied successfully
+		for i, success := range results {
+			if !success {
+				logrus.Warnf("Failed to apply patch %d for %s", i, path)
+			}
+		}
+
 		// Ensure directory exists
 		dir := filepath.Dir(expandedPath)
 		if err := os.MkdirAll(dir, 0755); err != nil {
@@ -243,8 +254,8 @@ func (b *BaseApp) Save(ctx context.Context, files map[string]string) error {
 			continue
 		}
 
-		// Write new content
-		if err := os.WriteFile(expandedPath, []byte(newContent), 0644); err != nil {
+		// Write merged content
+		if err := os.WriteFile(expandedPath, []byte(mergedContent), 0644); err != nil {
 			logrus.Warnf("Failed to save file %s: %v", expandedPath, err)
 		} else {
 			logrus.Infof("Saved new content to %s", expandedPath)
