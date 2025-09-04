@@ -7,18 +7,6 @@ import (
 	"github.com/PromptPal/go-sdk/promptpal"
 )
 
-// PPPromptGuessNextPromptVariables represents variables used for AI prompt
-type PPPromptGuessNextPromptVariables struct {
-	Shell string `json:"shell"`
-	Os    string `json:"os"`
-	Query string `json:"query"`
-}
-
-// PPPromptGuessNextPrompt is the prompt template identifier
-type PPPromptGuessNextPrompt string
-
-const PPPromptGuessNextPromptTemplate PPPromptGuessNextPrompt = "guess-next-prompt"
-
 type AIService interface {
 	QueryCommand(ctx context.Context, systemContext PPPromptGuessNextPromptVariables, userId string) (string, error)
 }
@@ -63,7 +51,7 @@ func (s promptPalAIService) QueryCommand(
 	systemContext PPPromptGuessNextPromptVariables,
 	userId string,
 ) (string, error) {
-	response, err := s.client.Execute(ctx, string(PPPromptGuessNextPromptTemplate), PPPromptGuessNextPromptVariables{
+	response, err := s.client.Execute(ctx, string(PPPromptGuessNextPrompt), PPPromptGuessNextPromptVariables{
 		Shell: systemContext.Shell,
 		Os:    systemContext.Os,
 		Query: systemContext.Query,
