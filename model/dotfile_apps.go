@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/sergi/go-diff/diffmatchpatch"
 	"github.com/sirupsen/logrus"
 )
 
@@ -207,24 +208,31 @@ func (b *BaseApp) Backup(ctx context.Context, paths []string) error {
 	return nil
 }
 
-// Save writes new content only for files that don't match
+// Save writes new content for files, using diff to check for actual differences
 func (b *BaseApp) Save(ctx context.Context, files map[string]string) error {
-	// First check which files need updating
-	equalityMap, err := b.IsEqual(ctx, files)
-	if err != nil {
-		return err
-	}
+	dmp := diffmatchpatch.New()
 
-	for path, content := range files {
-		// Skip if file content is equal
-		if isEqual, exists := equalityMap[path]; exists && isEqual {
-			logrus.Debugf("Skipping %s - content is identical", path)
-			continue
-		}
-
+	for path, newContent := range files {
 		expandedPath, err := b.expandPath(path)
 		if err != nil {
 			logrus.Warnf("Failed to expand path %s: %v", path, err)
+			continue
+		}
+
+		// Read existing content if file exists
+		var existingContent string
+		if existingBytes, err := os.ReadFile(expandedPath); err == nil {
+			existingContent = string(existingBytes)
+		} else if !os.IsNotExist(err) {
+			logrus.Warnf("Failed to read existing file %s: %v", expandedPath, err)
+			continue
+		}
+
+		// Check for differences using go-diff
+		diffs := dmp.DiffMain(existingContent, newContent, false)
+		if len(diffs) == 1 && diffs[0].Type == diffmatchpatch.DiffEqual {
+			// No differences found, skip saving
+			logrus.Debugf("Skipping %s - content is identical", path)
 			continue
 		}
 
@@ -236,7 +244,7 @@ func (b *BaseApp) Save(ctx context.Context, files map[string]string) error {
 		}
 
 		// Write new content
-		if err := os.WriteFile(expandedPath, []byte(content), 0644); err != nil {
+		if err := os.WriteFile(expandedPath, []byte(newContent), 0644); err != nil {
 			logrus.Warnf("Failed to save file %s: %v", expandedPath, err)
 		} else {
 			logrus.Infof("Saved new content to %s", expandedPath)
