@@ -9,7 +9,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/sergi/go-diff/diffmatchpatch"
 	"github.com/sirupsen/logrus"
 )
 
@@ -71,8 +70,8 @@ type DotfileApp interface {
 	GetConfigPaths() []string
 	CollectDotfiles(ctx context.Context) ([]DotfileItem, error)
 	IsEqual(ctx context.Context, files map[string]string) (map[string]bool, error)
-	Backup(ctx context.Context, paths []string) error
-	Save(ctx context.Context, files map[string]string) error
+	Backup(ctx context.Context, paths []string, isDryRun bool) error
+	Save(ctx context.Context, files map[string]string, isDryRun bool) error
 }
 
 // BaseApp provides common functionality for dotfile apps
@@ -226,7 +225,8 @@ func (b *BaseApp) IsEqual(_ context.Context, files map[string]string) (map[strin
 }
 
 // Backup creates backups of files that don't match the provided content
-func (b *BaseApp) Backup(ctx context.Context, paths []string) error {
+func (b *BaseApp) Backup(ctx context.Context, paths []string, isDryRun bool) error {
+
 	for _, path := range paths {
 		expandedPath, err := b.expandPath(path)
 		if err != nil {
@@ -250,10 +250,14 @@ func (b *BaseApp) Backup(ctx context.Context, paths []string) error {
 			continue
 		}
 
-		if err := os.WriteFile(backupPath, existingContent, 0644); err != nil {
-			logrus.Warnf("Failed to create backup at %s: %v", backupPath, err)
+		if isDryRun {
+			logrus.Infof("[DRY RUN] Would create backup for %s", expandedPath)
 		} else {
-			logrus.Infof("Created backup at %s", backupPath)
+			if err := os.WriteFile(backupPath, existingContent, 0644); err != nil {
+				logrus.Warnf("Failed to create backup at %s: %v", backupPath, err)
+			} else {
+				logrus.Infof("Created backup at %s", backupPath)
+			}
 		}
 	}
 
@@ -261,8 +265,8 @@ func (b *BaseApp) Backup(ctx context.Context, paths []string) error {
 }
 
 // Save writes new content for files, using diff to check for actual differences
-func (b *BaseApp) Save(ctx context.Context, files map[string]string) error {
-	dmp := diffmatchpatch.New()
+func (b *BaseApp) Save(ctx context.Context, files map[string]string, isDryRun bool) error {
+	dms := NewDiffMergeService()
 
 	for path, newContent := range files {
 		expandedPath, err := b.expandPath(path)
@@ -280,23 +284,38 @@ func (b *BaseApp) Save(ctx context.Context, files map[string]string) error {
 			continue
 		}
 
-		// Check for differences using go-diff
-		diffs := dmp.DiffMain(existingContent, newContent, false)
-		if len(diffs) == 1 && diffs[0].Type == diffmatchpatch.DiffEqual {
-			// No differences found, skip saving
-			logrus.Debugf("Skipping %s - content is identical", path)
+		if existingContent == newContent {
 			continue
 		}
 
-		// Create patches from the diffs and apply them to get merged content
-		patches := dmp.PatchMake(existingContent, diffs)
-		mergedContent, results := dmp.PatchApply(patches, existingContent)
+		localObj, err := dms.ConvertToEncodedObject(existingContent)
+		if err != nil {
+			return err
+		}
 
-		// Check if patches were applied successfully
-		for i, success := range results {
-			if !success {
-				logrus.Warnf("Failed to apply patch %d for %s", i, path)
-			}
+		delta, err := dms.FindDiff(existingContent, newContent)
+
+		if err != nil {
+			return err
+		}
+
+		changes, err := dms.GetChanges(localObj, delta)
+		if err != nil {
+			return err
+		}
+
+		if isDryRun {
+			// In dry-run mode, print the diff instead of writing files
+			fmt.Printf("\n📄 %s:\n", expandedPath)
+			// TODO: add pretty output for changes
+			fmt.Println(dms.PrettyPrint(changes))
+			continue
+		}
+
+		mergedContent, err := dms.ApplyDiff(existingContent, changes)
+
+		if err != nil {
+			return err
 		}
 
 		// Ensure directory exists
@@ -307,7 +326,7 @@ func (b *BaseApp) Save(ctx context.Context, files map[string]string) error {
 		}
 
 		// Write merged content
-		if err := os.WriteFile(expandedPath, []byte(mergedContent), 0644); err != nil {
+		if err := os.WriteFile(expandedPath, mergedContent, 0644); err != nil {
 			logrus.Warnf("Failed to save file %s: %v", expandedPath, err)
 		} else {
 			logrus.Infof("Saved new content to %s", expandedPath)
