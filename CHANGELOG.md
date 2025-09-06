@@ -1,5 +1,30 @@
 # Changelog
 
+## [0.1.25](https://github.com/shelltime/cli/compare/v0.1.24...v0.1.25) (2025-09-06)
+
+
+### Features
+
+* **dotfiles:** add dry-run mode and experimental diff merge service ([3a35d1d](https://github.com/shelltime/cli/commit/3a35d1db1c5a3415eb8d5077fbab8f8e2e7d6c03))
+* **dotfiles:** add pterm for beautiful pull command output ([c696d5f](https://github.com/shelltime/cli/commit/c696d5fb5ed78df3034c5d49760c77f1c808995c))
+* **dotfiles:** enhance pull command with detailed per-app file status tracking ([dd47cc9](https://github.com/shelltime/cli/commit/dd47cc996bc5b111201b19ba80531e48d2457fea))
+* **dotfiles:** enhance pull command with detailed per-app file status tracking ([926b4a3](https://github.com/shelltime/cli/commit/926b4a3610416ce14c93f0aaf1ad796cdb3c831e))
+* improve dotfiles pull file-saving with go-diff ([480a872](https://github.com/shelltime/cli/commit/480a872a38ace9d05fad5205988e8ae8a1744f24))
+* improve dotfiles pull file-saving with go-diff ([49472ee](https://github.com/shelltime/cli/commit/49472ee8f599d290545b97b058d1b5083779c241))
+
+
+### Bug Fixes
+
+* **model:** improve diff trim to remove additional control characters ([63ebf68](https://github.com/shelltime/cli/commit/63ebf686dd7f820c09c1fed73f54929639df0caa))
+* **model:** split ApplyDiff into GetChanges and ApplyDiff methods ([e3f9ecf](https://github.com/shelltime/cli/commit/e3f9ecfafa4d7fd2024a10d40fac672131715d54))
+* **model:** update dotfile_apps to use new DiffMergeService API ([5f69531](https://github.com/shelltime/cli/commit/5f695313e4098d8446ae1f1eb5ed654cc532c29b))
+* use merged content from go-diff patches instead of just newContent ([aab6b9b](https://github.com/shelltime/cli/commit/aab6b9b6a283318f533498bf9e3f989110d2e62e))
+
+
+### Miscellaneous Chores
+
+* release 0.1.25 ([5fae10e](https://github.com/shelltime/cli/commit/5fae10e2dfda6cd20a9317015cf6227c3106a4e1))
+
 ## [0.1.24](https://github.com/shelltime/cli/compare/v0.1.23...v0.1.24) (2025-09-03)
 
 
