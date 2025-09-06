@@ -56,20 +56,21 @@ func pullDotfiles(c *cli.Context) error {
 		return nil
 	}
 
-	// Initialize all available app handlers
-	allApps := map[string]model.DotfileApp{
-		"nvim":       model.NewNvimApp(),
-		"fish":       model.NewFishApp(),
-		"git":        model.NewGitApp(),
-		"zsh":        model.NewZshApp(),
-		"bash":       model.NewBashApp(),
-		"ghostty":    model.NewGhosttyApp(),
-		"claude":     model.NewClaudeApp(),
-		"starship":   model.NewStarshipApp(),
-		"npm":        model.NewNpmApp(),
-		"ssh":        model.NewSshApp(),
-		"kitty":      model.NewKittyApp(),
-		"kubernetes": model.NewKubernetesApp(),
+	// Initialize app handlers based on apps parameter
+	var allApps map[model.DotfileAppName]model.DotfileApp
+	if len(apps) == 0 {
+		// If no specific apps specified, use all available apps
+		allApps = model.GetAllAppsMap()
+	} else {
+		// Only include specified apps
+		allAppsMap := model.GetAllAppsMap()
+		allApps = make(map[model.DotfileAppName]model.DotfileApp)
+		for _, appNameStr := range apps {
+			appName := model.DotfileAppName(appNameStr)
+			if appHandler, exists := allAppsMap[appName]; exists {
+				allApps[appName] = appHandler
+			}
+		}
 	}
 
 	// Process fetched dotfiles
@@ -78,7 +79,8 @@ func pullDotfiles(c *cli.Context) error {
 	totalFailed := 0
 
 	for _, appData := range resp.Data.FetchUser.Dotfiles.Apps {
-		app, exists := allApps[appData.App]
+		appName := model.DotfileAppName(appData.App)
+		app, exists := allApps[appName]
 		if !exists {
 			logrus.Warnf("Unknown app type: %s", appData.App)
 			continue

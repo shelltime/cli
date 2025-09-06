@@ -13,6 +13,58 @@ import (
 	"github.com/sirupsen/logrus"
 )
 
+type DotfileAppName string
+
+// Available app names as enum-like constants
+const (
+	AppNvim       DotfileAppName = "nvim"
+	AppFish       DotfileAppName = "fish"
+	AppGit        DotfileAppName = "git"
+	AppZsh        DotfileAppName = "zsh"
+	AppBash       DotfileAppName = "bash"
+	AppGhostty    DotfileAppName = "ghostty"
+	AppClaude     DotfileAppName = "claude"
+	AppStarship   DotfileAppName = "starship"
+	AppNpm        DotfileAppName = "npm"
+	AppSsh        DotfileAppName = "ssh"
+	AppKitty      DotfileAppName = "kitty"
+	AppKubernetes DotfileAppName = "kubernetes"
+)
+
+// AllAvailableApps contains all available app names
+var AllAvailableApps = []DotfileAppName{
+	AppNvim,
+	AppFish,
+	AppGit,
+	AppZsh,
+	AppBash,
+	AppGhostty,
+	AppClaude,
+	AppStarship,
+	AppNpm,
+	AppSsh,
+	AppKitty,
+	AppKubernetes,
+}
+
+// GetAllAppsMap returns a map of all available app handlers
+func GetAllAppsMap() map[DotfileAppName]DotfileApp {
+	return map[DotfileAppName]DotfileApp{
+		AppNvim:       NewNvimApp(),
+		AppFish:       NewFishApp(),
+		AppGit:        NewGitApp(),
+		AppZsh:        NewZshApp(),
+		AppBash:       NewBashApp(),
+		AppGhostty:    NewGhosttyApp(),
+		AppClaude:     NewClaudeApp(),
+		AppStarship:   NewStarshipApp(),
+		AppNpm:        NewNpmApp(),
+		AppSsh:        NewSshApp(),
+		AppKitty:      NewKittyApp(),
+		AppKubernetes: NewKubernetesApp(),
+	}
+}
+
 // DotfileApp interface defines methods for handling app-specific dotfiles
 type DotfileApp interface {
 	Name() string
@@ -239,7 +291,7 @@ func (b *BaseApp) Save(ctx context.Context, files map[string]string) error {
 		// Create patches from the diffs and apply them to get merged content
 		patches := dmp.PatchMake(existingContent, diffs)
 		mergedContent, results := dmp.PatchApply(patches, existingContent)
-		
+
 		// Check if patches were applied successfully
 		for i, success := range results {
 			if !success {
