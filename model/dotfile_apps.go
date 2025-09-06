@@ -266,7 +266,6 @@ func (b *BaseApp) Backup(ctx context.Context, paths []string, isDryRun bool) err
 
 // Save writes new content for files, using diff to check for actual differences
 func (b *BaseApp) Save(ctx context.Context, files map[string]string, isDryRun bool) error {
-
 	dms := NewDiffMergeService()
 
 	for path, newContent := range files {
@@ -282,6 +281,10 @@ func (b *BaseApp) Save(ctx context.Context, files map[string]string, isDryRun bo
 			existingContent = string(existingBytes)
 		} else if !os.IsNotExist(err) {
 			logrus.Warnf("Failed to read existing file %s: %v", expandedPath, err)
+			continue
+		}
+
+		if existingContent == newContent {
 			continue
 		}
 

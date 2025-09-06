@@ -157,7 +157,7 @@ func (s *diffMergeService) ApplyDiff(baseContent string, changes []diffmatchpatc
 		result = append(result, bytes.Join(additions, nil)...)
 	}
 
-	return bytes.Trim(result, "\x00"), nil
+	return bytes.Trim(result, "\x00\x0c\x0e\x0f"), nil
 }
 
 // PrettyPrint renders diff changes in a beautiful format using pterm (shows added lines only)

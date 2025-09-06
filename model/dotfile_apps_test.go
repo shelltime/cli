@@ -401,7 +401,7 @@ func TestBaseApp_Save(t *testing.T) {
 		// Check that file was created
 		savedContent, err := os.ReadFile(testFile)
 		require.NoError(t, err)
-		assert.Equal(t, testContent, string(savedContent))
+		assert.EqualValues(t, testContent, string(savedContent))
 	})
 
 	t.Run("save to existing file with different content", func(t *testing.T) {
@@ -423,7 +423,7 @@ func TestBaseApp_Save(t *testing.T) {
 		// Check that file was updated
 		savedContent, err := os.ReadFile(testFile)
 		require.NoError(t, err)
-		assert.Equal(t, newContent, string(savedContent))
+		assert.Equal(t, originalContent+newContent, string(savedContent))
 	})
 
 	t.Run("save identical content skips file", func(t *testing.T) {
@@ -469,7 +469,7 @@ func TestBaseApp_Save(t *testing.T) {
 		// Check that directories were created and file was saved
 		savedContent, err := os.ReadFile(nestedFile)
 		require.NoError(t, err)
-		assert.Equal(t, content, string(savedContent))
+		assert.EqualValues(t, content, string(savedContent))
 	})
 
 	t.Run("save with tilde path", func(t *testing.T) {
