@@ -9,7 +9,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/sergi/go-diff/diffmatchpatch"
 	"github.com/sirupsen/logrus"
 )
 
@@ -267,7 +266,8 @@ func (b *BaseApp) Backup(ctx context.Context, paths []string, isDryRun bool) err
 
 // Save writes new content for files, using diff to check for actual differences
 func (b *BaseApp) Save(ctx context.Context, files map[string]string, isDryRun bool) error {
-	dmp := diffmatchpatch.New()
+
+	dms := NewDiffMergeService()
 
 	for path, newContent := range files {
 		expandedPath, err := b.expandPath(path)
@@ -285,31 +285,33 @@ func (b *BaseApp) Save(ctx context.Context, files map[string]string, isDryRun bo
 			continue
 		}
 
-		// Check for differences using go-diff
-		diffs := dmp.DiffMain(existingContent, newContent, false)
-		if len(diffs) == 1 && diffs[0].Type == diffmatchpatch.DiffEqual {
-			// No differences found, skip saving
-			logrus.Debugf("Skipping %s - content is identical", path)
-			continue
+		localObj, err := dms.ConvertToEncodedObject(existingContent)
+		if err != nil {
+			return err
+		}
+
+		delta, err := dms.FindDiff(existingContent, newContent)
+
+		if err != nil {
+			return err
+		}
+
+		changes, err := dms.GetChanges(localObj, delta)
+		if err != nil {
+			return err
 		}
 
 		if isDryRun {
 			// In dry-run mode, print the diff instead of writing files
 			fmt.Printf("\n📄 %s:\n", expandedPath)
-			prettyDiffs := dmp.DiffPrettyText(diffs)
-			fmt.Println(prettyDiffs)
+			// TODO: add pretty output for changes
 			continue
 		}
 
-		// Create patches from the diffs and apply them to get merged content
-		patches := dmp.PatchMake(existingContent, diffs)
-		mergedContent, results := dmp.PatchApply(patches, existingContent)
+		mergedContent, err := dms.ApplyDiff(existingContent, changes)
 
-		// Check if patches were applied successfully
-		for i, success := range results {
-			if !success {
-				logrus.Warnf("Failed to apply patch %d for %s", i, path)
-			}
+		if err != nil {
+			return err
 		}
 
 		// Ensure directory exists
@@ -320,7 +322,7 @@ func (b *BaseApp) Save(ctx context.Context, files map[string]string, isDryRun bo
 		}
 
 		// Write merged content
-		if err := os.WriteFile(expandedPath, []byte(mergedContent), 0644); err != nil {
+		if err := os.WriteFile(expandedPath, mergedContent, 0644); err != nil {
 			logrus.Warnf("Failed to save file %s: %v", expandedPath, err)
 		} else {
 			logrus.Infof("Saved new content to %s", expandedPath)
