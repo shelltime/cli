@@ -5,11 +5,13 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"strings"
 
 	"github.com/go-git/go-git/v5/plumbing"
 	"github.com/go-git/go-git/v5/plumbing/format/packfile"
 	"github.com/go-git/go-git/v5/storage/memory"
 	"github.com/go-git/go-git/v5/utils/diff"
+	"github.com/pterm/pterm"
 	"github.com/sergi/go-diff/diffmatchpatch"
 )
 
@@ -19,6 +21,7 @@ type DiffMergeService interface {
 	FindDiff(localContent, remoteContent string) (plumbing.EncodedObject, error)
 	GetChanges(obj plumbing.EncodedObject, diff plumbing.EncodedObject) ([]diffmatchpatch.Diff, error)
 	ApplyDiff(baseContent string, changes []diffmatchpatch.Diff) ([]byte, error)
+	PrettyPrint(diffs []diffmatchpatch.Diff) string
 }
 
 // diffMergeService implements the DiffMergeService interface
@@ -155,4 +158,77 @@ func (s *diffMergeService) ApplyDiff(baseContent string, changes []diffmatchpatc
 	}
 
 	return bytes.Trim(result, "\x00"), nil
+}
+
+// PrettyPrint renders diff changes in a beautiful format using pterm (shows added lines only)
+func (s *diffMergeService) PrettyPrint(diffs []diffmatchpatch.Diff) string {
+	// Filter for added lines only
+	var hasAdditions bool
+	for _, diff := range diffs {
+		if diff.Type == diffmatchpatch.DiffInsert {
+			hasAdditions = true
+			break
+		}
+	}
+
+	if !hasAdditions {
+		return pterm.Info.Sprint("No additions detected")
+	}
+
+	var builder strings.Builder
+	lineNum := 1
+
+	// Create styled renderers
+	addStyle := pterm.NewStyle(pterm.FgGreen, pterm.BgDefault)
+	lineNumStyle := pterm.NewStyle(pterm.FgCyan)
+
+	// Header
+	header := pterm.DefaultBox.WithTitle("Added Lines").Sprint("")
+	builder.WriteString(header)
+	builder.WriteString("\n\n")
+
+	// Process only insertions
+	for _, diff := range diffs {
+		if diff.Type != diffmatchpatch.DiffInsert {
+			continue
+		}
+
+		lines := strings.Split(diff.Text, "\n")
+
+		for i, line := range lines {
+			// Skip empty lines at the end of the diff text
+			if i == len(lines)-1 && line == "" {
+				continue
+			}
+
+			// Format line number
+			lineNumStr := fmt.Sprintf("%4d │ ", lineNum)
+			builder.WriteString(lineNumStyle.Sprint(lineNumStr))
+
+			// Print the added line
+			builder.WriteString(addStyle.Sprint("+ " + line))
+			builder.WriteString("\n")
+			lineNum++
+		}
+	}
+
+	// Summary section
+	var addCount int
+	for _, diff := range diffs {
+		if diff.Type == diffmatchpatch.DiffInsert {
+			lineCount := strings.Count(diff.Text, "\n")
+			if lineCount == 0 && diff.Text != "" {
+				lineCount = 1
+			}
+			addCount += lineCount
+		}
+	}
+
+	// Create summary
+	builder.WriteString("\n")
+	builder.WriteString(pterm.DefaultSection.Sprint("Summary"))
+	summary := pterm.Success.Sprintf("Total lines added: %d", addCount)
+	builder.WriteString(summary)
+
+	return builder.String()
 }

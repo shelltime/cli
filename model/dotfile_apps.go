@@ -305,6 +305,7 @@ func (b *BaseApp) Save(ctx context.Context, files map[string]string, isDryRun bo
 			// In dry-run mode, print the diff instead of writing files
 			fmt.Printf("\n📄 %s:\n", expandedPath)
 			// TODO: add pretty output for changes
+			fmt.Println(dms.PrettyPrint(changes))
 			continue
 		}
 

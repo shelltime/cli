@@ -5,6 +5,7 @@ import (
 	"os"
 
 	"github.com/malamtime/cli/model"
+	"github.com/pterm/pterm"
 	"github.com/sirupsen/logrus"
 	"github.com/urfave/cli/v2"
 	"go.opentelemetry.io/otel/attribute"
@@ -16,6 +17,107 @@ type dotfilePullFileResult struct {
 	isSuccess bool
 	isSkipped bool
 	isFailed  bool
+}
+
+// printPullResults prints the pull operation results in a formatted way
+func printPullResults(result map[model.DotfileAppName][]dotfilePullFileResult, dryRun bool) {
+	// Calculate totals from result map
+	var totalProcessed, totalFailed, totalSkipped int
+	for _, fileResults := range result {
+		for _, fileResult := range fileResults {
+			if fileResult.isSuccess {
+				totalProcessed++
+			} else if fileResult.isFailed {
+				totalFailed++
+			} else if fileResult.isSkipped {
+				totalSkipped++
+			}
+		}
+	}
+
+	// No files to process
+	if totalProcessed == 0 && totalFailed == 0 && totalSkipped == 0 {
+		logrus.Infoln("No dotfiles found to process")
+		pterm.Info.Println("No dotfiles to process")
+		return
+	}
+
+	// Print header
+	fmt.Println()
+	if dryRun {
+		pterm.DefaultHeader.WithBackgroundStyle(pterm.NewStyle(pterm.BgBlue)).Println("DRY RUN - Dotfiles Pull Summary")
+	} else {
+		pterm.DefaultHeader.WithBackgroundStyle(pterm.NewStyle(pterm.BgGreen)).Println("Dotfiles Pull Summary")
+	}
+
+	// Print summary statistics
+	summaryData := pterm.TableData{
+		{"Status", "Count"},
+	}
+
+	if totalProcessed > 0 {
+		if dryRun {
+			summaryData = append(summaryData, []string{pterm.FgYellow.Sprint("Would Update"), fmt.Sprintf("%d", totalProcessed)})
+		} else {
+			summaryData = append(summaryData, []string{pterm.FgGreen.Sprint("Updated"), fmt.Sprintf("%d", totalProcessed)})
+		}
+	}
+
+	if totalFailed > 0 {
+		summaryData = append(summaryData, []string{pterm.FgRed.Sprint("Failed"), fmt.Sprintf("%d", totalFailed)})
+	}
+
+	if totalSkipped > 0 {
+		summaryData = append(summaryData, []string{pterm.FgGray.Sprint("Skipped"), fmt.Sprintf("%d", totalSkipped)})
+	}
+
+	pterm.DefaultTable.WithHasHeader().WithData(summaryData).Render()
+
+	// If there are no updates or failures, just show the summary
+	if totalProcessed == 0 && totalFailed == 0 {
+		pterm.Success.Println("All dotfiles are up to date")
+		return
+	}
+
+	// Build detailed table for updated and failed files
+	var detailsData pterm.TableData
+	detailsData = append(detailsData, []string{"App", "File", "Status"})
+
+	// Collect all non-skipped files
+	for appName, fileResults := range result {
+		for _, fileResult := range fileResults {
+			if fileResult.isSkipped {
+				continue // Skip files that are already identical
+			}
+
+			var status string
+			if fileResult.isSuccess {
+				if dryRun {
+					status = pterm.FgYellow.Sprint("Would Update")
+				} else {
+					status = pterm.FgGreen.Sprint("Updated")
+				}
+			} else if fileResult.isFailed {
+				status = pterm.FgRed.Sprint("Failed")
+			}
+
+			detailsData = append(detailsData, []string{
+				string(appName),
+				fileResult.path,
+				status,
+			})
+		}
+	}
+
+	// Only show details table if there are updated or failed files
+	if len(detailsData) > 1 {
+		fmt.Println() // Add spacing
+		pterm.DefaultSection.Println("File Details")
+		pterm.DefaultTable.WithHasHeader().WithData(detailsData).Render()
+	}
+
+	// Log for debugging
+	logrus.Infof("Pull complete - Processed: %d, Skipped: %d, Failed: %d", totalProcessed, totalSkipped, totalFailed)
 }
 
 func pullDotfiles(c *cli.Context) error {
@@ -196,79 +298,8 @@ func pullDotfiles(c *cli.Context) error {
 		result[appName] = append(result[appName], results...)
 	}
 
-	// Calculate totals from result map
-	var totalProcessed, totalFailed, totalSkipped int
-	for _, fileResults := range result {
-		for _, fileResult := range fileResults {
-			if fileResult.isSuccess {
-				totalProcessed++
-			} else if fileResult.isFailed {
-				totalFailed++
-			} else if fileResult.isSkipped {
-				totalSkipped++
-			}
-		}
-	}
-
-	if totalProcessed == 0 && totalFailed == 0 && totalSkipped == 0 {
-		logrus.Infoln("No dotfiles found to process")
-		fmt.Println("\n📭 No dotfiles to process")
-	} else if totalProcessed == 0 && totalFailed == 0 {
-		logrus.Infof("All dotfiles are up to date - Skipped: %d", totalSkipped)
-		if dryRun {
-			fmt.Println("\n✅ [DRY RUN] All dotfiles are up to date")
-		} else {
-			fmt.Println("\n✅ All dotfiles are up to date")
-		}
-		fmt.Printf("🔄 Skipped: %d files (already identical)\n", totalSkipped)
-
-		// Show detailed breakdown by app
-		for appName, fileResults := range result {
-			if len(fileResults) > 0 {
-				fmt.Printf("\n📦 %s:\n", appName)
-				for _, fileResult := range fileResults {
-					if fileResult.isSkipped {
-						fmt.Printf("  🔄 %s (already identical)\n", fileResult.path)
-					}
-				}
-			}
-		}
-	} else {
-		logrus.Infof("Pull complete - Processed: %d, Skipped: %d, Failed: %d", totalProcessed, totalSkipped, totalFailed)
-		if dryRun {
-			fmt.Printf("\n✅ [DRY RUN] Pull complete\n")
-			fmt.Printf("📄 Would update: %d files\n", totalProcessed)
-		} else {
-			fmt.Printf("\n✅ Pull complete\n")
-			fmt.Printf("📥 Updated: %d files\n", totalProcessed)
-		}
-		if totalSkipped > 0 {
-			fmt.Printf("🔄 Skipped: %d files (already identical)\n", totalSkipped)
-		}
-		if totalFailed > 0 {
-			fmt.Printf("⚠️  Failed: %d files\n", totalFailed)
-		}
-
-		// Show detailed breakdown by app
-		for appName, fileResults := range result {
-			if len(fileResults) > 0 {
-				fmt.Printf("\n📦 %s:\n", appName)
-				for _, fileResult := range fileResults {
-					if fileResult.isSuccess {
-						if dryRun {
-							fmt.Printf("  📄 %s (would update)\n", fileResult.path)
-						} else {
-							fmt.Printf("  ✅ %s (updated)\n", fileResult.path)
-						}
-					} else if fileResult.isFailed {
-						fmt.Printf("  ⚠️  %s (failed)\n", fileResult.path)
-					} else if fileResult.isSkipped {
-						fmt.Printf("  🔄 %s (already identical)\n", fileResult.path)
-					}
-				}
-			}
-		}
-	}
+	// Print the results
+	printPullResults(result, dryRun)
 
 	return nil
 }
