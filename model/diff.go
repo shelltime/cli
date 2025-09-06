@@ -17,7 +17,8 @@ import (
 type DiffMergeService interface {
 	ConvertToEncodedObject(content string) (plumbing.EncodedObject, error)
 	FindDiff(localContent, remoteContent string) (plumbing.EncodedObject, error)
-	ApplyDiff(obj plumbing.EncodedObject, diff plumbing.EncodedObject) ([]byte, error)
+	GetChanges(obj plumbing.EncodedObject, diff plumbing.EncodedObject) ([]diffmatchpatch.Diff, error)
+	ApplyDiff(baseContent string, changes []diffmatchpatch.Diff) ([]byte, error)
 }
 
 // diffMergeService implements the DiffMergeService interface
@@ -59,7 +60,8 @@ func (s *diffMergeService) FindDiff(localContent, remoteContent string) (plumbin
 	return delta, err
 }
 
-func (s *diffMergeService) ApplyDiff(obj plumbing.EncodedObject, diffs plumbing.EncodedObject) ([]byte, error) {
+// GetChanges extracts the diff changes between base object and diff object
+func (s *diffMergeService) GetChanges(obj plumbing.EncodedObject, diffs plumbing.EncodedObject) ([]diffmatchpatch.Diff, error) {
 	// Read the base object content
 	baseReader, err := obj.Reader()
 	if err != nil {
@@ -87,18 +89,21 @@ func (s *diffMergeService) ApplyDiff(obj plumbing.EncodedObject, diffs plumbing.
 	}
 
 	if len(deltaContent) == 0 {
-		return baseContent, nil
+		return []diffmatchpatch.Diff{}, nil
 	}
 
 	if len(baseContent) == 0 {
-		return bytes.Trim(deltaContent, "\x00"), nil
+		// If base is empty, treat everything as an insert
+		return []diffmatchpatch.Diff{
+			{Type: diffmatchpatch.DiffInsert, Text: string(bytes.Trim(deltaContent, "\x00"))},
+		}, nil
 	}
 
 	// First try to apply as a delta
 	targetContent, err := packfile.PatchDelta(baseContent, deltaContent)
 	if err != nil {
 		if errors.Is(err, packfile.ErrInvalidDelta) {
-			return baseContent, nil
+			return []diffmatchpatch.Diff{}, nil
 		}
 		// If it fails, the delta might be the actual target content
 		// This happens when GetDelta creates a blob for certain cases
@@ -110,9 +115,13 @@ func (s *diffMergeService) ApplyDiff(obj plumbing.EncodedObject, diffs plumbing.
 	}
 
 	// Now use diff.Do to find differences
-	// diff.Do requires strings, but we'll work with bytes for the result
 	changes := diff.Do(string(baseContent), string(targetContent))
 
+	return changes, nil
+}
+
+// ApplyDiff applies diff changes to produce the final merged content
+func (s *diffMergeService) ApplyDiff(baseContent string, changes []diffmatchpatch.Diff) ([]byte, error) {
 	// Build result: start with base content bytes
 	result := make([]byte, len(baseContent))
 	copy(result, baseContent)

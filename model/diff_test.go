@@ -121,9 +121,10 @@ func (s *diffMergeTestSuite) TestFindDiffAndApplyChanges() {
 			l, err := s.service.ConvertToEncodedObject(tt.localContent)
 
 			s.Nil(err)
-			finalContent, err := s.service.ApplyDiff(l, delta)
+			changes, err := s.service.GetChanges(l, delta)
 			s.Nil(err)
-
+			finalContent, err := s.service.ApplyDiff(tt.localContent, changes)
+			s.Nil(err)
 			s.EqualValues(tt.finalContent, string(finalContent))
 		})
 	}
