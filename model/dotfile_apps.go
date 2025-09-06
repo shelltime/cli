@@ -71,8 +71,8 @@ type DotfileApp interface {
 	GetConfigPaths() []string
 	CollectDotfiles(ctx context.Context) ([]DotfileItem, error)
 	IsEqual(ctx context.Context, files map[string]string) (map[string]bool, error)
-	Backup(ctx context.Context, paths []string) error
-	Save(ctx context.Context, files map[string]string) error
+	Backup(ctx context.Context, paths []string, isDryRun bool) error
+	Save(ctx context.Context, files map[string]string, isDryRun bool) error
 }
 
 // BaseApp provides common functionality for dotfile apps
@@ -226,7 +226,8 @@ func (b *BaseApp) IsEqual(_ context.Context, files map[string]string) (map[strin
 }
 
 // Backup creates backups of files that don't match the provided content
-func (b *BaseApp) Backup(ctx context.Context, paths []string) error {
+func (b *BaseApp) Backup(ctx context.Context, paths []string, isDryRun bool) error {
+
 	for _, path := range paths {
 		expandedPath, err := b.expandPath(path)
 		if err != nil {
@@ -250,10 +251,14 @@ func (b *BaseApp) Backup(ctx context.Context, paths []string) error {
 			continue
 		}
 
-		if err := os.WriteFile(backupPath, existingContent, 0644); err != nil {
-			logrus.Warnf("Failed to create backup at %s: %v", backupPath, err)
+		if isDryRun {
+			logrus.Infof("[DRY RUN] Would create backup for %s", expandedPath)
 		} else {
-			logrus.Infof("Created backup at %s", backupPath)
+			if err := os.WriteFile(backupPath, existingContent, 0644); err != nil {
+				logrus.Warnf("Failed to create backup at %s: %v", backupPath, err)
+			} else {
+				logrus.Infof("Created backup at %s", backupPath)
+			}
 		}
 	}
 
@@ -261,7 +266,7 @@ func (b *BaseApp) Backup(ctx context.Context, paths []string) error {
 }
 
 // Save writes new content for files, using diff to check for actual differences
-func (b *BaseApp) Save(ctx context.Context, files map[string]string) error {
+func (b *BaseApp) Save(ctx context.Context, files map[string]string, isDryRun bool) error {
 	dmp := diffmatchpatch.New()
 
 	for path, newContent := range files {
@@ -285,6 +290,14 @@ func (b *BaseApp) Save(ctx context.Context, files map[string]string) error {
 		if len(diffs) == 1 && diffs[0].Type == diffmatchpatch.DiffEqual {
 			// No differences found, skip saving
 			logrus.Debugf("Skipping %s - content is identical", path)
+			continue
+		}
+
+		if isDryRun {
+			// In dry-run mode, print the diff instead of writing files
+			fmt.Printf("\n📄 %s:\n", expandedPath)
+			prettyDiffs := dmp.DiffPrettyText(diffs)
+			fmt.Println(prettyDiffs)
 			continue
 		}
 

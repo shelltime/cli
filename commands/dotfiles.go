@@ -30,6 +30,11 @@ var DotfilesCommand *cli.Command = &cli.Command{
 					Aliases: []string{"a"},
 					Usage:   "specify which apps to pull (nvim, fish, git, zsh, bash, ghostty). If empty, pulls all",
 				},
+				&cli.BoolFlag{
+					Name:    "dry-run",
+					Aliases: []string{"n"},
+					Usage:   "show what would be changed without actually writing files",
+				},
 			},
 		},
 	},

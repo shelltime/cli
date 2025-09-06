@@ -24,7 +24,8 @@ func pullDotfiles(c *cli.Context) error {
 	SetupLogger(os.ExpandEnv("$HOME/" + model.COMMAND_BASE_STORAGE_FOLDER))
 
 	apps := c.StringSlice("apps")
-	span.SetAttributes(attribute.StringSlice("apps", apps))
+	dryRun := c.Bool("dry-run")
+	span.SetAttributes(attribute.StringSlice("apps", apps), attribute.Bool("dry-run", dryRun))
 
 	config, err := configService.ReadConfigFile(ctx)
 	if err != nil {
@@ -168,26 +169,27 @@ func pullDotfiles(c *cli.Context) error {
 			continue
 		}
 
-		// Backup files that will be modified
-		if err := app.Backup(ctx, pathsToActuallyBackup); err != nil {
+		results := make([]dotfilePullFileResult, 0)
+
+		// Backup files that will be modified (handles dry-run internally)
+		if err := app.Backup(ctx, pathsToActuallyBackup, dryRun); err != nil {
 			logrus.Warnf("Failed to backup files for %s: %v", appData.App, err)
 		}
 
-		results := make([]dotfilePullFileResult, 0)
-		// Save the updated files
-		if err := app.Save(ctx, filesToUpdate); err != nil {
+		// Save the updated files (handles dry-run internally)
+		if err := app.Save(ctx, filesToUpdate, dryRun); err != nil {
 			logrus.Errorf("Failed to save files for %s: %v", appData.App, err)
 			for f := range filesToUpdate {
 				results = append(results, dotfilePullFileResult{
-					path:      f,
-					isSuccess: true,
+					path:     f,
+					isFailed: true,
 				})
 			}
 		} else {
 			for f := range filesToUpdate {
 				results = append(results, dotfilePullFileResult{
-					path:     f,
-					isFailed: true,
+					path:      f,
+					isSuccess: true,
 				})
 			}
 		}
@@ -213,7 +215,11 @@ func pullDotfiles(c *cli.Context) error {
 		fmt.Println("\n📭 No dotfiles to process")
 	} else if totalProcessed == 0 && totalFailed == 0 {
 		logrus.Infof("All dotfiles are up to date - Skipped: %d", totalSkipped)
-		fmt.Println("\n✅ All dotfiles are up to date")
+		if dryRun {
+			fmt.Println("\n✅ [DRY RUN] All dotfiles are up to date")
+		} else {
+			fmt.Println("\n✅ All dotfiles are up to date")
+		}
 		fmt.Printf("🔄 Skipped: %d files (already identical)\n", totalSkipped)
 
 		// Show detailed breakdown by app
@@ -229,8 +235,13 @@ func pullDotfiles(c *cli.Context) error {
 		}
 	} else {
 		logrus.Infof("Pull complete - Processed: %d, Skipped: %d, Failed: %d", totalProcessed, totalSkipped, totalFailed)
-		fmt.Printf("\n✅ Pull complete\n")
-		fmt.Printf("📥 Updated: %d files\n", totalProcessed)
+		if dryRun {
+			fmt.Printf("\n✅ [DRY RUN] Pull complete\n")
+			fmt.Printf("📄 Would update: %d files\n", totalProcessed)
+		} else {
+			fmt.Printf("\n✅ Pull complete\n")
+			fmt.Printf("📥 Updated: %d files\n", totalProcessed)
+		}
 		if totalSkipped > 0 {
 			fmt.Printf("🔄 Skipped: %d files (already identical)\n", totalSkipped)
 		}
@@ -244,7 +255,11 @@ func pullDotfiles(c *cli.Context) error {
 				fmt.Printf("\n📦 %s:\n", appName)
 				for _, fileResult := range fileResults {
 					if fileResult.isSuccess {
-						fmt.Printf("  ✅ %s (updated)\n", fileResult.path)
+						if dryRun {
+							fmt.Printf("  📄 %s (would update)\n", fileResult.path)
+						} else {
+							fmt.Printf("  ✅ %s (updated)\n", fileResult.path)
+						}
 					} else if fileResult.isFailed {
 						fmt.Printf("  ⚠️  %s (failed)\n", fileResult.path)
 					} else if fileResult.isSkipped {
