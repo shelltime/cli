@@ -96,6 +96,19 @@ go fmt ./...
 - Database location: `$HOME/.shelltime/shelltime.db`
 - Daemon socket: `/tmp/shelltime-daemon.sock` (Unix) or named pipe (Windows)
 
+## Commit Rules
+
+You must follow the Conventional Commits rules, ensuring that the scope and module are included.
+
+For example:
+
+```md
+fix(home): add price link on home page
+feat(ai): add AI module
+refactor(cell): update cell module for better maintenance
+perf(parser): improve parser performance by over 30%
+```
+
 ## Important Notes
 
 - The daemon is optional but recommended for better performance
