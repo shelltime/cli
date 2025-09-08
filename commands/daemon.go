@@ -8,5 +8,6 @@ var DaemonCommand *cli.Command = &cli.Command{
 	Subcommands: []*cli.Command{
 		DaemonInstallCommand,
 		DaemonUninstallCommand,
+		DaemonReinstallCommand,
 	},
 }
