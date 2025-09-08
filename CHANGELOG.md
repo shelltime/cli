@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.1.26](https://github.com/shelltime/cli/compare/v0.1.25...v0.1.26) (2025-09-08)
+
+
+### Features
+
+* add daemon reinstall command ([720f195](https://github.com/shelltime/cli/commit/720f1957ca1e1b497ae7fb9ffb55de25c0f13241)), closes [#97](https://github.com/shelltime/cli/issues/97)
+
+
+### Miscellaneous Chores
+
+* release 0.1.26 ([2d3ca5e](https://github.com/shelltime/cli/commit/2d3ca5e1e67228970f52ebe0fc0dd46f675f6d9a))
+
 ## [0.1.25](https://github.com/shelltime/cli/compare/v0.1.24...v0.1.25) (2025-09-06)
 
 
