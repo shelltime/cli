@@ -43,6 +43,10 @@ type ShellTimeConfig struct {
 
 	// AI configuration
 	AI *AIConfig `toml:"ai"`
+
+	// Exclude patterns - regular expressions to exclude commands from being saved
+	// Commands matching any of these patterns will not be synced to the server
+	Exclude []string `toml:"exclude"`
 }
 
 var DefaultAIConfig = &AIConfig{
@@ -65,4 +69,5 @@ var DefaultConfig = ShellTimeConfig{
 	EnableMetrics: nil,
 	Encrypted:     nil,
 	AI:            DefaultAIConfig,
+	Exclude:       []string{},
 }

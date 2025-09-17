@@ -89,6 +89,12 @@ func commandTrack(c *cli.Context) error {
 		Phase:     model.CommandPhasePre,
 	}
 
+	// Check if command should be excluded
+	if model.ShouldExcludeCommand(cmdCommand, config.Exclude) {
+		logrus.Debugf("Command excluded by pattern: %s", cmdCommand)
+		return nil
+	}
+
 	if cmdPhase == "pre" {
 		span.SetAttributes(attribute.Int("phase", 0))
 		err = instance.DoSavePre()
@@ -192,6 +198,12 @@ func trySyncLocalToServer(
 		}
 		if meta.Username == "" {
 			meta.Username = postCommand.Username
+		}
+
+		// Check if command should be excluded during sync
+		if model.ShouldExcludeCommand(postCommand.Command, config.Exclude) {
+			logrus.Tracef("Command excluded during sync: %s", postCommand.Command)
+			continue
 		}
 
 		// here very sure the commandList are all elligable, so no need check here.

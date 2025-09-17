@@ -59,6 +59,9 @@ func mergeConfig(base, local *ShellTimeConfig) {
 	if len(local.Endpoints) > 0 {
 		base.Endpoints = local.Endpoints
 	}
+	if len(local.Exclude) > 0 {
+		base.Exclude = local.Exclude
+	}
 }
 
 func (cs *configService) ReadConfigFile(ctx context.Context) (config ShellTimeConfig, err error) {
