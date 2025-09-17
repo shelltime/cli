@@ -23,5 +23,6 @@ func (c *ClaudeApp) GetConfigPaths() []string {
 }
 
 func (c *ClaudeApp) CollectDotfiles(ctx context.Context) ([]DotfileItem, error) {
-	return c.CollectFromPaths(ctx, c.Name(), c.GetConfigPaths())
+	skipIgnored := true
+	return c.CollectFromPaths(ctx, c.Name(), c.GetConfigPaths(), &skipIgnored)
 }

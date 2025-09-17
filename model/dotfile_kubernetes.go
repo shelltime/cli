@@ -22,5 +22,6 @@ func (k *KubernetesApp) GetConfigPaths() []string {
 }
 
 func (k *KubernetesApp) CollectDotfiles(ctx context.Context) ([]DotfileItem, error) {
-	return k.CollectFromPaths(ctx, k.Name(), k.GetConfigPaths())
+	skipIgnored := true
+	return k.CollectFromPaths(ctx, k.Name(), k.GetConfigPaths(), &skipIgnored)
 }

@@ -22,5 +22,6 @@ func (s *StarshipApp) GetConfigPaths() []string {
 }
 
 func (s *StarshipApp) CollectDotfiles(ctx context.Context) ([]DotfileItem, error) {
-	return s.CollectFromPaths(ctx, s.Name(), s.GetConfigPaths())
+	skipIgnored := true
+	return s.CollectFromPaths(ctx, s.Name(), s.GetConfigPaths(), &skipIgnored)
 }

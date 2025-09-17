@@ -23,5 +23,6 @@ func (g *GhosttyApp) GetConfigPaths() []string {
 }
 
 func (g *GhosttyApp) CollectDotfiles(ctx context.Context) ([]DotfileItem, error) {
-	return g.CollectFromPaths(ctx, g.Name(), g.GetConfigPaths())
+	skipIgnored := true
+	return g.CollectFromPaths(ctx, g.Name(), g.GetConfigPaths(), &skipIgnored)
 }

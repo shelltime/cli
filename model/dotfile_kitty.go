@@ -22,5 +22,6 @@ func (k *KittyApp) GetConfigPaths() []string {
 }
 
 func (k *KittyApp) CollectDotfiles(ctx context.Context) ([]DotfileItem, error) {
-	return k.CollectFromPaths(ctx, k.Name(), k.GetConfigPaths())
+	skipIgnored := true
+	return k.CollectFromPaths(ctx, k.Name(), k.GetConfigPaths(), &skipIgnored)
 }
