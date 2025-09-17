@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.1.26](https://github.com/shelltime/cli/compare/v0.1.25...v0.1.26) (2025-09-17)
+
+
+### Features
+
+* add daemon reinstall command ([720f195](https://github.com/shelltime/cli/commit/720f1957ca1e1b497ae7fb9ffb55de25c0f13241)), closes [#97](https://github.com/shelltime/cli/issues/97)
+* **config:** add exclude patterns to filter commands from server sync ([d8e79e7](https://github.com/shelltime/cli/commit/d8e79e7bed25629c88086505d4257a2da1a1121e))
+* **dotfile:** add support for ignoring sections in collected files ([a8332ee](https://github.com/shelltime/cli/commit/a8332ee086426a7fdf2e4417217d1964c9ac7ad9))
+* **dotfile:** add support for ignoring sections in collected files ([2d7b9af](https://github.com/shelltime/cli/commit/2d7b9af6c9d94d3cdd16fd3fe6237632a2129c20))
+
+
+### Miscellaneous Chores
+
+* release 0.1.26 ([2d3ca5e](https://github.com/shelltime/cli/commit/2d3ca5e1e67228970f52ebe0fc0dd46f675f6d9a))
+
 ## [0.1.25](https://github.com/shelltime/cli/compare/v0.1.24...v0.1.25) (2025-09-06)
 
 
