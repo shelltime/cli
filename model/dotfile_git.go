@@ -25,5 +25,6 @@ func (g *GitApp) GetConfigPaths() []string {
 }
 
 func (g *GitApp) CollectDotfiles(ctx context.Context) ([]DotfileItem, error) {
-	return g.CollectFromPaths(ctx, g.Name(), g.GetConfigPaths())
+	skipIgnored := true
+	return g.CollectFromPaths(ctx, g.Name(), g.GetConfigPaths(), &skipIgnored)
 }

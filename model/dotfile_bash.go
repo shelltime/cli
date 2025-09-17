@@ -25,5 +25,6 @@ func (b *BashApp) GetConfigPaths() []string {
 }
 
 func (b *BashApp) CollectDotfiles(ctx context.Context) ([]DotfileItem, error) {
-	return b.CollectFromPaths(ctx, b.Name(), b.GetConfigPaths())
+	skipIgnored := true
+	return b.CollectFromPaths(ctx, b.Name(), b.GetConfigPaths(), &skipIgnored)
 }

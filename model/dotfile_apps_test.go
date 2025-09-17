@@ -134,7 +134,8 @@ func TestBaseApp_CollectFromPaths(t *testing.T) {
 	require.NoError(t, err)
 
 	t.Run("collect from single file", func(t *testing.T) {
-		dotfiles, err := app.CollectFromPaths(ctx, "testapp", []string{configFile})
+		skipIgnored := true
+		dotfiles, err := app.CollectFromPaths(ctx, "testapp", []string{configFile}, &skipIgnored)
 		require.NoError(t, err)
 		assert.Len(t, dotfiles, 1)
 
@@ -148,7 +149,8 @@ func TestBaseApp_CollectFromPaths(t *testing.T) {
 	})
 
 	t.Run("collect from directory", func(t *testing.T) {
-		dotfiles, err := app.CollectFromPaths(ctx, "testapp", []string{subDir})
+		skipIgnored := true
+		dotfiles, err := app.CollectFromPaths(ctx, "testapp", []string{subDir}, &skipIgnored)
 		require.NoError(t, err)
 
 		// Should find 2 files (hidden files are ignored)
@@ -169,16 +171,57 @@ func TestBaseApp_CollectFromPaths(t *testing.T) {
 	})
 
 	t.Run("collect from mixed paths", func(t *testing.T) {
-		dotfiles, err := app.CollectFromPaths(ctx, "testapp", []string{configFile, subDir})
+		skipIgnored := true
+		dotfiles, err := app.CollectFromPaths(ctx, "testapp", []string{configFile, subDir}, &skipIgnored)
 		require.NoError(t, err)
 		assert.Len(t, dotfiles, 3) // 1 file + 2 files from directory
 	})
 
 	t.Run("collect from non-existent path", func(t *testing.T) {
 		nonExistentPath := filepath.Join(tmpDir, "does-not-exist")
-		dotfiles, err := app.CollectFromPaths(ctx, "testapp", []string{nonExistentPath})
+		skipIgnored := true
+		dotfiles, err := app.CollectFromPaths(ctx, "testapp", []string{nonExistentPath}, &skipIgnored)
 		require.NoError(t, err)
 		assert.Empty(t, dotfiles) // Should skip non-existent paths
+	})
+
+	t.Run("collect with ignored sections", func(t *testing.T) {
+		// Create a file with ignored sections
+		configWithIgnore := filepath.Join(tmpDir, "config_with_ignore.conf")
+		configContentWithIgnore := `line1
+# SHELLTIME IGNORE BEGIN
+secret_key=123456
+password=hidden
+# SHELLTIME IGNORE END
+line2
+visible_key=value`
+		err = os.WriteFile(configWithIgnore, []byte(configContentWithIgnore), 0644)
+		require.NoError(t, err)
+
+		// Test with skipIgnored = true (default behavior)
+		skipIgnored := true
+		dotfiles, err := app.CollectFromPaths(ctx, "testapp", []string{configWithIgnore}, &skipIgnored)
+		require.NoError(t, err)
+		require.Len(t, dotfiles, 1)
+
+		// Should not contain ignored sections
+		assert.NotContains(t, dotfiles[0].Content, "secret_key")
+		assert.NotContains(t, dotfiles[0].Content, "password=hidden")
+		assert.NotContains(t, dotfiles[0].Content, "SHELLTIME IGNORE")
+		assert.Contains(t, dotfiles[0].Content, "line1")
+		assert.Contains(t, dotfiles[0].Content, "line2")
+		assert.Contains(t, dotfiles[0].Content, "visible_key=value")
+
+		// Test with skipIgnored = false
+		skipIgnored = false
+		dotfiles, err = app.CollectFromPaths(ctx, "testapp", []string{configWithIgnore}, &skipIgnored)
+		require.NoError(t, err)
+		require.Len(t, dotfiles, 1)
+
+		// Should contain all content including ignored sections
+		assert.Contains(t, dotfiles[0].Content, "secret_key")
+		assert.Contains(t, dotfiles[0].Content, "password=hidden")
+		assert.Contains(t, dotfiles[0].Content, "SHELLTIME IGNORE")
 	})
 }
 
@@ -524,7 +567,8 @@ func TestBaseApp_Integration(t *testing.T) {
 
 	t.Run("full workflow", func(t *testing.T) {
 		// 1. Collect dotfiles
-		dotfiles, err := app.CollectFromPaths(ctx, "testapp", []string{configFile, subDir})
+		skipIgnored := true
+		dotfiles, err := app.CollectFromPaths(ctx, "testapp", []string{configFile, subDir}, &skipIgnored)
 		require.NoError(t, err)
 		assert.Len(t, dotfiles, 2)
 

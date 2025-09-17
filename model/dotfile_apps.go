@@ -110,7 +110,12 @@ func (b *BaseApp) readFileContent(path string) (string, *time.Time, error) {
 	return string(content), &modTime, nil
 }
 
-func (b *BaseApp) CollectFromPaths(_ context.Context, appName string, paths []string) ([]DotfileItem, error) {
+func (b *BaseApp) CollectFromPaths(_ context.Context, appName string, paths []string, skipIgnoredSections *bool) ([]DotfileItem, error) {
+	// Default to true if not specified
+	shouldSkipIgnored := true
+	if skipIgnoredSections != nil {
+		shouldSkipIgnored = *skipIgnoredSections
+	}
 	hostname, _ := os.Hostname()
 	var dotfiles []DotfileItem
 
@@ -143,6 +148,11 @@ func (b *BaseApp) CollectFromPaths(_ context.Context, appName string, paths []st
 					continue
 				}
 
+				// Filter ignored sections if requested
+				if shouldSkipIgnored {
+					content = b.filterIgnoredSections(content)
+				}
+
 				dotfiles = append(dotfiles, DotfileItem{
 					App:            appName,
 					Path:           file,
@@ -158,6 +168,11 @@ func (b *BaseApp) CollectFromPaths(_ context.Context, appName string, paths []st
 			if err != nil {
 				logrus.Debugf("Failed to read file %s: %v", expandedPath, err)
 				continue
+			}
+
+			// Filter ignored sections if requested
+			if shouldSkipIgnored {
+				content = b.filterIgnoredSections(content)
 			}
 
 			dotfiles = append(dotfiles, DotfileItem{
@@ -186,6 +201,32 @@ func (b *BaseApp) collectFromDirectory(dir string) ([]string, error) {
 		return nil
 	})
 	return files, err
+}
+
+// filterIgnoredSections removes content between SHELLTIME IGNORE BEGIN and SHELLTIME IGNORE END markers
+func (b *BaseApp) filterIgnoredSections(content string) string {
+	lines := strings.Split(content, "\n")
+	var filteredLines []string
+	var inIgnoreBlock bool
+
+	for _, line := range lines {
+		// Check for ignore markers (can be in comments)
+		if strings.Contains(line, "SHELLTIME IGNORE BEGIN") {
+			inIgnoreBlock = true
+			continue
+		}
+		if strings.Contains(line, "SHELLTIME IGNORE END") {
+			inIgnoreBlock = false
+			continue
+		}
+
+		// Only include lines that are not in an ignore block
+		if !inIgnoreBlock {
+			filteredLines = append(filteredLines, line)
+		}
+	}
+
+	return strings.Join(filteredLines, "\n")
 }
 
 // IsEqual checks if the provided files match the local files by comparing SHA256 hashes

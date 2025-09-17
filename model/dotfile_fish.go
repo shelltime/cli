@@ -24,5 +24,6 @@ func (f *FishApp) GetConfigPaths() []string {
 }
 
 func (f *FishApp) CollectDotfiles(ctx context.Context) ([]DotfileItem, error) {
-	return f.CollectFromPaths(ctx, f.Name(), f.GetConfigPaths())
+	skipIgnored := true
+	return f.CollectFromPaths(ctx, f.Name(), f.GetConfigPaths(), &skipIgnored)
 }

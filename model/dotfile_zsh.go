@@ -25,5 +25,6 @@ func (z *ZshApp) GetConfigPaths() []string {
 }
 
 func (z *ZshApp) CollectDotfiles(ctx context.Context) ([]DotfileItem, error) {
-	return z.CollectFromPaths(ctx, z.Name(), z.GetConfigPaths())
+	skipIgnored := true
+	return z.CollectFromPaths(ctx, z.Name(), z.GetConfigPaths(), &skipIgnored)
 }

@@ -22,5 +22,6 @@ func (n *NpmApp) GetConfigPaths() []string {
 }
 
 func (n *NpmApp) CollectDotfiles(ctx context.Context) ([]DotfileItem, error) {
-	return n.CollectFromPaths(ctx, n.Name(), n.GetConfigPaths())
+	skipIgnored := true
+	return n.CollectFromPaths(ctx, n.Name(), n.GetConfigPaths(), &skipIgnored)
 }
