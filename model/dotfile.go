@@ -129,17 +129,18 @@ type DotfileAppResponse struct {
 	Files []DotfileFile `json:"files"`
 }
 
-type FetchDotfilesResponse struct {
-	Data struct {
-		FetchUser struct {
-			ID       int `json:"id"`
-			Dotfiles struct {
-				TotalCount int                  `json:"totalCount"`
-				Apps       []DotfileAppResponse `json:"apps"`
-			} `json:"dotfiles"`
-		} `json:"fetchUser"`
-	} `json:"data"`
+type FetchUserDotfilesData struct {
+	FetchUser struct {
+		ID       int `json:"id"`
+		Dotfiles struct {
+			TotalCount int                  `json:"totalCount"`
+			Apps       []DotfileAppResponse `json:"apps"`
+		} `json:"dotfiles"`
+	} `json:"fetchUser"`
 }
+
+// FetchDotfilesResponse is the complete GraphQL response for dotfiles
+type FetchDotfilesResponse = GraphQLResponse[FetchUserDotfilesData]
 
 // FetchDotfilesFromServer fetches dotfiles from the server using GraphQL
 func FetchDotfilesFromServer(ctx context.Context, endpoint Endpoint, filter *DotfileFilter) (*FetchDotfilesResponse, error) {

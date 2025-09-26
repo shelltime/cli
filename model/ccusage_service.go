@@ -150,23 +150,16 @@ func (s *ccUsageService) getLastSyncTimestamp(ctx context.Context, endpoint Endp
 		}
 	}`
 
-	var result struct {
-		Data struct {
-			FetchUser struct {
-				ID              int   `json:"id"`
-				CCUsageLastSync int64 `json:"ccusageLastSync"`
-			} `json:"fetchUser"`
-		} `json:"data"`
+	type fetchUserResponse struct {
+		FetchUser struct {
+			ID              int   `json:"id"`
+			CCUsageLastSync int64 `json:"ccusageLastSync"`
+		} `json:"fetchUser"`
 	}
 
-	err := SendGraphQLRequest(GraphQLRequestOptions[struct {
-		Data struct {
-			FetchUser struct {
-				ID              int   `json:"id"`
-				CCUsageLastSync int64 `json:"ccusageLastSync"`
-			} `json:"fetchUser"`
-		} `json:"data"`
-	}]{
+	var result GraphQLResponse[fetchUserResponse]
+
+	err := SendGraphQLRequest(GraphQLRequestOptions[GraphQLResponse[fetchUserResponse]]{
 		Context:  ctx,
 		Endpoint: endpoint,
 		Query:    query,

@@ -119,6 +119,19 @@ func SendHTTPRequest[T any, R any](opts HTTPRequestOptions[T, R]) error {
 	return nil
 }
 
+// GraphQLResponse is a generic wrapper for GraphQL responses
+type GraphQLResponse[T any] struct {
+	Data   T              `json:"data"`
+	Errors []GraphQLError `json:"errors,omitempty"`
+}
+
+// GraphQLError represents a GraphQL error
+type GraphQLError struct {
+	Message    string                 `json:"message"`
+	Extensions map[string]interface{} `json:"extensions,omitempty"`
+	Path       []interface{}          `json:"path,omitempty"`
+}
+
 // GraphQLRequestOptions contains options for GraphQL requests
 type GraphQLRequestOptions[R any] struct {
 	Context   context.Context
@@ -196,6 +209,16 @@ func SendGraphQLRequest[R any](opts GraphQLRequestOptions[R]) error {
 	if opts.Response != nil {
 		if err := json.Unmarshal(body, opts.Response); err != nil {
 			return fmt.Errorf("failed to parse GraphQL response: %w", err)
+		}
+
+		// Check for GraphQL errors in the response
+		// Try to extract errors if the response type is GraphQLResponse
+		var errorCheck struct {
+			Errors []GraphQLError `json:"errors,omitempty"`
+		}
+		if err := json.Unmarshal(body, &errorCheck); err == nil && len(errorCheck.Errors) > 0 {
+			// Return the first error message if there are GraphQL errors
+			return fmt.Errorf("GraphQL error: %s", errorCheck.Errors[0].Message)
 		}
 	}
 
