@@ -118,3 +118,86 @@ func SendHTTPRequest[T any, R any](opts HTTPRequestOptions[T, R]) error {
 
 	return nil
 }
+
+// GraphQLRequestOptions contains options for GraphQL requests
+type GraphQLRequestOptions[R any] struct {
+	Context   context.Context
+	Endpoint  Endpoint
+	Query     string
+	Variables map[string]interface{}
+	Response  *R
+	Timeout   time.Duration // Optional, defaults to 30 seconds
+}
+
+// SendGraphQLRequest sends a GraphQL request and unmarshals the response
+func SendGraphQLRequest[R any](opts GraphQLRequestOptions[R]) error {
+	ctx, span := modelTracer.Start(opts.Context, "graphql.send")
+	defer span.End()
+
+	payload := map[string]interface{}{
+		"query": opts.Query,
+	}
+	if opts.Variables != nil {
+		payload["variables"] = opts.Variables
+	}
+
+	jsonData, err := json.Marshal(payload)
+	if err != nil {
+		return fmt.Errorf("failed to marshal GraphQL query: %w", err)
+	}
+
+	timeout := time.Second * 30
+	if opts.Timeout > 0 {
+		timeout = opts.Timeout
+	}
+
+	client := &http.Client{
+		Timeout:   timeout,
+		Transport: otelhttp.NewTransport(http.DefaultTransport),
+	}
+
+	// Build GraphQL endpoint URL
+	graphQLEndpoint := opts.Endpoint.APIEndpoint
+	graphQLEndpoint = strings.TrimSuffix(graphQLEndpoint, "/")
+	if !strings.HasSuffix(graphQLEndpoint, "/api/v2/graphql") {
+		graphQLEndpoint += "/api/v2/graphql"
+	}
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, graphQLEndpoint, bytes.NewBuffer(jsonData))
+	if err != nil {
+		return fmt.Errorf("failed to create request: %w", err)
+	}
+
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "CLI "+opts.Endpoint.Token)
+	req.Header.Set("User-Agent", fmt.Sprintf("shelltimeCLI@%s", commitID))
+
+	logrus.Traceln("graphql: ", req.URL.String())
+
+	resp, err := client.Do(req)
+	if err != nil {
+		logrus.Errorln(err)
+		return fmt.Errorf("failed to execute request: %w", err)
+	}
+	defer resp.Body.Close()
+
+	logrus.Traceln("graphql: ", resp.Status)
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return fmt.Errorf("failed to read response body: %w", err)
+	}
+
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("GraphQL request failed with status %d: %s", resp.StatusCode, string(body))
+	}
+
+	// Unmarshal the response
+	if opts.Response != nil {
+		if err := json.Unmarshal(body, opts.Response); err != nil {
+			return fmt.Errorf("failed to parse GraphQL response: %w", err)
+		}
+	}
+
+	return nil
+}

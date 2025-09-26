@@ -99,8 +99,27 @@ func (s *ccUsageService) CollectCCUsage(ctx context.Context) error {
 
 	logrus.Debug("Collecting CCUsage data")
 
+	var since *int64
+
+	// Get the last sync timestamp from server if we have credentials
+	if s.config.Token != "" && s.config.APIEndpoint != "" {
+		endpoint := Endpoint{
+			Token:       s.config.Token,
+			APIEndpoint: s.config.APIEndpoint,
+		}
+
+		// Try to get last sync timestamp, but don't fail if it doesn't work
+		lastSync, err := s.getLastSyncTimestamp(ctx, endpoint)
+		if err != nil {
+			logrus.Warnf("Failed to get last sync timestamp: %v", err)
+		} else if lastSync != nil {
+			since = lastSync
+			logrus.Debugf("Got last sync timestamp: %d", *since)
+		}
+	}
+
 	// Collect data from ccusage command
-	data, err := s.collectData(ctx)
+	data, err := s.collectData(ctx, since)
 	if err != nil {
 		return fmt.Errorf("failed to collect ccusage data: %w", err)
 	}
@@ -122,8 +141,53 @@ func (s *ccUsageService) CollectCCUsage(ctx context.Context) error {
 	return nil
 }
 
+// getLastSyncTimestamp fetches the last CCUsage sync timestamp from the server via GraphQL
+func (s *ccUsageService) getLastSyncTimestamp(ctx context.Context, endpoint Endpoint) (*int64, error) {
+	query := `query fetchUserCCUsageLastSync {
+		fetchUser {
+			id
+			ccusageLastSync
+		}
+	}`
+
+	var result struct {
+		Data struct {
+			FetchUser struct {
+				ID              int   `json:"id"`
+				CCUsageLastSync int64 `json:"ccusageLastSync"`
+			} `json:"fetchUser"`
+		} `json:"data"`
+	}
+
+	err := SendGraphQLRequest(GraphQLRequestOptions[struct {
+		Data struct {
+			FetchUser struct {
+				ID              int   `json:"id"`
+				CCUsageLastSync int64 `json:"ccusageLastSync"`
+			} `json:"fetchUser"`
+		} `json:"data"`
+	}]{
+		Context:  ctx,
+		Endpoint: endpoint,
+		Query:    query,
+		Response: &result,
+		Timeout:  time.Second * 10,
+	})
+
+	if err != nil {
+		logrus.Warnf("Failed to fetch CCUsage last sync: %v", err)
+		return nil, nil // Return nil to skip the since parameter
+	}
+
+	if result.Data.FetchUser.CCUsageLastSync > 0 {
+		return &result.Data.FetchUser.CCUsageLastSync, nil
+	}
+
+	return nil, nil
+}
+
 // collectData collects usage data using bunx or npx ccusage command
-func (s *ccUsageService) collectData(ctx context.Context) (*CCUsageData, error) {
+func (s *ccUsageService) collectData(ctx context.Context, since *int64) (*CCUsageData, error) {
 	// Check if bunx exists
 	bunxPath, bunxErr := exec.LookPath("bunx")
 	npxPath, npxErr := exec.LookPath("npx")
@@ -132,14 +196,26 @@ func (s *ccUsageService) collectData(ctx context.Context) (*CCUsageData, error) 
 		return nil, fmt.Errorf("neither bunx nor npx found in system PATH")
 	}
 
+	// Build command arguments
+	args := []string{"ccusage", "daily", "--instances", "--json"}
+
+	// Add since parameter if provided
+	if since != nil {
+		// Convert Unix timestamp (seconds) to ISO 8601 date string
+		sinceTime := time.Unix(*since, 0)
+		sinceDate := sinceTime.Format("20060102")
+		args = append(args, "--since", sinceDate)
+		logrus.Debugf("Using since parameter: %s (from timestamp %d)", sinceDate, *since)
+	}
+
 	var cmd *exec.Cmd
 	if bunxErr == nil {
 		// Use bunx if available
-		cmd = exec.CommandContext(ctx, bunxPath, "ccusage", "daily", "--instances", "--json")
+		cmd = exec.CommandContext(ctx, bunxPath, args...)
 		logrus.Debug("Using bunx to collect ccusage data")
 	} else {
 		// Fall back to npx
-		cmd = exec.CommandContext(ctx, npxPath, "ccusage", "daily", "--instances", "--json")
+		cmd = exec.CommandContext(ctx, npxPath, args...)
 		logrus.Debug("Using npx to collect ccusage data")
 	}
 
