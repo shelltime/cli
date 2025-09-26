@@ -268,26 +268,99 @@ func (s *ccUsageService) collectData(ctx context.Context, since *int64) (*CCUsag
 
 // sendData sends the collected usage data to the server
 func (s *ccUsageService) sendData(ctx context.Context, endpoint Endpoint, data *CCUsageData) error {
-	type ccUsageRequest struct {
-		Data *CCUsageData `json:"data" msgpack:"data"`
+	// CCUsage batch request types matching server handler
+	type ccUsageModelBreakdown struct {
+		ModelName           string  `json:"modelName"`
+		InputTokens         int     `json:"inputTokens"`
+		OutputTokens        int     `json:"outputTokens"`
+		CacheCreationTokens int     `json:"cacheCreationTokens"`
+		CacheReadTokens     int     `json:"cacheReadTokens"`
+		Cost                float64 `json:"cost"`
+	}
+
+	type ccUsageDailyData struct {
+		InputTokens         int                     `json:"inputTokens"`
+		OutputTokens        int                     `json:"outputTokens"`
+		CacheCreationTokens int                     `json:"cacheCreationTokens"`
+		CacheReadTokens     int                     `json:"cacheReadTokens"`
+		TotalTokens         int                     `json:"totalTokens"`
+		TotalCost           float64                 `json:"totalCost"`
+		ModelsUsed          []string                `json:"modelsUsed"`
+		ModelBreakdowns     []ccUsageModelBreakdown `json:"modelBreakdowns"`
+	}
+
+	type ccUsageEntry struct {
+		Project string           `json:"project"`
+		Date    string           `json:"date"` // YYYYMMDD format
+		Usage   ccUsageDailyData `json:"usage"`
+	}
+
+	type ccUsageBatchPayload struct {
+		Host    string         `json:"host"`
+		Entries []ccUsageEntry `json:"entries"`
 	}
 
 	type ccUsageResponse struct {
-		Success bool   `json:"success"`
-		Message string `json:"message,omitempty"`
+		Success        bool     `json:"success"`
+		SuccessCount   int      `json:"successCount"`
+		TotalCount     int      `json:"totalCount"`
+		FailedProjects []string `json:"failedProjects,omitempty"`
 	}
 
-	payload := ccUsageRequest{
-		Data: data,
+	// Transform CCUsageData to batch format
+	var entries []ccUsageEntry
+
+	// Iterate through all projects in the collected data
+	for projectName, projectDays := range data.Data.Projects {
+		for _, dayData := range projectDays {
+			// Convert model breakdowns
+			modelBreakdowns := make([]ccUsageModelBreakdown, len(dayData.ModelBreakdowns))
+			for i, mb := range dayData.ModelBreakdowns {
+				modelBreakdowns[i] = ccUsageModelBreakdown{
+					ModelName:           mb.ModelName,
+					InputTokens:         mb.InputTokens,
+					OutputTokens:        mb.OutputTokens,
+					CacheCreationTokens: mb.CacheCreationTokens,
+					CacheReadTokens:     mb.CacheReadTokens,
+					Cost:                mb.Cost,
+				}
+			}
+
+			entry := ccUsageEntry{
+				Project: projectName,
+				Date:    dayData.Date, // Already in YYYYMMDD format from ccusage
+				Usage: ccUsageDailyData{
+					InputTokens:         dayData.InputTokens,
+					OutputTokens:        dayData.OutputTokens,
+					CacheCreationTokens: dayData.CacheCreationTokens,
+					CacheReadTokens:     dayData.CacheReadTokens,
+					TotalTokens:         dayData.TotalTokens,
+					TotalCost:           dayData.TotalCost,
+					ModelsUsed:          dayData.ModelsUsed,
+					ModelBreakdowns:     modelBreakdowns,
+				},
+			}
+			entries = append(entries, entry)
+		}
+	}
+
+	if len(entries) == 0 {
+		logrus.Debug("No CCUsage entries to send")
+		return nil
+	}
+
+	payload := ccUsageBatchPayload{
+		Host:    data.Hostname,
+		Entries: entries,
 	}
 
 	var resp ccUsageResponse
 
-	err := SendHTTPRequest(HTTPRequestOptions[ccUsageRequest, ccUsageResponse]{
+	err := SendHTTPRequest(HTTPRequestOptions[ccUsageBatchPayload, ccUsageResponse]{
 		Context:  ctx,
 		Endpoint: endpoint,
 		Method:   http.MethodPost,
-		Path:     "/api/v1/ccusage",
+		Path:     "/api/v1/ccusage/batch",
 		Payload:  payload,
 		Response: &resp,
 	})
@@ -297,9 +370,12 @@ func (s *ccUsageService) sendData(ctx context.Context, endpoint Endpoint, data *
 	}
 
 	if !resp.Success {
-		return fmt.Errorf("server rejected CCUsage data: %s", resp.Message)
+		if len(resp.FailedProjects) > 0 {
+			return fmt.Errorf("server rejected CCUsage data for projects: %v", resp.FailedProjects)
+		}
+		return fmt.Errorf("server rejected CCUsage data: %d/%d entries failed", resp.TotalCount-resp.SuccessCount, resp.TotalCount)
 	}
 
-	logrus.Debugf("CCUsage data sent successfully")
+	logrus.Debugf("CCUsage data sent successfully: %d/%d entries", resp.SuccessCount, resp.TotalCount)
 	return nil
 }
