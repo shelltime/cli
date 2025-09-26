@@ -356,7 +356,7 @@ func (s *ccUsageService) sendData(ctx context.Context, endpoint Endpoint, data *
 
 	var resp ccUsageResponse
 
-	err := SendHTTPRequest(HTTPRequestOptions[ccUsageBatchPayload, ccUsageResponse]{
+	err := SendHTTPRequestJSON(HTTPRequestOptions[ccUsageBatchPayload, ccUsageResponse]{
 		Context:  ctx,
 		Endpoint: endpoint,
 		Method:   http.MethodPost,
