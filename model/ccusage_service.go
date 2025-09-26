@@ -15,12 +15,12 @@ import (
 
 // CCUsageData represents the usage data collected from ccusage command
 type CCUsageData struct {
-	Timestamp string                 `json:"timestamp" msgpack:"timestamp"`
-	Hostname  string                 `json:"hostname" msgpack:"hostname"`
-	Username  string                 `json:"username" msgpack:"username"`
-	OS        string                 `json:"os" msgpack:"os"`
-	OSVersion string                 `json:"osVersion" msgpack:"osVersion"`
-	Data      map[string]interface{} `json:"data" msgpack:"data"`
+	Timestamp string                    `json:"timestamp" msgpack:"timestamp"`
+	Hostname  string                    `json:"hostname" msgpack:"hostname"`
+	Username  string                    `json:"username" msgpack:"username"`
+	OS        string                    `json:"os" msgpack:"os"`
+	OSVersion string                    `json:"osVersion" msgpack:"osVersion"`
+	Data      CCUsageProjectDailyOutput `json:"data" msgpack:"data"`
 }
 
 // CCUsageService defines the interface for CC usage collection
@@ -153,7 +153,7 @@ func (s *ccUsageService) collectData(ctx context.Context) (*CCUsageData, error) 
 	}
 
 	// Parse JSON output
-	var ccusageOutput map[string]interface{}
+	var ccusageOutput CCUsageProjectDailyOutput
 	if err := json.Unmarshal(output, &ccusageOutput); err != nil {
 		return nil, fmt.Errorf("failed to parse ccusage output: %w", err)
 	}
