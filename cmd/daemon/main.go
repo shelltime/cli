@@ -95,6 +95,17 @@ func main() {
 
 	go daemon.SocketTopicProccessor(msg)
 
+	// Start CCUsage service if enabled
+	if cfg.CCUsage != nil && cfg.CCUsage.Enabled != nil && *cfg.CCUsage.Enabled {
+		ccUsageService := model.NewCCUsageService(cfg)
+		if err := ccUsageService.Start(ctx); err != nil {
+			slog.Error("Failed to start CCUsage service", slog.Any("err", err))
+		} else {
+			slog.Info("CCUsage service started")
+			defer ccUsageService.Stop()
+		}
+	}
+
 	// Create processor instance
 	processor := daemon.NewSocketHandler(daemonConfig, pubsub)
 
