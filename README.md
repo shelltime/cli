@@ -1,22 +1,46 @@
-# ShellTime CLI [![codecov](https://codecov.io/gh/malamtime/cli/graph/badge.svg?token=N09WIJHNI2)](https://codecov.io/gh/malamtime/cli)
+# ShellTime CLI
 
-deepwiki: [https://deepwiki.com/shelltime/cli]
+[![codecov](https://codecov.io/gh/malamtime/cli/graph/badge.svg?token=N09WIJHNI2)](https://codecov.io/gh/malamtime/cli)
+[![shelltime](https://api.shelltime.xyz/badge/AnnatarHe/count)](https://shelltime.xyz/users/AnnatarHe)
 
-The CLI tool for shelltime.xyz - a platform for tracking DevOps work.
+> A professional command-line interface for [ShellTime](https://shelltime.xyz) - the comprehensive platform for tracking and analyzing DevOps workflows.
 
-AnnatarHe: [![shelltime](https://api.shelltime.xyz/badge/AnnatarHe/count)](https://shelltime.xyz/users/AnnatarHe)
+**Documentation**: [https://deepwiki.com/shelltime/cli](https://deepwiki.com/shelltime/cli)
 
-## Installation
+## Quick Start
+
+### Installation
+
+Install ShellTime CLI using our automated installation script:
 
 ```bash
-curl -sSL https://raw.githubusercontent.com/malamtime/installation/master/install.bash | bash
+curl -sSL https://shelltime.xyz/i | bash
 ```
+
+### Initial Setup
+
+1. **Initialize authentication**:
+   ```bash
+   shelltime init
+   ```
+
+2. **Install shell hooks** (for automatic command tracking):
+   ```bash
+   shelltime hooks install
+   ```
+
+3. **Optional: Enable daemon mode** (recommended for optimal performance):
+   ```bash
+   sudo shelltime daemon install
+   ```
 
 ## Configuration
 
-The CLI stores its configuration in `$HOME/.shelltime/config.toml`.
+ShellTime CLI configuration is stored in `$HOME/.shelltime/config.toml`. The configuration file is automatically created during initialization.
 
-### Configuration Fields
+### Configuration Reference
+
+#### Core Settings
 
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
@@ -30,12 +54,21 @@ The CLI stores its configuration in `$HOME/.shelltime/config.toml`.
 | `encrypted` | boolean | `false` | Enable end-to-end encryption for command data (requires daemon mode) |
 | `exclude` | array | `[]` | List of regular expressions to exclude commands from tracking |
 | `endpoints` | array | `[]` | Additional API endpoints for development or testing |
-| `ai.agent.view` | boolean | `false` | Allow AI to auto-execute read-only commands (e.g., ls, cat, less, head, tail) |
-| `ai.agent.edit` | boolean | `false` | Allow AI to auto-execute file editing commands (e.g., vim, nano, code, sed) |
-| `ai.agent.delete` | boolean | `false` | Allow AI to auto-execute deletion commands (e.g., rm, rmdir, unlink) |
+#### AI Agent Settings
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `ai.agent.view` | boolean | `false` | Allow AI to auto-execute read-only commands |
+| `ai.agent.edit` | boolean | `false` | Allow AI to auto-execute file editing commands |
+| `ai.agent.delete` | boolean | `false` | Allow AI to auto-execute deletion commands |
+
+#### Analytics Settings
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
 | `ccusage.enabled` | boolean | `false` | Enable Claude Code usage tracking and analytics |
 
-### Complete Configuration Example
+### Configuration Example
 
 ```toml
 # Authentication token from shelltime.xyz
@@ -81,42 +114,42 @@ enabled = false # Track and report Claude Code usage statistics
 # token = "dev-token"
 ```
 
-### Configuration Notes
+### Important Configuration Considerations
 
-⚠️ **Performance Warning**: Setting `enableMetrics` to `true` will track detailed metrics for every command execution. Only enable this when requested by developers for debugging purposes, as it may significantly impact shell performance.
+#### Performance Optimization
+- **Metrics Collection**: The `enableMetrics` option impacts performance. Enable only for debugging purposes.
+- **Flush Count**: Adjust `flushCount` based on your workflow. Higher values reduce sync frequency but increase local storage.
+- **Daemon Mode**: Essential for users experiencing latency issues, especially in regions distant from servers.
 
-🔒 **Encryption**: End-to-end encryption requires:
-- Daemon mode to be installed and running
-- A special encryption-enabled token (request from shelltime.xyz)
-- Setting `encrypted = true` in the configuration
+#### Security & Privacy
+- **End-to-End Encryption**: Requires daemon mode and a special token from shelltime.xyz.
+- **Data Masking**: Automatically masks sensitive information in tracked commands.
+- **Exclusion Patterns**: Use regex patterns to prevent tracking of sensitive commands.
 
-🤖 **AI Command Execution**: The AI agent configuration controls which types of commands the AI assistant is allowed to automatically execute:
-- `view = true`: AI can execute read-only commands that don't modify the system (e.g., ls, cat, grep)
-- `edit = true`: AI can execute commands that modify files (e.g., vim, sed, echo > file)
-- `delete = true`: AI can execute commands that delete files or directories (e.g., rm, rmdir, unlink)
+#### AI Assistant Permissions
+The AI agent configuration provides granular control over command execution:
+- **View Operations**: Read-only commands (ls, cat, grep)
+- **Edit Operations**: File modification commands (vim, sed)
+- **Delete Operations**: Removal commands (rm, rmdir)
 
-Set these to `false` (default) to prevent AI from automatically executing those command types. This provides granular control over AI permissions for safety.
+All permissions default to `false` for maximum security.
 
-🚫 **Exclusion Patterns**: Use regular expressions to exclude sensitive or high-frequency commands from being tracked. This helps maintain privacy and reduce unnecessary data transmission.
+## Command Reference
 
-📊 **Claude Code Usage**: When enabled, tracks your Claude Code usage patterns to help improve your development workflow analytics.
+### Authentication & Setup
 
-## Commands
+#### `shelltime init`
 
-### Core Commands
-
-#### `shelltime init` (Authentication)
-
-Initializes the CLI with your shelltime.xyz authentication token. This must be run before using other features.
+Initialize ShellTime CLI with your authentication token.
 
 ```bash
 shelltime init [--token <your-token>]
 ```
 
 **Options:**
-- `--token, -t`: Your personal access token from shelltime.xyz (optional - will redirect to web auth if omitted)
+- `--token, -t`: Personal access token (optional; uses web auth if omitted)
 
-**Examples:**
+**Usage:**
 ```bash
 # Initialize with token
 shelltime init --token abc123xyz
@@ -125,9 +158,11 @@ shelltime init --token abc123xyz
 shelltime init
 ```
 
+### Command Tracking
+
 #### `shelltime track`
 
-Tracks shell commands and activities. This is typically called automatically by shell hooks.
+Track shell commands and activities (typically invoked automatically via shell hooks).
 
 ```bash
 shelltime track [options]
@@ -142,11 +177,11 @@ shelltime track [options]
 - `--shell-pid`: Shell process ID
 - `--path, -p`: Current working directory
 
-**Note:** This command is usually invoked automatically by shell hooks, not manually.
+**Note:** Automatically invoked by shell hooks after installation.
 
 #### `shelltime sync`
 
-Manually synchronizes local commands to the shelltime.xyz server.
+Synchronize local command history with ShellTime servers.
 
 ```bash
 shelltime sync [--dry-run]
@@ -166,7 +201,7 @@ shelltime sync --dry-run
 
 #### `shelltime gc`
 
-Cleans up old tracking data and temporary files based on your `gcTime` configuration.
+Perform garbage collection on old tracking data based on configured retention period.
 
 ```bash
 shelltime gc [options]
@@ -191,7 +226,7 @@ shelltime gc --dry-run
 
 #### `shelltime ls`
 
-Lists locally saved commands that haven't been synced yet.
+Display pending commands awaiting synchronization.
 
 ```bash
 shelltime ls [--format <format>]
@@ -209,9 +244,11 @@ shelltime ls
 shelltime ls --format json
 ```
 
-#### `shelltime query` (AI Assistant)
+### AI Assistant
 
-Query the AI assistant for command suggestions based on your prompt.
+#### `shelltime query` / `shelltime q`
+
+Query the AI assistant for command suggestions and solutions.
 
 ```bash
 shelltime query "<your prompt>"
@@ -226,11 +263,11 @@ shelltime q "show disk usage for current directory"
 shelltime q "compress all png files in current folder"
 ```
 
-### Service Management Commands
+### Service Management
 
 #### `shelltime daemon`
 
-Manages the background daemon service for improved performance.
+Manage the background daemon service for enhanced performance.
 
 ```bash
 shelltime daemon <subcommand>
@@ -255,7 +292,7 @@ sudo shelltime daemon reinstall
 
 #### `shelltime hooks`
 
-Manages shell integration hooks for automatic command tracking.
+Manage shell integration hooks for automatic command tracking.
 
 ```bash
 shelltime hooks <subcommand>
@@ -274,11 +311,11 @@ shelltime hooks install
 shelltime hooks uninstall
 ```
 
-### Utility Commands
+### Utilities
 
 #### `shelltime web`
 
-Opens the ShellTime web dashboard in your default browser.
+Launch ShellTime web dashboard in your default browser.
 
 ```bash
 shelltime web
@@ -286,13 +323,13 @@ shelltime web
 
 #### `shelltime doctor`
 
-Checks your ShellTime setup and environment for issues.
+Diagnose and validate ShellTime installation and configuration.
 
 ```bash
 shelltime doctor
 ```
 
-This command will verify:
+**Verification scope:**
 - Configuration file validity
 - Token authentication
 - Database connectivity
@@ -302,7 +339,7 @@ This command will verify:
 
 #### `shelltime alias`
 
-Manages shell aliases synchronization.
+Manage and synchronize shell aliases.
 
 ```bash
 shelltime alias <subcommand>
@@ -323,7 +360,7 @@ shelltime alias import --fully-refresh
 
 #### `shelltime dotfiles`
 
-Manages dotfiles configuration backup and synchronization.
+Manage dotfiles backup and synchronization.
 
 ```bash
 shelltime dotfiles <subcommand>
@@ -342,113 +379,105 @@ shelltime dotfiles push
 shelltime dotfiles push --apps vim --apps tmux
 ```
 
-### Version Information
+### Help & Version
 
-Display the current version of ShellTime CLI:
-
+#### Version Information
 ```bash
-shelltime --version
-shelltime -v
+shelltime --version  # Display version information
+shelltime -v         # Short form
 ```
 
-### Getting Help
-
-Get help for any command:
-
+#### Help Documentation
 ```bash
-# General help
-shelltime --help
-shelltime -h
-
-# Command-specific help
-shelltime <command> --help
-shelltime daemon --help
-shelltime query --help
+shelltime --help              # General help
+shelltime <command> --help    # Command-specific help
 ```
-## Performance
+## Performance & Optimization
 
-> [!NOTE]
-> - **Linux**: Uses `systemd` for service management
-> - **macOS**: Uses `launchctl` for service management
+### Platform Support
+- **Linux**: Utilizes `systemd` for service management
+- **macOS**: Utilizes `launchctl` for service management
 
-### Command Execution Performance
+### Performance Metrics
 
-By default, the CLI performs synchronization directly which may impact shell responsiveness in certain scenarios:
+Default synchronization behavior and expected latencies:
 
-- Standard command saving: <8ms (local file I/O only)
-- Network synchronization:
-  - Southeast Asia (Singapore servers): ~100ms
-  - Other regions: Can vary significantly based on location
+| Operation | Latency | Description |
+|-----------|---------|-------------|
+| Local Save | <8ms | File I/O operations only |
+| Network Sync (Singapore) | ~100ms | Southeast Asia region |
+| Network Sync (Other) | Variable | Depends on geographic location |
 
-### Recommended: Daemon Mode
+### Daemon Mode (Recommended)
 
-If you experience latency issues, we strongly recommend using daemon mode for better performance:
+For optimal performance and minimal shell latency, enable daemon mode:
 
 ```bash
 sudo ~/.shelltime/bin/shelltime daemon install
 ```
 
-Benefits of daemon mode:
-- Asynchronous command tracking (shell blocking time <8ms)
-- Background synchronization handling
-- No impact on shell responsiveness
-- Reliable data delivery even during network issues
+**Key Benefits:**
+- **Asynchronous Processing**: Shell blocking reduced to <8ms
+- **Background Synchronization**: Network operations handled independently
+- **Zero Shell Impact**: Complete isolation from interactive sessions
+- **Resilient Delivery**: Automatic retry and buffering during network issues
 
-The daemon service:
-1. Runs in the background as a system service
-2. Handles all network synchronization operations
-3. Buffers commands during connectivity issues
-4. Automatically retries failed synchronizations
+**Technical Implementation:**
+- Operates as a system-level service
+- Manages all network synchronization operations
+- Implements intelligent command buffering
+- Provides automatic retry mechanisms for failed synchronizations
 
-For users experiencing high latency, daemon mode is the recommended configuration. You can also adjust `FlushCount` in the config for additional optimization:
-
+**Optimization Tips:**
 ```toml
-FlushCount = 100  # Increased buffer size for less frequent syncs
+# Adjust buffer size for reduced sync frequency
+FlushCount = 100
 ```
 
-Note: Even without the daemon, all commands are still preserved locally first, ensuring no data loss during network issues.
+> **Note**: Commands are always persisted locally first, ensuring zero data loss regardless of network conditions.
 
-## Encryption
+## Security Features
 
-> [!IMPORTANT]
-> This feature is only available from version 0.1.12 and requires daemon mode operation.
+### End-to-End Encryption
 
-ShellTime supports end-to-end encryption for command tracking data, providing an additional layer of security for sensitive environments.
+> **Requirements**: Version 0.1.12+ with daemon mode enabled
 
-### Enabling Encryption
+ShellTime provides enterprise-grade end-to-end encryption for command data, ensuring complete privacy in sensitive environments.
 
-1. Request a new open token that supports encryption (existing tokens need to be replaced)
-2. Enable encryption in your config file:
+#### Activation Process
+
+1. **Obtain encryption-enabled token** from shelltime.xyz
+2. **Configure encryption** in settings:
 
 ```toml
 # ~/.shelltime/config.toml
 encrypted = true
 ```
 
-3. Ensure daemon mode is active (encryption only works with daemon mode)
+3. **Verify daemon mode** is active
 
-### How It Works
+#### Technical Architecture
 
-The encryption process uses a hybrid RSA/AES-GCM approach for optimal security and performance:
+ShellTime implements a hybrid RSA/AES-GCM encryption scheme:
 
-1. Client retrieves the public key associated with your open token
-2. For each request:
-   - Generates a new AES-GCM key
-   - Encrypts the AES-GCM key using RSA public key
-   - Encrypts the actual payload using AES-GCM
-   - Sends both encrypted key and payload to server
+**Client-Side Operations:**
+1. Retrieve public key associated with authentication token
+2. Generate unique AES-GCM key per request
+3. Encrypt AES key using RSA public key encryption
+4. Encrypt payload using AES-GCM symmetric encryption
+5. Transmit encrypted key and payload to server
 
-Server-side:
-1. Decrypts the AES-GCM key using the open token's private key
-2. Uses the decrypted AES-GCM key to decrypt the payload
-3. Processes the decrypted command data
+**Server-Side Operations:**
+1. Decrypt AES-GCM key using private key
+2. Decrypt payload using recovered AES-GCM key
+3. Process decrypted command data
 
-This hybrid approach provides:
-- Strong security through asymmetric encryption (RSA)
-- Efficient payload encryption through symmetric encryption (AES-GCM)
-- Perfect forward secrecy with unique keys per request
+**Security Advantages:**
+- **Asymmetric Security**: RSA provides robust key exchange
+- **Symmetric Efficiency**: AES-GCM ensures fast payload encryption
+- **Perfect Forward Secrecy**: Unique keys per request prevent retrospective decryption
 
-### Encrypted Request Structure
+#### Request Structure
 
 ```json
 {
@@ -458,34 +487,59 @@ This hybrid approach provides:
 }
 ```
 
-> [!NOTE]
-> - Encryption adds minimal overhead (~5-10ms per request)
-> - All encryption/decryption happens automatically when enabled
-> - Local data remains unencrypted for performance
+**Performance Impact:**
+- Additional latency: ~5-10ms per request
+- Automatic encryption/decryption when enabled
+- Local storage remains unencrypted for performance
 
-### Uninstalling Daemon Service
+## Maintenance
 
-To stop and remove the daemon service from your system:
+### Daemon Service Management
+
+#### Uninstallation
+Remove the daemon service when no longer needed:
 
 ```bash
 sudo ~/.shelltime/bin/shelltime daemon uninstall
 ```
 
-This command will:
-1. Stop the currently running daemon
-2. Remove the service configuration from systemd/launchctl
-3. Clean up any daemon-specific temporary files
+**Uninstallation Process:**
+1. Terminate running daemon process
+2. Remove service configuration from system
+3. Clean up temporary files and sockets
 
-After uninstallation, the CLI will revert to direct synchronization mode. You can reinstall the daemon at any time using the install command if needed.
+**Post-Uninstallation:**
+- CLI reverts to direct synchronization mode
+- Reinstallation available at any time via `daemon install`
 
-## Version Information
+## Troubleshooting
 
-Use `shelltime --version` or `shelltime -v` to display the current version of the CLI.
+### Common Issues
 
-## Support
+1. **High Latency**: Enable daemon mode for improved performance
+2. **Authentication Failures**: Re-run `shelltime init` with a fresh token
+3. **Missing Commands**: Verify shell hooks are installed with `shelltime hooks install`
+4. **Sync Issues**: Check network connectivity and run `shelltime doctor`
 
-For support, please contact: annatar.he+shelltime.xyz@gmail.com
+### Diagnostic Tools
+
+- `shelltime doctor`: Comprehensive system check
+- `shelltime sync --dry-run`: Preview sync operations
+- `shelltime gc --dry-run`: Preview cleanup operations
+
+## Resources
+
+### Documentation
+- **Official Documentation**: [https://deepwiki.com/shelltime/cli](https://deepwiki.com/shelltime/cli)
+- **Web Dashboard**: [https://shelltime.xyz](https://shelltime.xyz)
+
+### Support
+- **Email**: annatar.he+shelltime.xyz@gmail.com
+- **Issue Tracker**: [GitHub Issues](https://github.com/malamtime/cli/issues)
+- **Community**: [ShellTime Community Forum](https://community.shelltime.xyz)
 
 ## License
 
-Copyright (c) 2024 shelltime.xyz Team
+Copyright © 2024 ShellTime Team. All rights reserved.
+
+Licensed under the proprietary ShellTime license. See LICENSE file for details.
