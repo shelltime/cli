@@ -16,6 +16,10 @@ type AIConfig struct {
 	Agent AIAgentConfig `toml:"agent"`
 }
 
+type CCUsage struct {
+	Enabled *bool `toml:"enabled"`
+}
+
 type ShellTimeConfig struct {
 	Token       string
 	APIEndpoint string
@@ -47,6 +51,9 @@ type ShellTimeConfig struct {
 	// Exclude patterns - regular expressions to exclude commands from being saved
 	// Commands matching any of these patterns will not be synced to the server
 	Exclude []string `toml:"exclude"`
+
+	// CCUsage configuration for Claude Code usage tracking
+	CCUsage *CCUsage `toml:"ccusage"`
 }
 
 var DefaultAIConfig = &AIConfig{
@@ -70,4 +77,5 @@ var DefaultConfig = ShellTimeConfig{
 	Encrypted:     nil,
 	AI:            DefaultAIConfig,
 	Exclude:       []string{},
+	CCUsage:       nil,
 }
