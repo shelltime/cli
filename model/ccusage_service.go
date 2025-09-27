@@ -143,28 +143,46 @@ func (s *ccUsageService) CollectCCUsage(ctx context.Context) error {
 
 // getLastSyncTimestamp fetches the last CCUsage sync timestamp from the server via GraphQL
 func (s *ccUsageService) getLastSyncTimestamp(ctx context.Context, endpoint Endpoint) (*int64, error) {
-	query := `query fetchUserCCUsageLastSync {
+	// Get current hostname
+	hostname, err := os.Hostname()
+	if err != nil {
+		logrus.Warnf("Failed to get hostname: %v", err)
+		hostname = "unknown"
+	}
+
+	query := `query fetchUserCCUsageLastSync($hostname: String!) {
 		fetchUser {
 			id
-			ccusageLastSync
+			ccusage(filter: { hostname: $hostname }) {
+				lastSyncAt
+			}
 		}
 	}`
 
 	type fetchUserResponse struct {
 		FetchUser struct {
-			ID              int   `json:"id"`
-			CCUsageLastSync int64 `json:"ccusageLastSync"`
+			ID      int `json:"id"`
+			CCUsage struct {
+				LastSyncAt int64 `json:"lastSyncAt"`
+			} `json:"ccusage"`
 		} `json:"fetchUser"`
 	}
 
 	var result GraphQLResponse[fetchUserResponse]
 
-	err := SendGraphQLRequest(GraphQLRequestOptions[GraphQLResponse[fetchUserResponse]]{
-		Context:  ctx,
-		Endpoint: endpoint,
-		Query:    query,
-		Response: &result,
-		Timeout:  time.Second * 10,
+	variables := map[string]interface{}{
+		"hostname": hostname,
+	}
+
+	logrus.Debugf("Fetching CCUsage last sync for hostname: %s", hostname)
+
+	err = SendGraphQLRequest(GraphQLRequestOptions[GraphQLResponse[fetchUserResponse]]{
+		Context:   ctx,
+		Endpoint:  endpoint,
+		Query:     query,
+		Variables: variables,
+		Response:  &result,
+		Timeout:   time.Second * 10,
 	})
 
 	if err != nil {
@@ -172,8 +190,8 @@ func (s *ccUsageService) getLastSyncTimestamp(ctx context.Context, endpoint Endp
 		return nil, nil // Return nil to skip the since parameter
 	}
 
-	if result.Data.FetchUser.CCUsageLastSync > 0 {
-		return &result.Data.FetchUser.CCUsageLastSync, nil
+	if result.Data.FetchUser.CCUsage.LastSyncAt > 0 {
+		return &result.Data.FetchUser.CCUsage.LastSyncAt, nil
 	}
 
 	return nil, nil
