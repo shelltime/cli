@@ -86,9 +86,9 @@ go fmt ./...
 5. **Encryption**: Hybrid RSA/AES-GCM encryption for secure command transmission
 
 ### Data Flow
-1. Shell hooks capture commands → 
-2. CLI stores commands locally (SQLite) → 
-3. Daemon (if installed) processes commands asynchronously → 
+1. Shell hooks capture commands →
+2. CLI stores commands locally (file based) →
+3. Daemon (if installed) processes commands asynchronously →
 4. Batch sync to shelltime.xyz API
 
 ### Configuration
