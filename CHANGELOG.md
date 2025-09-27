@@ -1,5 +1,33 @@
 # Changelog
 
+## [0.1.26](https://github.com/shelltime/cli/compare/v0.1.25...v0.1.26) (2025-09-27)
+
+
+### Features
+
+* add daemon reinstall command ([720f195](https://github.com/shelltime/cli/commit/720f1957ca1e1b497ae7fb9ffb55de25c0f13241)), closes [#97](https://github.com/shelltime/cli/issues/97)
+* **api:** add SendHTTPRequestJSON and refactor GraphQL to use it ([773aaaf](https://github.com/shelltime/cli/commit/773aaaf5ca3ce4cdfa0236ba12e3b162d10a6b8b))
+* **ccusage:** add CCUsage collection service for usage tracking ([d930d8e](https://github.com/shelltime/cli/commit/d930d8e04b4be39a4cece7627ff854b166946681))
+* **ccusage:** add CCUsage collection service for usage tracking ([9e9bf18](https://github.com/shelltime/cli/commit/9e9bf181791e57e7110f4a345bc88e1bcf084cb6))
+* **ccusage:** add incremental sync support with since parameter ([3a86e36](https://github.com/shelltime/cli/commit/3a86e36a78879b837faf54dfe2d92f8695ce08f1))
+* **config:** add exclude patterns to filter commands from server sync ([d8e79e7](https://github.com/shelltime/cli/commit/d8e79e7bed25629c88086505d4257a2da1a1121e))
+* **dotfile:** add advanced merge support for config files ([eaf7ea2](https://github.com/shelltime/cli/commit/eaf7ea2ec7e2b02e8d9d73becd00a2df8a020e83))
+* **dotfile:** add advanced merge support for Ghostty config files ([f32fd42](https://github.com/shelltime/cli/commit/f32fd4219ca4df6ffbcf01c5b5449811e89bbe57))
+* **dotfile:** add support for ignoring sections in collected files ([a8332ee](https://github.com/shelltime/cli/commit/a8332ee086426a7fdf2e4417217d1964c9ac7ad9))
+* **dotfile:** add support for ignoring sections in collected files ([2d7b9af](https://github.com/shelltime/cli/commit/2d7b9af6c9d94d3cdd16fd3fe6237632a2129c20))
+
+
+### Bug Fixes
+
+* **ccusage:** handle timestamp format from GraphQL API ([821150e](https://github.com/shelltime/cli/commit/821150ef2ad2a3ecd67ea8ba3678b9d52205b0c7))
+* **ccusage:** improve debug log formatting for timestamps ([13015d8](https://github.com/shelltime/cli/commit/13015d839bd5fa7bb0161c9eae9b6e3c6991902d))
+* **ccusage:** update GraphQL query to use correct schema and filter by hostname ([5017fe4](https://github.com/shelltime/cli/commit/5017fe4f1a04d49347218be81ac79a41b630d2d7))
+
+
+### Miscellaneous Chores
+
+* release 0.1.26 ([2d3ca5e](https://github.com/shelltime/cli/commit/2d3ca5e1e67228970f52ebe0fc0dd46f675f6d9a))
+
 ## [0.1.25](https://github.com/shelltime/cli/compare/v0.1.24...v0.1.25) (2025-09-06)
 
 
