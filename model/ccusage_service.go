@@ -99,7 +99,7 @@ func (s *ccUsageService) CollectCCUsage(ctx context.Context) error {
 
 	logrus.Debug("Collecting CCUsage data")
 
-	var since *int64
+	since := time.Time{}
 
 	// Get the last sync timestamp from server if we have credentials
 	if s.config.Token != "" && s.config.APIEndpoint != "" {
@@ -112,10 +112,9 @@ func (s *ccUsageService) CollectCCUsage(ctx context.Context) error {
 		lastSync, err := s.getLastSyncTimestamp(ctx, endpoint)
 		if err != nil {
 			logrus.Warnf("Failed to get last sync timestamp: %v", err)
-		} else if lastSync != nil {
-			since = lastSync
-			logrus.Debugf("Got last sync timestamp: %d", *since)
 		}
+		since = lastSync
+		logrus.Debugf("Got last sync timestamp: %d", since)
 	}
 
 	// Collect data from ccusage command
@@ -142,7 +141,7 @@ func (s *ccUsageService) CollectCCUsage(ctx context.Context) error {
 }
 
 // getLastSyncTimestamp fetches the last CCUsage sync timestamp from the server via GraphQL
-func (s *ccUsageService) getLastSyncTimestamp(ctx context.Context, endpoint Endpoint) (*int64, error) {
+func (s *ccUsageService) getLastSyncTimestamp(ctx context.Context, endpoint Endpoint) (time.Time, error) {
 	// Get current hostname
 	hostname, err := os.Hostname()
 	if err != nil {
@@ -163,7 +162,7 @@ func (s *ccUsageService) getLastSyncTimestamp(ctx context.Context, endpoint Endp
 		FetchUser struct {
 			ID      int `json:"id"`
 			CCUsage struct {
-				LastSyncAt int64 `json:"lastSyncAt"`
+				LastSyncAt string `json:"lastSyncAt"`
 			} `json:"ccusage"`
 		} `json:"fetchUser"`
 	}
@@ -187,18 +186,30 @@ func (s *ccUsageService) getLastSyncTimestamp(ctx context.Context, endpoint Endp
 
 	if err != nil {
 		logrus.Warnf("Failed to fetch CCUsage last sync: %v", err)
-		return nil, nil // Return nil to skip the since parameter
+		return time.Time{}, nil // Return nil to skip the since parameter
 	}
 
-	if result.Data.FetchUser.CCUsage.LastSyncAt > 0 {
-		return &result.Data.FetchUser.CCUsage.LastSyncAt, nil
+	lastSyncAtStr := result.Data.FetchUser.CCUsage.LastSyncAt
+
+	if lastSyncAtStr == "" {
+		return time.Time{}, nil
+	}
+	lastSyncAt, err := time.Parse(time.RFC3339, lastSyncAtStr)
+	if err != nil {
+		logrus.Warnf("Failed to parse last sync timestamp: %v", err)
+		return time.Time{}, err // Return nil to skip the since parameter
 	}
 
-	return nil, nil
+	year2023 := time.Date(2023, 1, 1, 0, 0, 0, 0, time.UTC)
+	if lastSyncAt.Before(year2023) {
+		return time.Time{}, nil
+	}
+
+	return lastSyncAt, nil
 }
 
 // collectData collects usage data using bunx or npx ccusage command
-func (s *ccUsageService) collectData(ctx context.Context, since *int64) (*CCUsageData, error) {
+func (s *ccUsageService) collectData(ctx context.Context, since time.Time) (*CCUsageData, error) {
 	// Check if bunx exists
 	bunxPath, bunxErr := exec.LookPath("bunx")
 	npxPath, npxErr := exec.LookPath("npx")
@@ -211,12 +222,11 @@ func (s *ccUsageService) collectData(ctx context.Context, since *int64) (*CCUsag
 	args := []string{"ccusage", "daily", "--instances", "--json"}
 
 	// Add since parameter if provided
-	if since != nil {
+	if !since.IsZero() {
 		// Convert Unix timestamp (seconds) to ISO 8601 date string
-		sinceTime := time.Unix(*since, 0)
-		sinceDate := sinceTime.Format("20060102")
+		sinceDate := since.Format("20060102")
 		args = append(args, "--since", sinceDate)
-		logrus.Debugf("Using since parameter: %s (from timestamp %d)", sinceDate, *since)
+		logrus.Debugf("Using since parameter: %s (from timestamp %d)", sinceDate, since)
 	}
 
 	var cmd *exec.Cmd
