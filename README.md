@@ -16,6 +16,8 @@ curl -sSL https://raw.githubusercontent.com/malamtime/installation/master/instal
 
 The CLI stores its configuration in `$HOME/.shelltime/config.toml`.
 
+### Configuration Fields
+
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
 | `token` | string | `""` | Your authentication token for shelltime.xyz |
@@ -25,98 +27,343 @@ The CLI stores its configuration in `$HOME/.shelltime/config.toml`.
 | `gcTime` | integer | `14` | Number of days to keep tracked data before garbage collection |
 | `dataMasking` | boolean | `true` | Enable/disable masking of sensitive data in tracked commands |
 | `enableMetrics` | boolean | `false` | Enable detailed command metrics tracking (WARNING: May impact performance) |
+| `encrypted` | boolean | `false` | Enable end-to-end encryption for command data (requires daemon mode) |
+| `exclude` | array | `[]` | List of regular expressions to exclude commands from tracking |
 | `endpoints` | array | `[]` | Additional API endpoints for development or testing |
-| `ai.agent.view` | boolean | `false` | Auto-run AI for view commands (e.g., ls, cat, show) |
-| `ai.agent.edit` | boolean | `false` | Auto-run AI for edit commands (e.g., vim, nano, code) |
-| `ai.agent.delete` | boolean | `false` | Auto-run AI for delete commands (e.g., rm, rmdir) |
+| `ai.agent.view` | boolean | `false` | Allow AI to auto-execute read-only commands (e.g., ls, cat, less, head, tail) |
+| `ai.agent.edit` | boolean | `false` | Allow AI to auto-execute file editing commands (e.g., vim, nano, code, sed) |
+| `ai.agent.delete` | boolean | `false` | Allow AI to auto-execute deletion commands (e.g., rm, rmdir, unlink) |
+| `ccusage.enabled` | boolean | `false` | Enable Claude Code usage tracking and analytics |
 
-Example configuration:
+### Complete Configuration Example
+
 ```toml
+# Authentication token from shelltime.xyz
 token = "your-token-here"
+
+# API and web endpoints
 apiEndpoint = "https://api.shelltime.xyz"
 webEndpoint = "https://shelltime.xyz"
-flushCount = 10
-gcTime = 14
-dataMasking = true
-enableMetrics = false
+
+# Sync settings
+flushCount = 10        # Sync after 10 commands (increase for less frequent syncs)
+gcTime = 14           # Keep local data for 14 days
+
+# Privacy and security
+dataMasking = true    # Mask sensitive data in commands
+encrypted = false     # Enable E2E encryption (requires daemon mode and special token)
+
+# Performance monitoring
+enableMetrics = false # WARNING: Impacts performance, only for debugging
+
+# Command exclusion patterns (regular expressions)
+# Commands matching these patterns won't be tracked
+exclude = [
+    "^ls .*",         # Exclude all ls commands
+    ".*password.*",   # Exclude commands containing "password"
+    "^git push",      # Exclude git push commands
+]
 
 # AI configuration (optional)
+# Controls which command types the AI assistant can automatically execute
 [ai.agent]
-view = false    # Auto-run AI for view commands
-edit = false    # Auto-run AI for edit commands
-delete = false  # Auto-run AI for delete commands
+view = false    # Allow AI to execute read-only commands (ls, cat, less, head, tail, etc.)
+edit = false    # Allow AI to execute file editing commands (vim, nano, code, sed, etc.)
+delete = false  # Allow AI to execute deletion commands (rm, rmdir, unlink, etc.)
+
+# Claude Code usage tracking (optional)
+[ccusage]
+enabled = false # Track and report Claude Code usage statistics
+
+# Development endpoints (optional, for testing)
+# [[endpoints]]
+# apiEndpoint = "http://localhost:8080"
+# token = "dev-token"
 ```
 
-⚠️ Note: Setting `enableMetrics` to `true` will track detailed metrics for every command execution. Only enable this when requested by developers for debugging purposes, as it may impact shell performance.
+### Configuration Notes
 
-📤 AI Auto-run: When AI agent auto-run is enabled for specific command types, the AI will automatically analyze and provide suggestions when you run matching commands. This feature requires the AI service to be properly configured.
+⚠️ **Performance Warning**: Setting `enableMetrics` to `true` will track detailed metrics for every command execution. Only enable this when requested by developers for debugging purposes, as it may significantly impact shell performance.
+
+🔒 **Encryption**: End-to-end encryption requires:
+- Daemon mode to be installed and running
+- A special encryption-enabled token (request from shelltime.xyz)
+- Setting `encrypted = true` in the configuration
+
+🤖 **AI Command Execution**: The AI agent configuration controls which types of commands the AI assistant is allowed to automatically execute:
+- `view = true`: AI can execute read-only commands that don't modify the system (e.g., ls, cat, grep)
+- `edit = true`: AI can execute commands that modify files (e.g., vim, sed, echo > file)
+- `delete = true`: AI can execute commands that delete files or directories (e.g., rm, rmdir, unlink)
+
+Set these to `false` (default) to prevent AI from automatically executing those command types. This provides granular control over AI permissions for safety.
+
+🚫 **Exclusion Patterns**: Use regular expressions to exclude sensitive or high-frequency commands from being tracked. This helps maintain privacy and reduce unnecessary data transmission.
+
+📊 **Claude Code Usage**: When enabled, tracks your Claude Code usage patterns to help improve your development workflow analytics.
 
 ## Commands
 
-### Authentication
+### Core Commands
+
+#### `shelltime init` (Authentication)
+
+Initializes the CLI with your shelltime.xyz authentication token. This must be run before using other features.
 
 ```bash
-shelltime auth [--token <your-token>]
+shelltime init [--token <your-token>]
 ```
 
-Initializes the CLI with your shelltime.xyz authentication token. This command needs to be run before using other features.
+**Options:**
+- `--token, -t`: Your personal access token from shelltime.xyz (optional - will redirect to web auth if omitted)
 
-Options:
-- `--token`: Your personal access token from shelltime.xyz. if omit, you can also redirect to website to auth
-
-Example:
+**Examples:**
 ```bash
-shelltime auth --token abc123xyz
+# Initialize with token
+shelltime init --token abc123xyz
+
+# Initialize via web authentication
+shelltime init
 ```
 
-### Track
+#### `shelltime track`
+
+Tracks shell commands and activities. This is typically called automatically by shell hooks.
 
 ```bash
 shelltime track [options]
 ```
 
-Tracks your shells activities and sends them to shelltime.xyz.
+**Options:**
+- `--shell, -s`: Specify the shell type (bash, zsh, fish, etc.)
+- `--command, -c`: The command to track
+- `--exit-code, -ec`: Exit code of the command
+- `--start-time, -st`: Command start time (Unix timestamp)
+- `--duration, -d`: Command duration in seconds
+- `--shell-pid`: Shell process ID
+- `--path, -p`: Current working directory
 
-Options:
-- TODO: List track command options
+**Note:** This command is usually invoked automatically by shell hooks, not manually.
 
-Example:
+#### `shelltime sync`
+
+Manually synchronizes local commands to the shelltime.xyz server.
+
 ```bash
-shelltime track # TODO: Add example
+shelltime sync [--dry-run]
 ```
 
-### Sync
+**Options:**
+- `--dry-run, -dr`: Preview what would be synced without actually syncing
 
+**Examples:**
 ```bash
+# Force sync all pending commands
 shelltime sync
+
+# Preview sync without uploading
+shelltime sync --dry-run
 ```
 
-Manually triggers synchronization of locally tracked commands to the shelltime.xyz server. This command can be useful when:
-- You want to force an immediate sync without waiting for the automatic sync threshold
-- You're troubleshooting data synchronization issues
-- You need to ensure all local data is uploaded before system maintenance
+#### `shelltime gc`
 
-Example:
-```bash
-shelltime sync
-```
-
-There are no additional options for this command as it simply processes and uploads any pending tracked commands according to your configuration settings.
-
-### GC (Garbage Collection)
+Cleans up old tracking data and temporary files based on your `gcTime` configuration.
 
 ```bash
 shelltime gc [options]
 ```
 
-Performs cleanup of old tracking data and temporary files.
+**Options:**
+- `--withLog, -wl`: Also clean log files
+- `--skipLogCreation, -sl`: Don't create a new log file after cleaning
+- `--dry-run, -dr`: Preview what would be cleaned without actually deleting
 
-Options:
-- TODO: List GC command options
-
-Example:
+**Examples:**
 ```bash
-shelltime gc # TODO: Add example
+# Clean old data (older than gcTime days)
+shelltime gc
+
+# Clean old data and logs
+shelltime gc --withLog
+
+# Preview cleanup
+shelltime gc --dry-run
+```
+
+#### `shelltime ls`
+
+Lists locally saved commands that haven't been synced yet.
+
+```bash
+shelltime ls [--format <format>]
+```
+
+**Options:**
+- `--format, -f`: Output format (table/json) - default: table
+
+**Examples:**
+```bash
+# List commands in table format
+shelltime ls
+
+# Export as JSON
+shelltime ls --format json
+```
+
+#### `shelltime query` (AI Assistant)
+
+Query the AI assistant for command suggestions based on your prompt.
+
+```bash
+shelltime query "<your prompt>"
+shelltime q "<your prompt>"  # Short alias
+```
+
+**Examples:**
+```bash
+shelltime query "get the top 5 memory-using processes"
+shelltime q "find all files modified in the last 24 hours"
+shelltime q "show disk usage for current directory"
+shelltime q "compress all png files in current folder"
+```
+
+### Service Management Commands
+
+#### `shelltime daemon`
+
+Manages the background daemon service for improved performance.
+
+```bash
+shelltime daemon <subcommand>
+```
+
+**Subcommands:**
+- `install`: Install the daemon service (requires sudo)
+- `uninstall`: Remove the daemon service (requires sudo)
+- `reinstall`: Reinstall the daemon service (requires sudo)
+
+**Examples:**
+```bash
+# Install daemon for better performance
+sudo shelltime daemon install
+
+# Remove daemon service
+sudo shelltime daemon uninstall
+
+# Reinstall (useful for updates)
+sudo shelltime daemon reinstall
+```
+
+#### `shelltime hooks`
+
+Manages shell integration hooks for automatic command tracking.
+
+```bash
+shelltime hooks <subcommand>
+```
+
+**Subcommands:**
+- `install`: Install shell hooks for your current shell
+- `uninstall`: Remove shell hooks
+
+**Examples:**
+```bash
+# Install hooks for automatic tracking
+shelltime hooks install
+
+# Remove hooks
+shelltime hooks uninstall
+```
+
+### Utility Commands
+
+#### `shelltime web`
+
+Opens the ShellTime web dashboard in your default browser.
+
+```bash
+shelltime web
+```
+
+#### `shelltime doctor`
+
+Checks your ShellTime setup and environment for issues.
+
+```bash
+shelltime doctor
+```
+
+This command will verify:
+- Configuration file validity
+- Token authentication
+- Database connectivity
+- Shell hook installation
+- Daemon service status
+- Network connectivity to shelltime.xyz
+
+#### `shelltime alias`
+
+Manages shell aliases synchronization.
+
+```bash
+shelltime alias <subcommand>
+```
+
+**Subcommands:**
+- `import`: Import aliases from shell configuration files
+  - `--fully-refresh, -f`: Replace all existing aliases
+
+**Examples:**
+```bash
+# Import aliases from your shell config
+shelltime alias import
+
+# Full refresh (replace all)
+shelltime alias import --fully-refresh
+```
+
+#### `shelltime dotfiles`
+
+Manages dotfiles configuration backup and synchronization.
+
+```bash
+shelltime dotfiles <subcommand>
+```
+
+**Subcommands:**
+- `push`: Push dotfiles to server
+  - `--apps`: Specify which app configs to push
+
+**Examples:**
+```bash
+# Push all dotfiles
+shelltime dotfiles push
+
+# Push specific app configs
+shelltime dotfiles push --apps vim --apps tmux
+```
+
+### Version Information
+
+Display the current version of ShellTime CLI:
+
+```bash
+shelltime --version
+shelltime -v
+```
+
+### Getting Help
+
+Get help for any command:
+
+```bash
+# General help
+shelltime --help
+shelltime -h
+
+# Command-specific help
+shelltime <command> --help
+shelltime daemon --help
+shelltime query --help
 ```
 ## Performance
 
