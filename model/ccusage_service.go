@@ -114,7 +114,7 @@ func (s *ccUsageService) CollectCCUsage(ctx context.Context) error {
 			logrus.Warnf("Failed to get last sync timestamp: %v", err)
 		}
 		since = lastSync
-		logrus.Debugf("Got last sync timestamp: %d", since)
+		logrus.Debugf("Got last sync timestamp: %v\n", since)
 	}
 
 	// Collect data from ccusage command
@@ -226,7 +226,7 @@ func (s *ccUsageService) collectData(ctx context.Context, since time.Time) (*CCU
 		// Convert Unix timestamp (seconds) to ISO 8601 date string
 		sinceDate := since.Format("20060102")
 		args = append(args, "--since", sinceDate)
-		logrus.Debugf("Using since parameter: %s (from timestamp %d)", sinceDate, since)
+		logrus.Debugf("Using since parameter: %s (from timestamp %v)\n", sinceDate, since)
 	}
 
 	var cmd *exec.Cmd
