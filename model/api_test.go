@@ -2,6 +2,7 @@ package model
 
 import (
 	"context"
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -9,7 +10,6 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/suite"
-	"github.com/vmihailenco/msgpack/v5"
 )
 
 type apiTestSuite struct {
@@ -21,13 +21,13 @@ func (s *apiTestSuite) TestDoSendData() {
 	s.T().Run("successful request", func(t *testing.T) {
 		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			// Verify headers
-			assert.Equal(t, "application/msgpack", r.Header.Get("Content-Type"))
+			assert.Equal(t, "application/json", r.Header.Get("Content-Type"))
 			assert.Contains(t, r.Header.Get("User-Agent"), "shelltimeCLI@")
 			assert.Equal(t, "CLI testToken", r.Header.Get("Authorization"))
 
 			// Decode request body
 			var payload PostTrackArgs
-			err := msgpack.NewDecoder(r.Body).Decode(&payload)
+			err := json.NewDecoder(r.Body).Decode(&payload)
 			assert.NoError(t, err)
 
 			// Verify payload
