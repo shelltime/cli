@@ -3,6 +3,7 @@ package commands
 // Basic imports
 import (
 	"bytes"
+	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
@@ -21,7 +22,6 @@ import (
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/suite"
 	"github.com/urfave/cli/v2"
-	"github.com/vmihailenco/msgpack/v5"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/trace/noop"
 )
@@ -111,7 +111,7 @@ func (s *trackTestSuite) TestTrackWithSendData() {
 
 		var payload model.PostTrackArgs
 
-		err = msgpack.Unmarshal(body, &payload)
+		err = json.Unmarshal(body, &payload)
 		assert.Nil(s.T(), err)
 
 		// allow first sync so no need to check the minimum length

@@ -12,7 +12,6 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/suite"
-	"github.com/vmihailenco/msgpack/v5"
 )
 
 type SyncHandlerTestSuite struct {
@@ -71,7 +70,7 @@ func (s *SyncHandlerTestSuite) handleTrackEndpoint(w http.ResponseWriter, r *htt
 
 	// Decode request body
 	var trackArgs model.PostTrackArgs
-	if err := msgpack.NewDecoder(r.Body).Decode(&trackArgs); err != nil {
+	if err := json.NewDecoder(r.Body).Decode(&trackArgs); err != nil {
 		http.Error(w, "Invalid request body", http.StatusBadRequest)
 		return
 	}
