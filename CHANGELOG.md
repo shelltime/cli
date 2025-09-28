@@ -1,5 +1,27 @@
 # Changelog
 
+## [0.1.27](https://github.com/shelltime/cli/compare/v0.1.26...v0.1.27) (2025-09-28)
+
+
+### ⚠ BREAKING CHANGES
+
+* **model:** Renamed SendHTTPRequest to SendHTTPRequestJSON to reflect the change in default serialization format from msgpack to JSON. This affects all API calls using the HTTP request function.
+
+### Features
+
+* **model:** change default HTTP send method from msgpack to JSON ([1a09822](https://github.com/shelltime/cli/commit/1a098222ba93a8194459e2d8a4cc95d18ac87975))
+
+
+### Bug Fixes
+
+* **model:** update api tests to use JSON instead of msgpack ([eca15ab](https://github.com/shelltime/cli/commit/eca15abbc4ef658afda388116f8d3a7e686490b7))
+* **test:** update tests to use JSON instead of msgpack ([8bb6ad0](https://github.com/shelltime/cli/commit/8bb6ad0703dc1e9f4c58678e6e156cd195466e33))
+
+
+### Miscellaneous Chores
+
+* release 0.1.27 ([125465f](https://github.com/shelltime/cli/commit/125465f0a6249004851945846428948c0df97807))
+
 ## [0.1.26](https://github.com/shelltime/cli/compare/v0.1.25...v0.1.26) (2025-09-27)
 
 
