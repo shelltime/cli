@@ -73,7 +73,7 @@ func SendDotfilesToServer(ctx context.Context, endpoint Endpoint, dotfiles []Dot
 
 	var resp dotfilePushResponse
 
-	err = SendHTTPRequest(HTTPRequestOptions[dotfilePushRequest, dotfilePushResponse]{
+	err = SendHTTPRequestJSON(HTTPRequestOptions[dotfilePushRequest, dotfilePushResponse]{
 		Context:  ctx,
 		Endpoint: endpoint,
 		Method:   http.MethodPost,

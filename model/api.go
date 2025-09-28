@@ -48,13 +48,12 @@ type PostTrackArgs struct {
 }
 
 func doSendData(ctx context.Context, endpoint Endpoint, data PostTrackArgs) error {
-
-	err := SendHTTPRequest(HTTPRequestOptions[PostTrackArgs, any]{
-		Context: ctx,
+	err := SendHTTPRequestJSON(HTTPRequestOptions[PostTrackArgs, any]{
+		Context:  ctx,
 		Endpoint: endpoint,
-		Method: http.MethodPost,
-		Path: "/api/v1/track",
-		Payload: data,
+		Method:   http.MethodPost,
+		Path:     "/api/v1/track",
+		Payload:  data,
 		Response: nil,
 	})
 	logrus.Traceln("http: ", "/api/v1/track", len(data.Data), data.Meta)

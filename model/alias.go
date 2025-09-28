@@ -80,7 +80,7 @@ func SendAliasesToServer(ctx context.Context, endpoint Endpoint, aliases []strin
 
 	var resp importShellAliasResponse
 
-	err = SendHTTPRequest(HTTPRequestOptions[importShellAliasRequest, importShellAliasResponse]{
+	err = SendHTTPRequestJSON(HTTPRequestOptions[importShellAliasRequest, importShellAliasResponse]{
 		Context:  ctx,
 		Endpoint: endpoint,
 		Method:   http.MethodPost,
