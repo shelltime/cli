@@ -4,13 +4,12 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"os"
 	"os/exec"
 	"os/user"
 	"time"
-
-	"github.com/sirupsen/logrus"
 )
 
 // CCUsageData represents the usage data collected from ccusage command
@@ -49,18 +48,18 @@ func NewCCUsageService(config ShellTimeConfig) CCUsageService {
 func (s *ccUsageService) Start(ctx context.Context) error {
 	// Check if CCUsage is enabled
 	if s.config.CCUsage == nil || s.config.CCUsage.Enabled == nil || !*s.config.CCUsage.Enabled {
-		logrus.Info("CCUsage collection is disabled")
+		slog.Info("CCUsage collection is disabled")
 		return nil
 	}
 
-	logrus.Info("Starting CCUsage collection service")
+	slog.Info("Starting CCUsage collection service")
 
 	// Create a ticker for hourly collection
 	s.ticker = time.NewTicker(1 * time.Hour)
 
 	// Run initial collection
 	if err := s.CollectCCUsage(ctx); err != nil {
-		logrus.Warnf("Initial CCUsage collection failed: %v", err)
+		slog.Warn("Initial CCUsage collection failed", "error", err)
 	}
 
 	// Start the collection loop
@@ -69,13 +68,13 @@ func (s *ccUsageService) Start(ctx context.Context) error {
 			select {
 			case <-s.ticker.C:
 				if err := s.CollectCCUsage(ctx); err != nil {
-					logrus.Warnf("CCUsage collection failed: %v", err)
+					slog.Warn("CCUsage collection failed", "error", err)
 				}
 			case <-s.stopChan:
-				logrus.Info("Stopping CCUsage collection service")
+				slog.Info("Stopping CCUsage collection service")
 				return
 			case <-ctx.Done():
-				logrus.Info("Context cancelled, stopping CCUsage collection service")
+				slog.Info("Context cancelled, stopping CCUsage collection service")
 				return
 			}
 		}
@@ -97,7 +96,7 @@ func (s *ccUsageService) CollectCCUsage(ctx context.Context) error {
 	ctx, span := modelTracer.Start(ctx, "ccusage.collect")
 	defer span.End()
 
-	logrus.Debug("Collecting CCUsage data")
+	slog.Debug("Collecting CCUsage data")
 
 	since := time.Time{}
 
@@ -111,10 +110,10 @@ func (s *ccUsageService) CollectCCUsage(ctx context.Context) error {
 		// Try to get last sync timestamp, but don't fail if it doesn't work
 		lastSync, err := s.getLastSyncTimestamp(ctx, endpoint)
 		if err != nil {
-			logrus.Warnf("Failed to get last sync timestamp: %v", err)
+			slog.Warn("Failed to get last sync timestamp", "error", err)
 		}
 		since = lastSync
-		logrus.Debugf("Got last sync timestamp: %v\n", since)
+		slog.Debug("Got last sync timestamp", "since", since)
 	}
 
 	// Collect data from ccusage command
@@ -136,7 +135,7 @@ func (s *ccUsageService) CollectCCUsage(ctx context.Context) error {
 		}
 	}
 
-	logrus.Debug("CCUsage data collection completed")
+	slog.Debug("CCUsage data collection completed")
 	return nil
 }
 
@@ -145,7 +144,7 @@ func (s *ccUsageService) getLastSyncTimestamp(ctx context.Context, endpoint Endp
 	// Get current hostname
 	hostname, err := os.Hostname()
 	if err != nil {
-		logrus.Warnf("Failed to get hostname: %v", err)
+		slog.Warn("Failed to get hostname", "error", err)
 		hostname = "unknown"
 	}
 
@@ -173,7 +172,7 @@ func (s *ccUsageService) getLastSyncTimestamp(ctx context.Context, endpoint Endp
 		"hostname": hostname,
 	}
 
-	logrus.Debugf("Fetching CCUsage last sync for hostname: %s", hostname)
+	slog.Debug("Fetching CCUsage last sync", "hostname", hostname)
 
 	err = SendGraphQLRequest(GraphQLRequestOptions[GraphQLResponse[fetchUserResponse]]{
 		Context:   ctx,
@@ -185,7 +184,7 @@ func (s *ccUsageService) getLastSyncTimestamp(ctx context.Context, endpoint Endp
 	})
 
 	if err != nil {
-		logrus.Warnf("Failed to fetch CCUsage last sync: %v", err)
+		slog.Warn("Failed to fetch CCUsage last sync", "error", err)
 		return time.Time{}, nil // Return nil to skip the since parameter
 	}
 
@@ -196,7 +195,7 @@ func (s *ccUsageService) getLastSyncTimestamp(ctx context.Context, endpoint Endp
 	}
 	lastSyncAt, err := time.Parse(time.RFC3339, lastSyncAtStr)
 	if err != nil {
-		logrus.Warnf("Failed to parse last sync timestamp: %v", err)
+		slog.Warn("Failed to parse last sync timestamp", "error", err)
 		return time.Time{}, err // Return nil to skip the since parameter
 	}
 
@@ -226,18 +225,18 @@ func (s *ccUsageService) collectData(ctx context.Context, since time.Time) (*CCU
 		// Convert Unix timestamp (seconds) to ISO 8601 date string
 		sinceDate := since.Format("20060102")
 		args = append(args, "--since", sinceDate)
-		logrus.Debugf("Using since parameter: %s (from timestamp %v)\n", sinceDate, since)
+		slog.Debug("Using since parameter", "sinceDate", sinceDate, "since", since)
 	}
 
 	var cmd *exec.Cmd
 	if bunxErr == nil {
 		// Use bunx if available
 		cmd = exec.CommandContext(ctx, bunxPath, args...)
-		logrus.Debug("Using bunx to collect ccusage data")
+		slog.Debug("Using bunx to collect ccusage data")
 	} else {
 		// Fall back to npx
 		cmd = exec.CommandContext(ctx, npxPath, args...)
-		logrus.Debug("Using npx to collect ccusage data")
+		slog.Debug("Using npx to collect ccusage data")
 	}
 
 	// Execute the command
@@ -258,7 +257,7 @@ func (s *ccUsageService) collectData(ctx context.Context, since time.Time) (*CCU
 	// Get system information for metadata
 	hostname, err := os.Hostname()
 	if err != nil {
-		logrus.Warnf("Failed to get hostname: %v", err)
+		slog.Warn("Failed to get hostname", "error", err)
 		hostname = "unknown"
 	}
 
@@ -266,7 +265,7 @@ func (s *ccUsageService) collectData(ctx context.Context, since time.Time) (*CCU
 	if username == "" {
 		currentUser, err := user.Current()
 		if err != nil {
-			logrus.Warnf("Failed to get username: %v", err)
+			slog.Warn("Failed to get username", "error", err)
 			username = "unknown"
 		} else {
 			username = currentUser.Username
@@ -275,7 +274,7 @@ func (s *ccUsageService) collectData(ctx context.Context, since time.Time) (*CCU
 
 	sysInfo, err := GetOSAndVersion()
 	if err != nil {
-		logrus.Warnf("Failed to get OS info: %v", err)
+		slog.Warn("Failed to get OS info", "error", err)
 		sysInfo = &SysInfo{
 			Os:      "unknown",
 			Version: "unknown",
@@ -373,7 +372,7 @@ func (s *ccUsageService) sendData(ctx context.Context, endpoint Endpoint, data *
 	}
 
 	if len(entries) == 0 {
-		logrus.Debug("No CCUsage entries to send")
+		slog.Debug("No CCUsage entries to send")
 		return nil
 	}
 
@@ -404,6 +403,6 @@ func (s *ccUsageService) sendData(ctx context.Context, endpoint Endpoint, data *
 		return fmt.Errorf("server rejected CCUsage data: %d/%d entries failed", resp.TotalCount-resp.SuccessCount, resp.TotalCount)
 	}
 
-	logrus.Debugf("CCUsage data sent successfully: %d/%d entries", resp.SuccessCount, resp.TotalCount)
+	slog.Debug("CCUsage data sent successfully", "successCount", resp.SuccessCount, "totalCount", resp.TotalCount)
 	return nil
 }
