@@ -275,7 +275,7 @@ shelltime daemon <subcommand>
 
 **Subcommands:**
 - `install`: Install the daemon service
-- `uninstall`: Remove the daemon service  
+- `uninstall`: Remove the daemon service
 - `reinstall`: Reinstall the daemon service
 
 **Examples:**
