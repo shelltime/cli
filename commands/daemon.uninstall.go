@@ -2,7 +2,6 @@ package commands
 
 import (
 	"fmt"
-	"os"
 	"os/user"
 	"path/filepath"
 
@@ -25,7 +24,7 @@ func commandDaemonUninstall(c *cli.Context) error {
 	if err != nil {
 		return fmt.Errorf("failed to get current user: %w", err)
 	}
-	
+
 	baseFolder := filepath.Join(currentUser.HomeDir, ".shelltime")
 	username := currentUser.Username
 
