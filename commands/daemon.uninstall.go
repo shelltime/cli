@@ -3,6 +3,8 @@ package commands
 import (
 	"fmt"
 	"os"
+	"os/user"
+	"path/filepath"
 
 	"github.com/gookit/color"
 	"github.com/malamtime/cli/model"
@@ -16,18 +18,16 @@ var DaemonUninstallCommand = &cli.Command{
 }
 
 func commandDaemonUninstall(c *cli.Context) error {
-	// Check if running as root
-	if os.Geteuid() != 0 {
-		return fmt.Errorf("this command must be run as root (sudo shelltime daemon uninstall)")
-	}
-
 	color.Yellow.Println("🔍 Starting daemon service uninstallation...")
 
-	// TODO: the username is not stable in multiple user system
-	baseFolder, username, err := model.SudoGetBaseFolder()
+	// Get current user's home directory and username
+	currentUser, err := user.Current()
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to get current user: %w", err)
 	}
+	
+	baseFolder := filepath.Join(currentUser.HomeDir, ".shelltime")
+	username := currentUser.Username
 
 	installer, err := model.NewDaemonInstaller(baseFolder, username)
 	if err != nil {
@@ -39,14 +39,8 @@ func commandDaemonUninstall(c *cli.Context) error {
 		return fmt.Errorf("failed to unregister service: %w", err)
 	}
 
-	// Remove symlink from /usr/local/bin
-	binaryPath := "/usr/local/bin/shelltime-daemon"
-	if _, err := os.Stat(binaryPath); err == nil {
-		color.Yellow.Println("🗑 Removing daemon symlink...")
-		if err := os.Remove(binaryPath); err != nil {
-			return fmt.Errorf("failed to remove daemon symlink: %w", err)
-		}
-	}
+	// No need to remove system-wide symlink for user-level installation
+	color.Yellow.Println("🗑 User-level daemon service cleanup completed...")
 
 	color.Green.Println("✅ Daemon service has been successfully uninstalled!")
 	// color.Yellow.Println("ℹ️  Note: Your commands will now be synced to shelltime.xyz on the next login")

@@ -3,6 +3,7 @@ package commands
 import (
 	"fmt"
 	"os"
+	"os/user"
 	"path/filepath"
 
 	"github.com/gookit/color"
@@ -18,18 +19,16 @@ var DaemonInstallCommand *cli.Command = &cli.Command{
 
 func commandDaemonInstall(c *cli.Context) error {
 	color.Yellow.Println("⚠️ Warning: This daemon service is currently not ready for use. Please proceed with caution.")
-
-	// Check if running as root
-	if os.Geteuid() != 0 {
-		return fmt.Errorf("this command must be run as root (sudo shelltime daemon install)")
-	}
 	color.Yellow.Println("🔍 Detecting system architecture...")
 
-	// TODO: the username is not stable in multiple user system
-	baseFolder, username, err := model.SudoGetBaseFolder()
+	// Get current user's home directory and username
+	currentUser, err := user.Current()
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to get current user: %w", err)
 	}
+	
+	baseFolder := filepath.Join(currentUser.HomeDir, ".shelltime")
+	username := currentUser.Username
 
 	installer, err := model.NewDaemonInstaller(baseFolder, username)
 	if err != nil {
@@ -59,15 +58,8 @@ func commandDaemonInstall(c *cli.Context) error {
 		return nil
 	}
 
-	// Copy to final location
-	binaryPath := "/usr/local/bin/shelltime-daemon"
-
-	if _, err := os.Stat(binaryPath); err != nil {
-		color.Yellow.Println("🔍 Creating daemon symlink...")
-		if err := os.Symlink(filepath.Join(baseFolder, "bin/shelltime-daemon"), binaryPath); err != nil {
-			return fmt.Errorf("failed to create daemon symlink: %w", err)
-		}
-	}
+	// User-level installation - no system-wide symlink needed
+	color.Yellow.Println("🔍 Setting up user-level daemon installation...")
 
 	if err := installer.InstallService(username); err != nil {
 		return err
