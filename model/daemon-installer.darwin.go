@@ -32,7 +32,7 @@ func NewMacDaemonInstaller(baseFolder, user string) *MacDaemonInstaller {
 }
 
 func (m *MacDaemonInstaller) Check() error {
-cmd := exec.Command("launchctl", "print", "user/"+fmt.Sprintf("%d", os.Getuid())+"/"+m.serviceName)
+	cmd := exec.Command("launchctl", "print", "user/"+fmt.Sprintf("%d", os.Getuid())+"/"+m.serviceName)
 	if err := cmd.Run(); err == nil {
 		return nil
 	}
@@ -65,7 +65,7 @@ func (m *MacDaemonInstaller) InstallService(username string) error {
 	if err := os.MkdirAll(daemonPath, 0755); err != nil {
 		return fmt.Errorf("failed to create daemon directory: %w", err)
 	}
-	
+
 	// Create logs directory if not exists
 	logsPath := filepath.Join(m.baseFolder, "logs")
 	if err := os.MkdirAll(logsPath, 0755); err != nil {
@@ -94,18 +94,18 @@ func (m *MacDaemonInstaller) RegisterService() error {
 	if m.baseFolder == "" {
 		return fmt.Errorf("base folder is not set")
 	}
-	
+
 	currentUser, err := user.Current()
 	if err != nil {
 		return fmt.Errorf("failed to get current user: %w", err)
 	}
-	
+
 	// Create LaunchAgents directory if it doesn't exist
 	launchAgentsDir := filepath.Join(currentUser.HomeDir, "Library/LaunchAgents")
 	if err := os.MkdirAll(launchAgentsDir, 0755); err != nil {
 		return fmt.Errorf("failed to create LaunchAgents directory: %w", err)
 	}
-	
+
 	plistPath := filepath.Join(launchAgentsDir, fmt.Sprintf("%s.plist", m.serviceName))
 	if _, err := os.Stat(plistPath); err != nil {
 		sourceFile := filepath.Join(m.baseFolder, fmt.Sprintf("daemon/%s.plist", m.serviceName))
@@ -118,12 +118,12 @@ func (m *MacDaemonInstaller) RegisterService() error {
 
 func (m *MacDaemonInstaller) StartService() error {
 	color.Yellow.Println("🚀 Starting service...")
-	
+
 	currentUser, err := user.Current()
 	if err != nil {
 		return fmt.Errorf("failed to get current user: %w", err)
 	}
-	
+
 	agentPath := filepath.Join(currentUser.HomeDir, "Library/LaunchAgents", fmt.Sprintf("%s.plist", m.serviceName))
 	if err := exec.Command("launchctl", "load", agentPath).Run(); err != nil {
 		return fmt.Errorf("failed to start service: %w", err)
@@ -135,19 +135,19 @@ func (m *MacDaemonInstaller) UnregisterService() error {
 	if m.baseFolder == "" {
 		return fmt.Errorf("base folder is not set")
 	}
-	
+
 	currentUser, err := user.Current()
 	if err != nil {
 		return fmt.Errorf("failed to get current user: %w", err)
 	}
-	
+
 	agentPath := filepath.Join(currentUser.HomeDir, "Library/LaunchAgents", fmt.Sprintf("%s.plist", m.serviceName))
-	
+
 	color.Yellow.Println("🛑 Stopping service if running...")
 	// Try to stop the service first
 	_ = exec.Command("launchctl", "unload", agentPath).Run()
 
-	color.Yellow.Println("🗑 Removing service files...")
+	color.Yellow.Println("🗑  Removing service files...")
 	// Remove symlink from LaunchAgents
 	if err := os.Remove(agentPath); err != nil && !os.IsNotExist(err) {
 		return fmt.Errorf("failed to remove launch agent plist: %w", err)

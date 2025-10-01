@@ -18,7 +18,6 @@ var DaemonInstallCommand *cli.Command = &cli.Command{
 }
 
 func commandDaemonInstall(c *cli.Context) error {
-	color.Yellow.Println("⚠️ Warning: This daemon service is currently not ready for use. Please proceed with caution.")
 	color.Yellow.Println("🔍 Detecting system architecture...")
 
 	// Get current user's home directory and username
@@ -26,7 +25,7 @@ func commandDaemonInstall(c *cli.Context) error {
 	if err != nil {
 		return fmt.Errorf("failed to get current user: %w", err)
 	}
-	
+
 	baseFolder := filepath.Join(currentUser.HomeDir, ".shelltime")
 	username := currentUser.Username
 

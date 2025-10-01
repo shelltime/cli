@@ -39,7 +39,7 @@ func commandDaemonUninstall(c *cli.Context) error {
 	}
 
 	// No need to remove system-wide symlink for user-level installation
-	color.Yellow.Println("🗑 User-level daemon service cleanup completed...")
+	color.Yellow.Println("🗑  User-level daemon service cleanup completed...")
 
 	color.Green.Println("✅ Daemon service has been successfully uninstalled!")
 	// color.Yellow.Println("ℹ️  Note: Your commands will now be synced to shelltime.xyz on the next login")

@@ -15,7 +15,7 @@ func commandDaemonReinstall(c *cli.Context) error {
 	color.Yellow.Println("🔄 Starting daemon service reinstallation...")
 
 	// First, uninstall the existing service
-	color.Yellow.Println("🗑 Uninstalling existing daemon service...")
+	color.Yellow.Println("🗑  Uninstalling existing daemon service...")
 	if err := commandDaemonUninstall(c); err != nil {
 		return err
 	}
