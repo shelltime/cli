@@ -1,5 +1,23 @@
 # Changelog
 
+## [0.1.28](https://github.com/shelltime/cli/compare/v0.1.27...v0.1.28) (2025-10-01)
+
+
+### Features
+
+* **daemon:** move macOS daemon install from root to user permissions ([b9d7625](https://github.com/shelltime/cli/commit/b9d7625383eba600e9cb3d778091458dfe88651b))
+* **daemon:** move macOS daemon install from root to user permissions ([dc759c8](https://github.com/shelltime/cli/commit/dc759c82a2d4b811a6a2e2033ad1d615018621a6))
+
+
+### Bug Fixes
+
+* **daemon:** remove unused import and fix formatting in uninstall command ([a0279d9](https://github.com/shelltime/cli/commit/a0279d9a42dcdc5e19ec3b620ba0897fe43f09a1))
+
+
+### Miscellaneous Chores
+
+* release 0.1.28 ([552f43a](https://github.com/shelltime/cli/commit/552f43ab4d174f48edbc1324abf8234a5b949f85))
+
 ## [0.1.27](https://github.com/shelltime/cli/compare/v0.1.26...v0.1.27) (2025-09-28)
 
 
