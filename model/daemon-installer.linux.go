@@ -117,7 +117,7 @@ func (l *LinuxDaemonInstaller) UnregisterService() error {
 	_ = exec.Command("systemctl", "stop", "shelltime").Run()
 	_ = exec.Command("systemctl", "disable", "shelltime").Run()
 
-	color.Yellow.Println("🗑 Removing service files...")
+	color.Yellow.Println("🗑  Removing service files...")
 	// Remove symlink from systemd
 	if err := os.Remove("/etc/systemd/system/shelltime.service"); err != nil && !os.IsNotExist(err) {
 		return fmt.Errorf("failed to remove systemd service symlink: %w", err)

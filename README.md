@@ -31,7 +31,7 @@ curl -sSL https://shelltime.xyz/i | bash
 
 3. **Optional: Enable daemon mode** (recommended for optimal performance):
    ```bash
-   sudo shelltime daemon install
+   shelltime daemon install
    ```
 
 ## Configuration
@@ -274,20 +274,20 @@ shelltime daemon <subcommand>
 ```
 
 **Subcommands:**
-- `install`: Install the daemon service (requires sudo)
-- `uninstall`: Remove the daemon service (requires sudo)
-- `reinstall`: Reinstall the daemon service (requires sudo)
+- `install`: Install the daemon service
+- `uninstall`: Remove the daemon service
+- `reinstall`: Reinstall the daemon service
 
 **Examples:**
 ```bash
 # Install daemon for better performance
-sudo shelltime daemon install
+shelltime daemon install
 
 # Remove daemon service
-sudo shelltime daemon uninstall
+shelltime daemon uninstall
 
 # Reinstall (useful for updates)
-sudo shelltime daemon reinstall
+shelltime daemon reinstall
 ```
 
 #### `shelltime hooks`
@@ -413,7 +413,7 @@ Default synchronization behavior and expected latencies:
 For optimal performance and minimal shell latency, enable daemon mode:
 
 ```bash
-sudo ~/.shelltime/bin/shelltime daemon install
+~/.shelltime/bin/shelltime daemon install
 ```
 
 **Key Benefits:**
@@ -423,7 +423,7 @@ sudo ~/.shelltime/bin/shelltime daemon install
 - **Resilient Delivery**: Automatic retry and buffering during network issues
 
 **Technical Implementation:**
-- Operates as a system-level service
+- Operates as a user-level service
 - Manages all network synchronization operations
 - Implements intelligent command buffering
 - Provides automatic retry mechanisms for failed synchronizations
@@ -500,7 +500,7 @@ ShellTime implements a hybrid RSA/AES-GCM encryption scheme:
 Remove the daemon service when no longer needed:
 
 ```bash
-sudo ~/.shelltime/bin/shelltime daemon uninstall
+~/.shelltime/bin/shelltime daemon uninstall
 ```
 
 **Uninstallation Process:**

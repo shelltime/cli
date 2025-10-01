@@ -6,16 +6,16 @@
     <string>xyz.shelltime.daemon</string>
     <key>ProgramArguments</key>
     <array>
-        <string>/usr/local/bin/shelltime-daemon</string>
+        <string>{{.BaseFolder}}/bin/shelltime-daemon</string>
     </array>
     <key>RunAtLoad</key>
     <true/>
     <key>KeepAlive</key>
     <true/>
     <key>StandardErrorPath</key>
-    <string>/var/log/shelltime-daemon.err</string>
+    <string>{{.BaseFolder}}/logs/shelltime-daemon.err</string>
     <key>StandardOutPath</key>
-    <string>/var/log/shelltime-daemon.log</string>
+    <string>{{.BaseFolder}}/logs/shelltime-daemon.log</string>
     <key>EnvironmentVariables</key>
     <dict>
         <key>HOSTING_USER</key>
