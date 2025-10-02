@@ -254,12 +254,12 @@ func lookPath(name string) (string, error) {
 			filepath.Join(homeDir, ".local", "share", "fnm", "node-versions", "*", "installation", "bin", name),
 			filepath.Join(homeDir, ".fnm", "node-versions", "*", "installation", "bin", name),
 			// Homebrew on macOS (Intel)
-			"/usr/local/bin/" + name,
+			filepath.Join("/usr/local/bin", name),
 			// Homebrew on macOS (Apple Silicon)
-			"/opt/homebrew/bin/" + name,
+			filepath.Join("/opt/homebrew/bin", name),
 			// Common system paths
-			"/usr/bin/" + name,
-			"/bin/" + name,
+			filepath.Join("/usr/bin", name),
+			filepath.Join("/bin", name),
 		}
 
 		// Add Node.js versions from nvm if NVM_DIR is set
