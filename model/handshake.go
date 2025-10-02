@@ -12,7 +12,6 @@ import (
 	"time"
 
 	"github.com/sirupsen/logrus"
-	"github.com/vmihailenco/msgpack/v5"
 	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 )
 
@@ -103,7 +102,7 @@ func (hs handshakeService) Init(ctx context.Context) (string, error) {
 		OSVersion: sysInfo.Version,
 	}
 
-	jsonData, err := msgpack.Marshal(data)
+	jsonData, err := json.Marshal(data)
 	if err != nil {
 		logrus.Errorln(err)
 		return "", err
@@ -130,7 +129,7 @@ func (hs handshakeService) Check(ctx context.Context, handshakeId string) (token
 		EncodedID: handshakeId,
 	}
 
-	jsonData, err := msgpack.Marshal(data)
+	jsonData, err := json.Marshal(data)
 	if err != nil {
 		logrus.Errorln(err)
 		return "", err

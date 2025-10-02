@@ -2,6 +2,7 @@ package daemon
 
 import (
 	"context"
+	"encoding/json"
 	"log/slog"
 	"time"
 
@@ -74,7 +75,7 @@ func handlePubSubSync(ctx context.Context, socketMsgPayload interface{}) error {
 				slog.Error("Failed to encrypt key", slog.Any("err", err))
 			}
 
-			buf, err := msgpack.Marshal(payload)
+			buf, err := json.Marshal(payload)
 
 			if err != nil {
 				slog.Error("Failed to marshal payload", slog.Any("err", err))
