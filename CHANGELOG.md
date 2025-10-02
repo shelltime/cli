@@ -1,5 +1,15 @@
 # Changelog
 
+## [0.1.29](https://github.com/shelltime/cli/compare/v0.1.28...v0.1.29) (2025-10-02)
+
+
+### Bug Fixes
+
+* **handshake:** update Content-Type header to application/json ([d0875ae](https://github.com/shelltime/cli/commit/d0875ae2caefbd89f4fc2d8236ff2d49171e5c56))
+* **model:** add fnm support to custom lookPath ([7861724](https://github.com/shelltime/cli/commit/78617246fb9a609c9b1a39c0c6438eb14ced0014))
+* **model:** implement custom lookPath for node package managers ([63020ad](https://github.com/shelltime/cli/commit/63020ad3fb5ba1a238f09400ec96a5c01e700eca))
+* **model:** implement custom lookPath for node package managers ([dd10653](https://github.com/shelltime/cli/commit/dd10653fef8dcb5b7f73fa8b5b602c9deafe50cc)), closes [#112](https://github.com/shelltime/cli/issues/112)
+
 ## [0.1.28](https://github.com/shelltime/cli/compare/v0.1.27...v0.1.28) (2025-10-01)
 
 
