@@ -313,7 +313,7 @@ func (s *ccUsageService) collectData(ctx context.Context, since time.Time) (*CCU
 	npxPath, npxErr := lookPath("npx")
 
 	if bunxErr != nil && npxErr != nil {
-		return nil, fmt.Errorf("neither bunx nor npx found in system PATH")
+		return nil, fmt.Errorf("neither bunx nor npx found in system PATH or common installation locations")
 	}
 
 	// Build command arguments
