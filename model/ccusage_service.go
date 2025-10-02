@@ -250,6 +250,9 @@ func lookPath(name string) (string, error) {
 			filepath.Join(homeDir, ".bun", "bin", name),
 			// NVM (Node Version Manager) current version
 			filepath.Join(homeDir, ".nvm", "current", "bin", name),
+			// fnm (Fast Node Manager) installations
+			filepath.Join(homeDir, ".local", "share", "fnm", "node-versions", "*", "installation", "bin", name),
+			filepath.Join(homeDir, ".fnm", "node-versions", "*", "installation", "bin", name),
 			// Homebrew on macOS (Intel)
 			"/usr/local/bin/" + name,
 			// Homebrew on macOS (Apple Silicon)
@@ -265,6 +268,13 @@ func lookPath(name string) (string, error) {
 			searchPaths = append(searchPaths,
 				filepath.Join(nvmDir, "current", "bin", name),
 				filepath.Join(nvmDir, "versions", "node", "*", "bin", name),
+			)
+		}
+
+		// Add Node.js versions from fnm if FNM_DIR is set
+		if fnmDir := os.Getenv("FNM_DIR"); fnmDir != "" {
+			searchPaths = append(searchPaths,
+				filepath.Join(fnmDir, "node-versions", "*", "installation", "bin", name),
 			)
 		}
 	}
