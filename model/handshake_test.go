@@ -2,13 +2,13 @@ package model
 
 import (
 	"context"
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/suite"
-	"github.com/vmihailenco/msgpack/v5"
 )
 
 type handshakeTestSuite struct {
@@ -21,12 +21,12 @@ func (s *handshakeTestSuite) TestHandshakeInitSuccess() {
 		// Verify request
 		assert.Equal(t, "POST", r.Method)
 		assert.Equal(t, "/api/v1/handshake/init", r.URL.Path)
-		assert.Equal(t, "application/msgpack", r.Header.Get("Content-Type"))
+		assert.Equal(t, "application/json", r.Header.Get("Content-Type"))
 		assert.Contains(t, r.Header.Get("User-Agent"), "shelltimeCLI@")
 
 		// Decode request body
 		var payload handshakeInitRequest
-		err := msgpack.NewDecoder(r.Body).Decode(&payload)
+		err := json.NewDecoder(r.Body).Decode(&payload)
 		assert.NoError(t, err)
 
 		// Verify payload
@@ -74,11 +74,11 @@ func (s *handshakeTestSuite) TestHandshakeCheckWithToken() {
 		// Verify request
 		assert.Equal(t, "POST", r.Method)
 		assert.Equal(t, "/api/v1/handshake/check", r.URL.Path)
-		assert.Equal(t, "application/msgpack", r.Header.Get("Content-Type"))
+		assert.Equal(t, "application/json", r.Header.Get("Content-Type"))
 
 		// Decode request body
 		var payload handshakeCheckRequest
-		err := msgpack.NewDecoder(r.Body).Decode(&payload)
+		err := json.NewDecoder(r.Body).Decode(&payload)
 		assert.NoError(t, err)
 
 		// Verify payload
