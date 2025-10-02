@@ -283,8 +283,9 @@ func lookPath(name string) (string, error) {
 	for _, path := range searchPaths {
 		// Handle glob patterns (like nvm versions)
 		if matches, err := filepath.Glob(path); err == nil && len(matches) > 0 {
-			// Use the first match
-			path = matches[0]
+			// Use the last match, which is likely to be the latest version
+			// since Glob returns a sorted list.
+			path = matches[len(matches)-1]
 		}
 
 		// Check if the file exists and is executable
