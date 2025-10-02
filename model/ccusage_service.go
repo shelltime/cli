@@ -9,6 +9,8 @@ import (
 	"os"
 	"os/exec"
 	"os/user"
+	"path/filepath"
+	"runtime"
 	"time"
 )
 
@@ -207,11 +209,97 @@ func (s *ccUsageService) getLastSyncTimestamp(ctx context.Context, endpoint Endp
 	return lastSyncAt, nil
 }
 
+// lookPath searches for an executable in common locations, falling back to system PATH.
+// This is necessary because when running as a daemon service, the PATH environment
+// variable may not include user-specific Node.js installation paths.
+func lookPath(name string) (string, error) {
+	// First, try the standard exec.LookPath which checks system PATH
+	if path, err := exec.LookPath(name); err == nil {
+		return path, nil
+	}
+
+	// Get the current user's home directory
+	currentUser, err := user.Current()
+	if err != nil {
+		return "", fmt.Errorf("%s not found in PATH and unable to get user home directory: %w", name, err)
+	}
+	homeDir := currentUser.HomeDir
+
+	// Common installation locations for node package managers
+	var searchPaths []string
+
+	if runtime.GOOS == "windows" {
+		// Windows paths
+		searchPaths = []string{
+			filepath.Join(homeDir, "AppData", "Roaming", "npm", name+".cmd"),
+			filepath.Join(homeDir, "AppData", "Roaming", "npm", name+".ps1"),
+			filepath.Join(homeDir, ".bun", "bin", name+".exe"),
+			filepath.Join(homeDir, ".bun", "bin", name),
+			filepath.Join(os.Getenv("ProgramFiles"), "nodejs", name+".cmd"),
+			filepath.Join(os.Getenv("ProgramFiles(x86)"), "nodejs", name+".cmd"),
+		}
+	} else {
+		// Unix-like systems (Linux, macOS, etc.)
+		searchPaths = []string{
+			// User-specific npm global installations
+			filepath.Join(homeDir, ".npm-global", "bin", name),
+			filepath.Join(homeDir, ".npm", "bin", name),
+			// User-specific pnpm installation
+			filepath.Join(homeDir, ".local", "share", "pnpm", name),
+			// Bun installation
+			filepath.Join(homeDir, ".bun", "bin", name),
+			// NVM (Node Version Manager) current version
+			filepath.Join(homeDir, ".nvm", "current", "bin", name),
+			// Homebrew on macOS (Intel)
+			"/usr/local/bin/" + name,
+			// Homebrew on macOS (Apple Silicon)
+			"/opt/homebrew/bin/" + name,
+			// Common system paths
+			"/usr/bin/" + name,
+			"/bin/" + name,
+		}
+
+		// Add Node.js versions from nvm if NVM_DIR is set
+		if nvmDir := os.Getenv("NVM_DIR"); nvmDir != "" {
+			// Try to find the default/current version
+			searchPaths = append(searchPaths,
+				filepath.Join(nvmDir, "current", "bin", name),
+				filepath.Join(nvmDir, "versions", "node", "*", "bin", name),
+			)
+		}
+	}
+
+	// Search each path
+	for _, path := range searchPaths {
+		// Handle glob patterns (like nvm versions)
+		if matches, err := filepath.Glob(path); err == nil && len(matches) > 0 {
+			// Use the first match
+			path = matches[0]
+		}
+
+		// Check if the file exists and is executable
+		if info, err := os.Stat(path); err == nil {
+			if !info.IsDir() {
+				// On Unix-like systems, check if it's executable
+				if runtime.GOOS != "windows" {
+					if info.Mode()&0111 == 0 {
+						continue
+					}
+				}
+				slog.Debug("Found executable", "name", name, "path", path)
+				return path, nil
+			}
+		}
+	}
+
+	return "", fmt.Errorf("%s not found in PATH or common installation locations", name)
+}
+
 // collectData collects usage data using bunx or npx ccusage command
 func (s *ccUsageService) collectData(ctx context.Context, since time.Time) (*CCUsageData, error) {
-	// Check if bunx exists
-	bunxPath, bunxErr := exec.LookPath("bunx")
-	npxPath, npxErr := exec.LookPath("npx")
+	// Check if bunx exists using custom lookPath that checks common installation locations
+	bunxPath, bunxErr := lookPath("bunx")
+	npxPath, npxErr := lookPath("npx")
 
 	if bunxErr != nil && npxErr != nil {
 		return nil, fmt.Errorf("neither bunx nor npx found in system PATH")
