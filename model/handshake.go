@@ -50,7 +50,7 @@ func (hs handshakeService) send(ctx context.Context, path string, jsonData []byt
 		return
 	}
 
-	req.Header.Set("Content-Type", "application/msgpack")
+	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("User-Agent", fmt.Sprintf("shelltimeCLI@%s", commitID))
 	resp, err := hc.Do(req)
 	if err != nil {
