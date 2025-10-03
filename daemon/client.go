@@ -2,12 +2,12 @@ package daemon
 
 import (
 	"context"
+	"encoding/json"
 	"net"
 	"os"
 	"time"
 
 	"github.com/malamtime/cli/model"
-	"github.com/vmihailenco/msgpack/v5"
 )
 
 func IsSocketReady(ctx context.Context, socketPath string) bool {
@@ -38,7 +38,7 @@ func SendLocalDataToSocket(
 		},
 	}
 
-	encoded, err := msgpack.Marshal(data)
+	encoded, err := json.Marshal(data)
 	if err != nil {
 		return err
 	}
