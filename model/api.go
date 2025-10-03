@@ -14,37 +14,37 @@ type errorResponse struct {
 }
 
 type TrackingData struct {
-	SessionID     int64  `json:"sessionId" msgpack:"sessionId"`
-	Command       string `json:"command" msgpack:"command"`
-	StartTime     int64  `json:"startTime" msgpack:"startTime"`
-	EndTime       int64  `json:"endTime" msgpack:"endTime"`
-	StartTimeNano int64  `json:"startTimeNano" msgpack:"startTimeNano"`
-	EndTimeNano   int64  `json:"endTimeNano" msgpack:"endTimeNano"`
-	Result        int    `json:"result" msgpack:"result"`
+	SessionID     int64  `json:"sessionId"`
+	Command       string `json:"command"`
+	StartTime     int64  `json:"startTime"`
+	EndTime       int64  `json:"endTime"`
+	StartTimeNano int64  `json:"startTimeNano"`
+	EndTimeNano   int64  `json:"endTimeNano"`
+	Result        int    `json:"result"`
 }
 
 type TrackingMetaData struct {
-	Hostname  string `json:"hostname" msgpack:"hostname"`
-	Username  string `json:"username" msgpack:"username"`
-	OS        string `json:"os" msgpack:"os"`
-	OSVersion string `json:"osVersion" msgpack:"osVersion"`
-	Shell     string `json:"shell" msgpack:"shell"`
+	Hostname  string `json:"hostname"`
+	Username  string `json:"username"`
+	OS        string `json:"os"`
+	OSVersion string `json:"osVersion"`
+	Shell     string `json:"shell"`
 
 	// 0: cli, 1: daemon
-	Source int `json:"source" msgpack:"source"`
+	Source int `json:"source"`
 }
 
 type PostTrackArgs struct {
 	// nano timestamp
-	CursorID int64            `json:"cursorId" msgpack:"cursorId"`
-	Data     []TrackingData   `json:"data" msgpack:"data"`
-	Meta     TrackingMetaData `json:"meta" msgpack:"meta"`
+	CursorID int64            `json:"cursorId"`
+	Data     []TrackingData   `json:"data"`
+	Meta     TrackingMetaData `json:"meta"`
 
-	Encrypted string `json:"encrypted" msgpack:"encrypted"`
+	Encrypted string `json:"encrypted"`
 	// a base64 encoded AES-GCM key that encrypted by PublicKey from open token
-	AesKey string `json:"aesKey" msgpack:"aesKey"`
+	AesKey string `json:"aesKey"`
 	// the AES-GCM nonce. not encrypted
-	Nonce string `json:"nonce" msgpack:"nonce"`
+	Nonce string `json:"nonce"`
 }
 
 func doSendData(ctx context.Context, endpoint Endpoint, data PostTrackArgs) error {

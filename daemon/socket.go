@@ -1,13 +1,13 @@
 package daemon
 
 import (
+	"encoding/json"
 	"log/slog"
 	"net"
 	"os"
 
 	"github.com/ThreeDotsLabs/watermill"
 	"github.com/ThreeDotsLabs/watermill/message"
-	"github.com/vmihailenco/msgpack/v5"
 )
 
 type SocketMessageType string
@@ -17,9 +17,9 @@ const (
 )
 
 type SocketMessage struct {
-	Type SocketMessageType `msgpack:"type"`
+	Type SocketMessageType `json:"type"`
 	// if parse from buffer, it will be the map[any]any
-	Payload interface{} `msgpack:"payload"`
+	Payload interface{} `json:"payload"`
 }
 
 type SocketHandler struct {
@@ -89,7 +89,7 @@ func (p *SocketHandler) acceptConnections() {
 
 func (p *SocketHandler) handleConnection(conn net.Conn) {
 	defer conn.Close()
-	decoder := msgpack.NewDecoder(conn)
+	decoder := json.NewDecoder(conn)
 	var msg SocketMessage
 	if err := decoder.Decode(&msg); err != nil {
 		slog.Error("Error decoding message", slog.Any("err", err))
@@ -102,7 +102,7 @@ func (p *SocketHandler) handleConnection(conn net.Conn) {
 	// case "track":
 	// 	p.handleTrack(conn, msg.Payload)
 	case SocketMessageTypeSync:
-		buf, err := msgpack.Marshal(msg)
+		buf, err := json.Marshal(msg)
 		if err != nil {
 			slog.Error("Error encoding message", slog.Any("err", err))
 		}

@@ -76,9 +76,9 @@ func (hs handshakeService) send(ctx context.Context, path string, jsonData []byt
 }
 
 type handshakeInitRequest struct {
-	Hostname  string `json:"hostname" msgpack:"hostname"`
-	OS        string `json:"os" msgpack:"os"`
-	OSVersion string `json:"osVersion" msgpack:"osVersion"`
+	Hostname  string `json:"hostname"`
+	OS        string `json:"os"`
+	OSVersion string `json:"osVersion"`
 }
 
 func (hs handshakeService) Init(ctx context.Context) (string, error) {
@@ -121,7 +121,7 @@ func (hs handshakeService) Init(ctx context.Context) (string, error) {
 }
 
 type handshakeCheckRequest struct {
-	EncodedID string `json:"hid" msgpack:"hid"`
+	EncodedID string `json:"hid"`
 }
 
 func (hs handshakeService) Check(ctx context.Context, handshakeId string) (token string, err error) {

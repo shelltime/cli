@@ -16,12 +16,12 @@ import (
 
 // CCUsageData represents the usage data collected from ccusage command
 type CCUsageData struct {
-	Timestamp string                    `json:"timestamp" msgpack:"timestamp"`
-	Hostname  string                    `json:"hostname" msgpack:"hostname"`
-	Username  string                    `json:"username" msgpack:"username"`
-	OS        string                    `json:"os" msgpack:"os"`
-	OSVersion string                    `json:"osVersion" msgpack:"osVersion"`
-	Data      CCUsageProjectDailyOutput `json:"data" msgpack:"data"`
+	Timestamp string                    `json:"timestamp"`
+	Hostname  string                    `json:"hostname"`
+	Username  string                    `json:"username"`
+	OS        string                    `json:"os"`
+	OSVersion string                    `json:"osVersion"`
+	Data      CCUsageProjectDailyOutput `json:"data"`
 }
 
 // CCUsageService defines the interface for CC usage collection

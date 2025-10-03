@@ -12,17 +12,17 @@ import (
 
 // DotfileItem represents a single dotfile to be sent to the server
 type DotfileItem struct {
-	App            string                 `json:"app" msgpack:"app"`
-	Path           string                 `json:"path" msgpack:"path"`
-	Content        string                 `json:"content" msgpack:"content"`
-	FileModifiedAt *time.Time             `json:"fileModifiedAt" msgpack:"fileModifiedAt"`
-	FileType       string                 `json:"fileType" msgpack:"fileType"`
-	Metadata       map[string]interface{} `json:"metadata" msgpack:"metadata"`
-	Hostname       string                 `json:"hostname" msgpack:"hostname"`
+	App            string                 `json:"app"`
+	Path           string                 `json:"path"`
+	Content        string                 `json:"content"`
+	FileModifiedAt *time.Time             `json:"fileModifiedAt"`
+	FileType       string                 `json:"fileType"`
+	Metadata       map[string]interface{} `json:"metadata"`
+	Hostname       string                 `json:"hostname"`
 }
 
 type dotfilePushRequest struct {
-	Dotfiles []DotfileItem `json:"dotfiles" msgpack:"dotfiles"`
+	Dotfiles []DotfileItem `json:"dotfiles"`
 }
 
 type dotfileResponseItem struct {

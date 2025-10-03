@@ -7,18 +7,17 @@ import (
 	"time"
 
 	"github.com/malamtime/cli/model"
-	"github.com/vmihailenco/msgpack/v5"
 )
 
 func handlePubSubSync(ctx context.Context, socketMsgPayload interface{}) error {
-	pb, err := msgpack.Marshal(socketMsgPayload)
+	pb, err := json.Marshal(socketMsgPayload)
 	if err != nil {
 		slog.Error("Failed to marshal the sync payload again for unmarshal", slog.Any("payload", socketMsgPayload))
 		return err
 	}
 
 	var syncMsg model.PostTrackArgs
-	err = msgpack.Unmarshal(pb, &syncMsg)
+	err = json.Unmarshal(pb, &syncMsg)
 	if err != nil {
 		slog.Error("Failed to parse sync payload", slog.Any("payload", socketMsgPayload))
 		return err
