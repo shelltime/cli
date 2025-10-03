@@ -6,8 +6,6 @@ After=network.target
 Type=simple
 ExecStart=/usr/local/bin/shelltime-daemon
 Restart=always
-User=root
-Group=root
 
 [Install]
-WantedBy=multi-user.target
+WantedBy=default.target

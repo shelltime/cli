@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"os/user"
 	"path/filepath"
 	"text/template"
 
@@ -26,7 +27,7 @@ func NewLinuxDaemonInstaller(baseFolder, user string) *LinuxDaemonInstaller {
 }
 
 func (l *LinuxDaemonInstaller) Check() error {
-	cmd := exec.Command("systemctl", "is-active", "shelltime")
+	cmd := exec.Command("systemctl", "--user", "is-active", "shelltime")
 	if err := cmd.Run(); err == nil {
 		return nil
 	}
@@ -36,13 +37,20 @@ func (l *LinuxDaemonInstaller) Check() error {
 func (l *LinuxDaemonInstaller) CheckAndStopExistingService() error {
 	color.Yellow.Println("🔍 Checking if service is running...")
 
-	if err := l.Check(); err != nil {
-		return err
-	}
-
-	color.Yellow.Println("🛑 Stopping existing service...")
-	if err := exec.Command("systemctl", "stop", "shelltime").Run(); err != nil {
-		return fmt.Errorf("failed to stop existing service: %w", err)
+	if err := l.Check(); err == nil {
+		color.Yellow.Println("🛑 Stopping existing service...")
+		currentUser, err := user.Current()
+		if err != nil {
+			return fmt.Errorf("failed to get current user: %w", err)
+		}
+		servicePath := filepath.Join(currentUser.HomeDir, ".config/systemd/user/shelltime.service")
+		if err := exec.Command("systemctl", "--user", "stop", "shelltime").Run(); err != nil {
+			return fmt.Errorf("failed to stop existing service: %w", err)
+		}
+		// Also disable to clean up
+		_ = exec.Command("systemctl", "--user", "disable", "shelltime").Run()
+		// Remove old symlink if exists
+		_ = os.Remove(servicePath)
 	}
 	return nil
 }
@@ -80,7 +88,19 @@ func (l *LinuxDaemonInstaller) RegisterService() error {
 	if l.baseFolder == "" {
 		return fmt.Errorf("base folder is not set")
 	}
-	servicePath := "/etc/systemd/system/shelltime.service"
+
+	currentUser, err := user.Current()
+	if err != nil {
+		return fmt.Errorf("failed to get current user: %w", err)
+	}
+
+	// Create systemd user directory if it doesn't exist
+	systemdUserDir := filepath.Join(currentUser.HomeDir, ".config/systemd/user")
+	if err := os.MkdirAll(systemdUserDir, 0755); err != nil {
+		return fmt.Errorf("failed to create systemd user directory: %w", err)
+	}
+
+	servicePath := filepath.Join(systemdUserDir, "shelltime.service")
 	if _, err := os.Stat(servicePath); err != nil {
 		sourceFile := filepath.Join(l.baseFolder, "daemon/shelltime.service")
 		if err := os.Symlink(sourceFile, servicePath); err != nil {
@@ -92,17 +112,17 @@ func (l *LinuxDaemonInstaller) RegisterService() error {
 
 func (l *LinuxDaemonInstaller) StartService() error {
 	color.Yellow.Println("🔄 Reloading systemd...")
-	if err := exec.Command("systemctl", "daemon-reload").Run(); err != nil {
+	if err := exec.Command("systemctl", "--user", "daemon-reload").Run(); err != nil {
 		return fmt.Errorf("failed to reload systemd: %w", err)
 	}
 
 	color.Yellow.Println("✨ Enabling service...")
-	if err := exec.Command("systemctl", "enable", "shelltime").Run(); err != nil {
+	if err := exec.Command("systemctl", "--user", "enable", "shelltime").Run(); err != nil {
 		return fmt.Errorf("failed to enable service: %w", err)
 	}
 
 	color.Yellow.Println("🚀 Starting service...")
-	if err := exec.Command("systemctl", "start", "shelltime").Run(); err != nil {
+	if err := exec.Command("systemctl", "--user", "start", "shelltime").Run(); err != nil {
 		return fmt.Errorf("failed to start service: %w", err)
 	}
 	return nil
@@ -112,19 +132,27 @@ func (l *LinuxDaemonInstaller) UnregisterService() error {
 	if l.baseFolder == "" {
 		return fmt.Errorf("base folder is not set")
 	}
+
+	currentUser, err := user.Current()
+	if err != nil {
+		return fmt.Errorf("failed to get current user: %w", err)
+	}
+
+	servicePath := filepath.Join(currentUser.HomeDir, ".config/systemd/user/shelltime.service")
+
 	color.Yellow.Println("🛑 Stopping and disabling service if running...")
 	// Try to stop and disable the service
-	_ = exec.Command("systemctl", "stop", "shelltime").Run()
-	_ = exec.Command("systemctl", "disable", "shelltime").Run()
+	_ = exec.Command("systemctl", "--user", "stop", "shelltime").Run()
+	_ = exec.Command("systemctl", "--user", "disable", "shelltime").Run()
 
 	color.Yellow.Println("🗑  Removing service files...")
 	// Remove symlink from systemd
-	if err := os.Remove("/etc/systemd/system/shelltime.service"); err != nil && !os.IsNotExist(err) {
+	if err := os.Remove(servicePath); err != nil && !os.IsNotExist(err) {
 		return fmt.Errorf("failed to remove systemd service symlink: %w", err)
 	}
 
 	color.Yellow.Println("🔄 Reloading systemd...")
-	if err := exec.Command("systemctl", "daemon-reload").Run(); err != nil {
+	if err := exec.Command("systemctl", "--user", "daemon-reload").Run(); err != nil {
 		return fmt.Errorf("failed to reload systemd: %w", err)
 	}
 
