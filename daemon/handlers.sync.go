@@ -32,15 +32,6 @@ func handlePubSubSync(ctx context.Context, socketMsgPayload interface{}) error {
 		return err
 	}
 
-	// Call SendLocalDataToServer
-	slog.Debug("Sending local data to server",
-		slog.Any("ctx", ctx),
-		slog.Any("cfg", cfg),
-		slog.Time("cursor", time.Unix(0, syncMsg.CursorID)),
-		slog.Any("data", syncMsg.Data),
-		slog.Any("meta", syncMsg.Meta),
-	)
-
 	payload := model.PostTrackArgs{
 		CursorID: time.Unix(0, syncMsg.CursorID).UnixNano(), // Convert nano timestamp to time.Time
 		Data:     syncMsg.Data,

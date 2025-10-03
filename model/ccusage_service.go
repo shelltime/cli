@@ -70,7 +70,7 @@ func (s *ccUsageService) Start(ctx context.Context) error {
 			select {
 			case <-s.ticker.C:
 				if err := s.CollectCCUsage(ctx); err != nil {
-					slog.Warn("CCUsage collection failed", "error", err)
+					slog.Error("CCUsage collection failed", "error", err)
 				}
 			case <-s.stopChan:
 				slog.Info("Stopping CCUsage collection service")
@@ -313,6 +313,7 @@ func (s *ccUsageService) collectData(ctx context.Context, since time.Time) (*CCU
 	npxPath, npxErr := lookPath("npx")
 
 	if bunxErr != nil && npxErr != nil {
+		slog.Warn("error looking for bunx or npx", "bunxErr", bunxErr, "npxErr", npxErr)
 		return nil, fmt.Errorf("neither bunx nor npx found in system PATH or common installation locations")
 	}
 
