@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.31](https://github.com/shelltime/cli/compare/v0.1.30...v0.1.31) (2025-10-04)
+
+
+### Bug Fixes
+
+* **commands:** resolve flaky track test assertion ([0da55b7](https://github.com/shelltime/cli/commit/0da55b78f4d1068fcfad1c8b1535936e95dcd9d5))
+
 ## [0.1.30](https://github.com/shelltime/cli/compare/v0.1.29...v0.1.30) (2025-10-04)
 
 
