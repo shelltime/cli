@@ -11,6 +11,7 @@ import (
 	"os/user"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"time"
 )
 
@@ -303,7 +304,52 @@ func lookPath(name string) (string, error) {
 		}
 	}
 
-	return "", fmt.Errorf("%s not found in PATH or common installation locations", name)
+	// As a last resort, try using 'which' command from the user's current shell
+	// This can help find the binary in user-specific PATH configurations
+	slog.Debug("Trying to find executable using 'which' command", "name", name)
+
+	shell := os.Getenv("SHELL")
+	if shell == "" {
+		if runtime.GOOS == "windows" {
+			shell = "cmd.exe"
+		} else {
+			shell = "/bin/sh"
+		}
+	}
+
+	var cmd *exec.Cmd
+	if runtime.GOOS == "windows" {
+		// On Windows, use 'where' command instead of 'which'
+		cmd = exec.Command("cmd", "/c", "where", name)
+	} else {
+		// On Unix-like systems, use the shell to run 'which'
+		// Using shell -l to load the login shell environment
+		cmd = exec.Command(shell, "-l", "-c", fmt.Sprintf("which %s", name))
+	}
+
+	output, err := cmd.Output()
+	if err == nil {
+		// Trim whitespace and newlines from the output
+		path := strings.TrimSpace(string(output))
+		if path != "" {
+			// Verify the path exists and is executable
+			if info, err := os.Stat(path); err == nil && !info.IsDir() {
+				if runtime.GOOS != "windows" {
+					if info.Mode()&0111 != 0 {
+						slog.Debug("Found executable via shell which command", "name", name, "path", path, "shell", shell)
+						return path, nil
+					}
+				} else {
+					slog.Debug("Found executable via where command", "name", name, "path", path)
+					return path, nil
+				}
+			}
+		}
+	} else {
+		slog.Debug("Failed to find executable via shell command", "name", name, "error", err)
+	}
+
+	return "", fmt.Errorf("%s not found in PATH, common installation locations, or via shell which command", name)
 }
 
 // collectData collects usage data using bunx or npx ccusage command
