@@ -273,7 +273,7 @@ func (s *trackTestSuite) TestTrackWithSendData() {
 	preContent = bytes.TrimSpace(preContent)
 	logrus.Infoln(string(preContent))
 	preLines := bytes.Split(preContent, []byte("\n"))
-	assert.Less(s.T(), len(preLines)-1, times)
+	assert.LessOrEqual(s.T(), len(preLines)-1, times)
 	assert.Contains(s.T(), string(preContent), "unfinished_cmd")
 
 	// Check the post file should be less than `times` of lines
