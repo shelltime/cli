@@ -1,5 +1,25 @@
 # Changelog
 
+## [0.1.30](https://github.com/shelltime/cli/compare/v0.1.29...v0.1.30) (2025-10-04)
+
+
+### Features
+
+* **daemon:** support user-scope systemd service installation on Linux ([3b1b2a5](https://github.com/shelltime/cli/commit/3b1b2a5473e8a19a5a17e037f64c1ccbfa9f11b1))
+* **daemon:** support user-scope systemd service installation on Linux ([c1aaa9f](https://github.com/shelltime/cli/commit/c1aaa9f5c8b2c6221e4ce61765fd64cbe554b37d))
+* **model:** remove msgpack support and replace with JSON ([6a8229e](https://github.com/shelltime/cli/commit/6a8229ec11d2d7d55552dae24dddd00493f8cb94))
+* remove msgpack support and replace with JSON ([64a87e7](https://github.com/shelltime/cli/commit/64a87e7757259db45fa6b7ca64c616b9fba99097))
+
+
+### Bug Fixes
+
+* **model:** enhance lookPath with shell which command fallback ([46bf6a3](https://github.com/shelltime/cli/commit/46bf6a3a2abe186a7599e3478c9962f084d11d69))
+
+
+### Miscellaneous Chores
+
+* release 0.1.30 ([0a2b6bb](https://github.com/shelltime/cli/commit/0a2b6bb36f1e685d074d181d04fbac192bb5e411))
+
 ## [0.1.29](https://github.com/shelltime/cli/compare/v0.1.28...v0.1.29) (2025-10-02)
 
 
