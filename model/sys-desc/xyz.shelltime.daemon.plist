@@ -6,7 +6,9 @@
     <string>xyz.shelltime.daemon</string>
     <key>ProgramArguments</key>
     <array>
-        <string>{{.BaseFolder}}/bin/shelltime-daemon</string>
+        <string>/bin/sh</string>
+        <string>-c</string>
+        <string>exec $SHELL -l -c '{{.BaseFolder}}/bin/shelltime-daemon'</string>
     </array>
     <key>RunAtLoad</key>
     <true/>
