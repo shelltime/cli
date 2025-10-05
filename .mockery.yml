@@ -22,3 +22,7 @@ packages:
         config:
           dir: "{{.InterfaceDir}}"
           filename: "mock_{{.InterfaceName}}.go"
+      AIService:
+        config:
+          dir: "{{.InterfaceDir}}"
+          filename: "mock_{{.InterfaceName}}.go"
