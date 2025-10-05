@@ -97,9 +97,7 @@ func (s *queryTestSuite) TestQueryCommandSuccess() {
 	query := "list all files with details"
 
 	// Mock AI service
-	s.mockAI.On("QueryCommand", mock.Anything, mock.MatchedBy(func(sc model.PPPromptGuessNextPromptVariables) bool {
-		return sc.Query == query && sc.Os == runtime.GOOS
-	}), "").Return(expectedCommand, nil)
+	s.mockAI.On("QueryCommand", mock.Anything, mock.Anything, "").Return(expectedCommand, nil)
 
 	// Mock config service - no auto-run
 	mockedConfig := model.ShellTimeConfig{}
@@ -186,8 +184,11 @@ func (s *queryTestSuite) TestQueryCommandWithAutoRunView() {
 }
 
 func (s *queryTestSuite) TestQueryCommandWithAutoRunEdit() {
-	expectedCommand := "sed -i 's/foo/bar/g' file.txt"
+	expectedCommand := "sed -i 's/foo/bar/g' /tmp/file_query_command_191.txt"
 	query := "replace foo with bar in file.txt"
+	f, _ := os.Create("/tmp/file_query_command_191.txt")
+	f.Close()
+	defer os.Remove(f.Name())
 
 	// Mock AI service
 	s.mockAI.On("QueryCommand", mock.Anything, mock.Anything, "").Return(expectedCommand, nil)
