@@ -18,3 +18,7 @@ packages:
         config:
           dir: "{{.InterfaceDir}}"
           filename: "mock_{{.InterfaceName}}.go"
+      CommandService:
+        config:
+          dir: "{{.InterfaceDir}}"
+          filename: "mock_{{.InterfaceName}}.go"

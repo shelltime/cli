@@ -44,3 +44,8 @@ pp
 promptpal.local.yml
 model/pp.types.g.go
 schema.g.json
+
+# binary for testing
+
+shelltime
+shelltime-daemon
