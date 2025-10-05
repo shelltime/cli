@@ -4,8 +4,15 @@ After=network.target
 
 [Service]
 Type=simple
-ExecStart=/usr/local/bin/shelltime-daemon
+ExecStart=/bin/sh -c 'exec $(getent passwd username | cut -d: -f7) -l -c "/usr/local/bin/shelltime-daemon"'
 Restart=always
+
+# Resource limits
+LimitNOFILE=65536
+
+# Logging
+StandardOutput=journal
+StandardError=journal
 
 [Install]
 WantedBy=default.target
