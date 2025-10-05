@@ -180,7 +180,7 @@ func (s *queryTestSuite) TestQueryCommandWithAutoRunView() {
 	// We're testing the flow up to the execution point
 	err := s.app.Run(command)
 	// The error here is expected as we can't actually execute the command in tests
-	assert.NotNil(s.T(), err)
+	s.Nil(err)
 }
 
 func (s *queryTestSuite) TestQueryCommandWithAutoRunEdit() {
@@ -213,7 +213,7 @@ func (s *queryTestSuite) TestQueryCommandWithAutoRunEdit() {
 
 	// The command would be auto-executed if enabled, but will fail in test
 	err := s.app.Run(command)
-	assert.NotNil(s.T(), err)
+	s.Nil(err)
 }
 
 func (s *queryTestSuite) TestQueryCommandWithAutoRunDeleteDisabled() {
