@@ -84,6 +84,7 @@ func main() {
 
 	daemon.Init(cs, version)
 	model.InjectVar(version)
+	cmdService := model.NewCommandService()
 
 	pubsub := daemon.NewGoChannel(daemon.PubSubConfig{}, watermill.NewSlogLogger(slog.Default()))
 	msg, err := pubsub.Subscribe(context.Background(), daemon.PubSubTopic)
@@ -97,7 +98,7 @@ func main() {
 
 	// Start CCUsage service if enabled
 	if cfg.CCUsage != nil && cfg.CCUsage.Enabled != nil && *cfg.CCUsage.Enabled {
-		ccUsageService := model.NewCCUsageService(cfg)
+		ccUsageService := model.NewCCUsageService(cfg, cmdService)
 		if err := ccUsageService.Start(ctx); err != nil {
 			slog.Error("Failed to start CCUsage service", slog.Any("err", err))
 		} else {
