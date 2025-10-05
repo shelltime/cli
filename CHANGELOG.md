@@ -1,5 +1,15 @@
 # Changelog
 
+## [0.1.32](https://github.com/shelltime/cli/compare/v0.1.31...v0.1.32) (2025-10-05)
+
+
+### Bug Fixes
+
+* **commands:** resolve query command test flakiness ([f7bf69d](https://github.com/shelltime/cli/commit/f7bf69d3d4dcf74f9485ab908ec0c9a7c1ddba92))
+* **commands:** update test assertions for auto-run commands ([781a832](https://github.com/shelltime/cli/commit/781a83237d4a519b46450439ed792e904b9d01e1))
+* **model:** add --yes flag to npx ccusage command ([971c6e6](https://github.com/shelltime/cli/commit/971c6e6ea913a691f41a6d8bfab092ce4a28f6c1))
+* **model:** add --yes flag to npx ccusage command ([88f2d49](https://github.com/shelltime/cli/commit/88f2d49b9f93a184a58ff51a61ea8293ad74acca)), closes [#125](https://github.com/shelltime/cli/issues/125)
+
 ## [0.1.31](https://github.com/shelltime/cli/compare/v0.1.30...v0.1.31) (2025-10-04)
 
 
