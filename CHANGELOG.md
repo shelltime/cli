@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.1.34](https://github.com/shelltime/cli/compare/v0.1.33...v0.1.34) (2025-10-05)
+
+
+### Features
+
+* **daemon:** update service descriptors for systemd and launchctl ([356f6d1](https://github.com/shelltime/cli/commit/356f6d1069ed7686d7c5a82b419f692eb19d3421))
+* **daemon:** update service descriptors for systemd and launchctl ([ea63e31](https://github.com/shelltime/cli/commit/ea63e31dc475a259031de0036a08221e9c35ab85))
+
+
+### Miscellaneous Chores
+
+* release 0.1.34 ([6206d21](https://github.com/shelltime/cli/commit/6206d21e996dcaaa2b7dee06b04d24bdfedd93f5))
+
 ## [0.1.33](https://github.com/shelltime/cli/compare/v0.1.32...v0.1.33) (2025-10-05)
 
 
