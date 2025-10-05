@@ -237,8 +237,9 @@ func (s *ccUsageService) collectData(ctx context.Context, since time.Time) (*CCU
 		cmd = exec.CommandContext(ctx, bunxPath, args...)
 		slog.Debug("Using bunx to collect ccusage data")
 	} else {
-		// Fall back to npx
-		cmd = exec.CommandContext(ctx, npxPath, args...)
+		// Fall back to npx with --yes flag to auto-accept prompts
+		npxArgs := append([]string{"--yes"}, args...)
+		cmd = exec.CommandContext(ctx, npxPath, npxArgs...)
 		slog.Debug("Using npx to collect ccusage data")
 	}
 
