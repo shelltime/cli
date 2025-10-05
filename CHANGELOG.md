@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.1.33](https://github.com/shelltime/cli/compare/v0.1.32...v0.1.33) (2025-10-05)
+
+
+### Bug Fixes
+
+* **model:** use user shell for ccusage command execution ([a3a0d96](https://github.com/shelltime/cli/commit/a3a0d96a85c92df98e7bfde960e6c7f242c32303))
+* **model:** use user shell for ccusage command execution ([3212ab9](https://github.com/shelltime/cli/commit/3212ab968388c9fed82e619c5a3b07e4352929c7))
+
 ## [0.1.32](https://github.com/shelltime/cli/compare/v0.1.31...v0.1.32) (2025-10-05)
 
 
