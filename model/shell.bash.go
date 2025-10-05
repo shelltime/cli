@@ -40,7 +40,7 @@ func (s *BashHookService) Install() error {
 	hookFilePath := os.ExpandEnv(fmt.Sprintf("$HOME/%s/hooks/bash.bash", COMMAND_BASE_STORAGE_FOLDER))
 	if _, err := os.Stat(hookFilePath); os.IsNotExist(err) {
 		color.Red.Println("hook file not found at", hookFilePath)
-		color.Red.Println("Please run 'curl -sSL https://raw.githubusercontent.com/malamtime/installation/master/install.bash | bash' first")
+		color.Red.Println("Please run 'curl -sSL https://shelltime.xyz/i | bash' first")
 		return err
 	}
 

@@ -1,6 +1,6 @@
 # ShellTime CLI
 
-[![codecov](https://codecov.io/gh/malamtime/cli/graph/badge.svg?token=N09WIJHNI2)](https://codecov.io/gh/malamtime/cli)
+[![codecov](https://codecov.io/gh/shelltime/cli/graph/badge.svg?token=N09WIJHNI2)](https://codecov.io/gh/shelltime/cli)
 [![shelltime](https://api.shelltime.xyz/badge/AnnatarHe/count)](https://shelltime.xyz/users/AnnatarHe)
 
 > A professional command-line interface for [ShellTime](https://shelltime.xyz) - the comprehensive platform for tracking and analyzing DevOps workflows.
@@ -535,7 +535,7 @@ Remove the daemon service when no longer needed:
 
 ### Support
 - **Email**: annatar.he+shelltime.xyz@gmail.com
-- **Issue Tracker**: [GitHub Issues](https://github.com/malamtime/cli/issues)
+- **Issue Tracker**: [GitHub Issues](https://github.com/shelltime/cli/issues)
 - **Community**: [ShellTime Community Forum](https://community.shelltime.xyz)
 
 ## License
