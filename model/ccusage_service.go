@@ -9,6 +9,8 @@ import (
 	"os"
 	"os/exec"
 	"os/user"
+	"runtime"
+	"strings"
 	"time"
 )
 
@@ -231,16 +233,21 @@ func (s *ccUsageService) collectData(ctx context.Context, since time.Time) (*CCU
 		slog.Debug("Using since parameter", "sinceDate", sinceDate, "since", since)
 	}
 
+	// Get user's shell to run command with proper environment
+	shell := getUserShell()
+
 	var cmd *exec.Cmd
 	if bunxErr == nil {
 		// Use bunx if available
-		cmd = exec.CommandContext(ctx, bunxPath, args...)
-		slog.Debug("Using bunx to collect ccusage data")
+		cmdStr := bunxPath + " " + shellEscapeArgs(args)
+		cmd = exec.CommandContext(ctx, shell, "-c", cmdStr)
+		slog.Debug("Using bunx to collect ccusage data", "shell", shell)
 	} else {
 		// Fall back to npx with --yes flag to auto-accept prompts
 		npxArgs := append([]string{"--yes"}, args...)
-		cmd = exec.CommandContext(ctx, npxPath, npxArgs...)
-		slog.Debug("Using npx to collect ccusage data")
+		cmdStr := npxPath + " " + shellEscapeArgs(npxArgs)
+		cmd = exec.CommandContext(ctx, shell, "-c", cmdStr)
+		slog.Debug("Using npx to collect ccusage data", "shell", shell)
 	}
 
 	// Execute the command
@@ -409,4 +416,39 @@ func (s *ccUsageService) sendData(ctx context.Context, endpoint Endpoint, data *
 
 	slog.Debug("CCUsage data sent successfully", "successCount", resp.SuccessCount, "totalCount", resp.TotalCount)
 	return nil
+}
+
+// getUserShell returns the user's shell executable path
+// It checks the SHELL environment variable first, then falls back to sensible defaults
+func getUserShell() string {
+	// Try to get the shell from environment variable
+	shell := os.Getenv("SHELL")
+	if shell != "" {
+		return shell
+	}
+
+	// Fall back to platform-specific defaults
+	if runtime.GOOS == "windows" {
+		// On Windows, prefer PowerShell, fall back to cmd
+		if pwsh, err := exec.LookPath("pwsh"); err == nil {
+			return pwsh
+		}
+		if powershell, err := exec.LookPath("powershell"); err == nil {
+			return powershell
+		}
+		return "cmd"
+	}
+
+	// On Unix-like systems, default to sh (POSIX shell)
+	return "/bin/sh"
+}
+
+// shellEscapeArgs joins arguments with spaces and escapes them for safe shell execution
+func shellEscapeArgs(args []string) string {
+	escaped := make([]string, len(args))
+	for i, arg := range args {
+		// Simple shell escaping: wrap in single quotes and escape single quotes
+		escaped[i] = "'" + strings.ReplaceAll(arg, "'", "'\"'\"'") + "'"
+	}
+	return strings.Join(escaped, " ")
 }
