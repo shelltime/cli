@@ -1,5 +1,24 @@
 # Changelog
 
+## [0.1.36](https://github.com/shelltime/cli/compare/v0.1.35...v0.1.36) (2025-10-07)
+
+
+### Features
+
+* **ai:** add configurable tips display via showTips config ([19e37ca](https://github.com/shelltime/cli/commit/19e37ca416810f84faa4c9e9a14458c001a5ea9b))
+* **ai:** add configurable tips display via showTips config ([6ae6e25](https://github.com/shelltime/cli/commit/6ae6e25eebe7017402c3ee43c47ca0bae8002dd4))
+
+
+### Bug Fixes
+
+* **daemon:** use gui domain instead of deprecated user domain for launchctl ([2381253](https://github.com/shelltime/cli/commit/2381253999ca7e5c40c2863ab0d1362aa8c4fe33))
+* **daemon:** use gui domain instead of deprecated user domain for launchctl ([c5e132e](https://github.com/shelltime/cli/commit/c5e132eecd7c474d632c3ff997e47ecea5e85215))
+
+
+### Miscellaneous Chores
+
+* release 0.1.36 ([a30e94b](https://github.com/shelltime/cli/commit/a30e94be047c63ce376d6f3705936e31e9f01470))
+
 ## [0.1.35](https://github.com/shelltime/cli/compare/v0.1.34...v0.1.35) (2025-10-06)
 
 
