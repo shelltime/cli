@@ -13,7 +13,8 @@ type AIAgentConfig struct {
 }
 
 type AIConfig struct {
-	Agent AIAgentConfig `toml:"agent"`
+	Agent    AIAgentConfig `toml:"agent"`
+	ShowTips *bool         `toml:"showTips"`
 }
 
 type CCUsage struct {
@@ -62,6 +63,7 @@ var DefaultAIConfig = &AIConfig{
 		Edit:   false,
 		Delete: false,
 	},
+	ShowTips: nil, // defaults to true if nil
 }
 
 var DefaultConfig = ShellTimeConfig{
