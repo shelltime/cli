@@ -61,6 +61,7 @@ ShellTime CLI configuration is stored in `$HOME/.shelltime/config.toml`. The con
 | `ai.agent.view` | boolean | `false` | Allow AI to auto-execute read-only commands |
 | `ai.agent.edit` | boolean | `false` | Allow AI to auto-execute file editing commands |
 | `ai.agent.delete` | boolean | `false` | Allow AI to auto-execute deletion commands |
+| `ai.showTips` | boolean | `true` | Show AI-related tips and suggestions |
 
 #### Analytics Settings
 
@@ -99,6 +100,9 @@ exclude = [
 
 # AI configuration (optional)
 # Controls which command types the AI assistant can automatically execute
+[ai]
+showTips = true # Show AI-related tips and suggestions (default: true)
+
 [ai.agent]
 view = false    # Allow AI to execute read-only commands (ls, cat, less, head, tail, etc.)
 edit = false    # Allow AI to execute file editing commands (vim, nano, code, sed, etc.)
