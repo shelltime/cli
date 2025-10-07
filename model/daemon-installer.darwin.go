@@ -32,7 +32,7 @@ func NewMacDaemonInstaller(baseFolder, user string) *MacDaemonInstaller {
 }
 
 func (m *MacDaemonInstaller) Check() error {
-	cmd := exec.Command("launchctl", "print", "user/"+fmt.Sprintf("%d", os.Getuid())+"/"+m.serviceName)
+	cmd := exec.Command("launchctl", "print", "gui/"+fmt.Sprintf("%d", os.Getuid())+"/"+m.serviceName)
 	if err := cmd.Run(); err == nil {
 		return nil
 	}
