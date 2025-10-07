@@ -123,7 +123,7 @@ func commandQuery(c *cli.Context) error {
 		} else {
 			// Display command with info about why it's not auto-running
 			displayCommand(newCommand)
-			if actionType != model.ActionOther {
+			if shouldShowTips(cfg) && actionType != model.ActionOther {
 				color.Yellow.Printf("\n💡 Tip: This is a %s command. Enable 'ai.agent.%s' in your config to auto-run it.\n",
 					actionType, actionType)
 			}
@@ -131,11 +131,13 @@ func commandQuery(c *cli.Context) error {
 	} else {
 		// No auto-run configured, display the command and tip
 		displayCommand(newCommand)
-		color.Yellow.Printf("\n💡 Tip: You can enable AI auto-run in your config file:\n")
-		color.Yellow.Printf("   [ai.agent]\n")
-		color.Yellow.Printf("   view = true    # Auto-run view commands\n")
-		color.Yellow.Printf("   edit = true    # Auto-run edit commands\n")
-		color.Yellow.Printf("   delete = true  # Auto-run delete commands\n")
+		if shouldShowTips(cfg) {
+			color.Yellow.Printf("\n💡 Tip: You can enable AI auto-run in your config file:\n")
+			color.Yellow.Printf("   [ai.agent]\n")
+			color.Yellow.Printf("   view = true    # Auto-run view commands\n")
+			color.Yellow.Printf("   edit = true    # Auto-run edit commands\n")
+			color.Yellow.Printf("   delete = true  # Auto-run delete commands\n")
+		}
 	}
 
 	return nil
@@ -144,6 +146,14 @@ func commandQuery(c *cli.Context) error {
 func displayCommand(command string) {
 	color.Green.Printf("💡 Suggested command:\n")
 	color.Cyan.Printf("%s\n", command)
+}
+
+func shouldShowTips(cfg model.ShellTimeConfig) bool {
+	// If ShowTips is not set (nil), default to true
+	if cfg.AI == nil || cfg.AI.ShowTips == nil {
+		return true
+	}
+	return *cfg.AI.ShowTips
 }
 
 func executeCommand(ctx context.Context, command string) error {
