@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.1.35](https://github.com/shelltime/cli/compare/v0.1.34...v0.1.35) (2025-10-06)
+
+
+### Bug Fixes
+
+* **daemon:** replace hardcoded username with $USER in systemd service ([2610348](https://github.com/shelltime/cli/commit/2610348aa18be701c2dbb2bb228d81fe10343486))
+* **daemon:** replace hardcoded username with $USER in systemd service ([964538c](https://github.com/shelltime/cli/commit/964538c7c6ebc90c2f024e163edf39e85fe05c00))
+
 ## [0.1.34](https://github.com/shelltime/cli/compare/v0.1.33...v0.1.34) (2025-10-05)
 
 
