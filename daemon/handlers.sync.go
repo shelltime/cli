@@ -2,6 +2,7 @@ package daemon
 
 import (
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"log/slog"
 	"time"
@@ -79,9 +80,9 @@ func handlePubSubSync(ctx context.Context, socketMsgPayload interface{}) error {
 			}
 
 			realPayload = model.PostTrackArgs{
-				Encrypted: string(encryptedData),
-				AesKey:    string(encodedKey),
-				Nonce:     string(nonce),
+				Encrypted: base64.StdEncoding.EncodeToString(encryptedData),
+				AesKey:    base64.StdEncoding.EncodeToString(encodedKey),
+				Nonce:     base64.StdEncoding.EncodeToString(nonce),
 			}
 		}
 	}
