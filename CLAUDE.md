@@ -41,8 +41,8 @@ go test -run TestHandlerName ./daemon/
 # Install mockery if not already installed
 go install github.com/vektra/mockery/v2@v2.42.0
 
-# Generate mocks
-go generate ./...
+# Generate mocks (uses .mockery.yml configuration)
+mockery
 ```
 
 ### Linting
@@ -67,8 +67,8 @@ go fmt ./...
   - Hook management for shell integrations (bash, zsh, fish)
 
 - **daemon/**: Daemon service implementation
-  - Socket-based IPC communication with CLI
-  - Async command processing and batch synchronization
+  - Unix domain socket-based IPC communication with CLI
+  - Watermill pub/sub messaging for async command processing
   - Channel-based architecture for concurrent operations
 
 - **model/**: Core business logic and data models
@@ -80,10 +80,11 @@ go fmt ./...
 ### Key Architectural Patterns
 
 1. **Command Pattern**: Each CLI command implements the `urfave/cli/v2` command interface
-2. **Service Pattern**: ConfigService interface for configuration management
+2. **Service Pattern**: Interfaces (ConfigService, AIService, CommandService) with dependency injection via `commands.InjectVar()` and `commands.InjectAIService()`
 3. **IPC Communication**: Unix domain sockets for CLI-daemon communication
-4. **Batch Processing**: Commands are buffered locally and synced in batches
-5. **Encryption**: Hybrid RSA/AES-GCM encryption for secure command transmission
+4. **Pub/Sub Messaging**: Watermill GoChannel for internal daemon message routing
+5. **Batch Processing**: Commands are buffered locally and synced in batches
+6. **Encryption**: Hybrid RSA/AES-GCM encryption for secure command transmission
 
 ### Data Flow
 1. Shell hooks capture commands →
@@ -93,6 +94,7 @@ go fmt ./...
 
 ### Configuration
 - Config file location: `$HOME/.shelltime/config.toml`
+- Local overrides: `$HOME/.shelltime/config.local.toml` (merged with main config, not committed to version control)
 - Database location: `$HOME/.shelltime/shelltime.db`
 - Daemon socket: `/tmp/shelltime-daemon.sock` (Unix) or named pipe (Windows)
 
