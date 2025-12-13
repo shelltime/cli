@@ -96,7 +96,7 @@ func main() {
 
 	go daemon.SocketTopicProccessor(msg)
 
-	// Start CCUsage service if enabled
+	// Start CCUsage service if enabled (v1 - ccusage CLI based)
 	if cfg.CCUsage != nil && cfg.CCUsage.Enabled != nil && *cfg.CCUsage.Enabled {
 		ccUsageService := model.NewCCUsageService(cfg, cmdService)
 		if err := ccUsageService.Start(ctx); err != nil {
@@ -104,6 +104,19 @@ func main() {
 		} else {
 			slog.Info("CCUsage service started")
 			defer ccUsageService.Stop()
+		}
+	}
+
+	// Start CCOtel service if enabled (v2 - OTEL gRPC passthrough)
+	var ccOtelServer *daemon.CCOtelServer
+	if cfg.CCOtel != nil && cfg.CCOtel.Enabled != nil && *cfg.CCOtel.Enabled {
+		ccOtelProcessor := daemon.NewCCOtelProcessor(cfg)
+		ccOtelServer = daemon.NewCCOtelServer(cfg.CCOtel.GRPCPort, ccOtelProcessor)
+		if err := ccOtelServer.Start(); err != nil {
+			slog.Error("Failed to start CCOtel gRPC server", slog.Any("err", err))
+		} else {
+			slog.Info("CCOtel gRPC server started", slog.Int("port", cfg.CCOtel.GRPCPort))
+			defer ccOtelServer.Stop()
 		}
 	}
 
