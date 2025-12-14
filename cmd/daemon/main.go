@@ -2,10 +2,10 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
 	"os"
 	"os/signal"
-	"path/filepath"
 	"syscall"
 
 	"github.com/ThreeDotsLabs/watermill"
@@ -25,15 +25,6 @@ var (
 	ppToken    = ""
 )
 
-func getConfigPath() string {
-	homeDir, err := os.UserHomeDir()
-	if err != nil {
-		slog.Error("Failed to get user home directory", slog.Any("err", err))
-		return ""
-	}
-	return filepath.Join(homeDir, ".shelltime", "config.toml")
-}
-
 func main() {
 	l := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{
 		AddSource: true,
@@ -41,20 +32,15 @@ func main() {
 	}))
 	slog.SetDefault(l)
 
-	daemonConfigService := daemon.NewConfigService(daemon.DefaultConfigPath)
-	daemonConfig, err := daemonConfigService.GetConfig()
+	ctx := context.Background()
+	configFile := os.ExpandEnv(fmt.Sprintf("%s/%s/%s", "$HOME", model.COMMAND_BASE_STORAGE_FOLDER, "config.toml"))
+	daemonConfigService := model.NewConfigService(configFile)
+	cfg, err := daemonConfigService.ReadConfigFile(ctx)
 	if err != nil {
 		slog.Error("Failed to get daemon config", slog.Any("err", err))
 		return
 	}
 
-	cs, err := daemonConfigService.GetUserConfig()
-	if err != nil {
-		slog.Error("Failed to get user config", slog.Any("err", err))
-		return
-	}
-
-	ctx := context.Background()
 	uptraceOptions := []uptrace.Option{
 		uptrace.WithDSN(uptraceDsn),
 		uptrace.WithServiceName("cli-daemon"),
@@ -66,7 +52,6 @@ func main() {
 		uptraceOptions = append(uptraceOptions, uptrace.WithResourceAttributes(attribute.String("hostname", hs)))
 	}
 
-	cfg, err := cs.ReadConfigFile(ctx)
 	if err != nil ||
 		cfg.EnableMetrics == nil ||
 		*cfg.EnableMetrics == false ||
@@ -82,7 +67,7 @@ func main() {
 	defer uptrace.Shutdown(ctx)
 	defer uptrace.ForceFlush(ctx)
 
-	daemon.Init(cs, version)
+	daemon.Init(daemonConfigService, version)
 	model.InjectVar(version)
 	cmdService := model.NewCommandService()
 
@@ -96,7 +81,7 @@ func main() {
 
 	go daemon.SocketTopicProccessor(msg)
 
-	// Start CCUsage service if enabled
+	// Start CCUsage service if enabled (v1 - ccusage CLI based)
 	if cfg.CCUsage != nil && cfg.CCUsage.Enabled != nil && *cfg.CCUsage.Enabled {
 		ccUsageService := model.NewCCUsageService(cfg, cmdService)
 		if err := ccUsageService.Start(ctx); err != nil {
@@ -107,8 +92,21 @@ func main() {
 		}
 	}
 
+	// Start CCOtel service if enabled (v2 - OTEL gRPC passthrough)
+	var ccOtelServer *daemon.CCOtelServer
+	if cfg.CCOtel != nil && cfg.CCOtel.Enabled != nil && *cfg.CCOtel.Enabled {
+		ccOtelProcessor := daemon.NewCCOtelProcessor(cfg)
+		ccOtelServer = daemon.NewCCOtelServer(cfg.CCOtel.GRPCPort, ccOtelProcessor)
+		if err := ccOtelServer.Start(); err != nil {
+			slog.Error("Failed to start CCOtel gRPC server", slog.Any("err", err))
+		} else {
+			slog.Info("CCOtel gRPC server started", slog.Int("port", cfg.CCOtel.GRPCPort))
+			defer ccOtelServer.Stop()
+		}
+	}
+
 	// Create processor instance
-	processor := daemon.NewSocketHandler(daemonConfig, pubsub)
+	processor := daemon.NewSocketHandler(&cfg, pubsub)
 
 	// Start processor
 	if err := processor.Start(); err != nil {

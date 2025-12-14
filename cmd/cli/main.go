@@ -105,6 +105,7 @@ func main() {
 		commands.DotfilesCommand,
 		commands.DoctorCommand,
 		commands.QueryCommand,
+		commands.CCCommand,
 	}
 	err = app.Run(os.Args)
 	if err != nil {

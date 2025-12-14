@@ -8,6 +8,7 @@ import (
 
 	"github.com/ThreeDotsLabs/watermill"
 	"github.com/ThreeDotsLabs/watermill/message"
+	"github.com/malamtime/cli/model"
 )
 
 type SocketMessageType string
@@ -23,14 +24,14 @@ type SocketMessage struct {
 }
 
 type SocketHandler struct {
-	config   *DaemonConfig
+	config   *model.ShellTimeConfig
 	listener net.Listener
 
 	channel  *GoChannel
 	stopChan chan struct{}
 }
 
-func NewSocketHandler(config *DaemonConfig, ch *GoChannel) *SocketHandler {
+func NewSocketHandler(config *model.ShellTimeConfig, ch *GoChannel) *SocketHandler {
 	return &SocketHandler{
 		config:   config,
 		channel:  ch,

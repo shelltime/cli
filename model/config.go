@@ -62,6 +62,15 @@ func mergeConfig(base, local *ShellTimeConfig) {
 	if len(local.Exclude) > 0 {
 		base.Exclude = local.Exclude
 	}
+	if local.CCUsage != nil {
+		base.CCUsage = local.CCUsage
+	}
+	if local.CCOtel != nil {
+		base.CCOtel = local.CCOtel
+	}
+	if local.SocketPath != "" {
+		base.SocketPath = local.SocketPath
+	}
 }
 
 func (cs *configService) ReadConfigFile(ctx context.Context) (config ShellTimeConfig, err error) {
@@ -89,7 +98,6 @@ func (cs *configService) ReadConfigFile(ctx context.Context) (config ShellTimeCo
 		baseName := strings.TrimSuffix(configFile, ext)
 		// Construct local config filename: baseName + ".local" + ext
 		localConfigFile := baseName + ".local" + ext
-		
 		if localConfig, localErr := os.ReadFile(localConfigFile); localErr == nil {
 			// Parse local config and merge with base config
 			var localSettings ShellTimeConfig
@@ -120,12 +128,20 @@ func (cs *configService) ReadConfigFile(ctx context.Context) (config ShellTimeCo
 	if config.DataMasking == nil {
 		config.DataMasking = &truthy
 	}
-	
+
 	// Initialize AI config with defaults if not present
 	if config.AI == nil {
 		config.AI = DefaultAIConfig
 	}
-	
+
+	// Initialize CCOtel config with default port if enabled but port not set
+	if config.CCOtel != nil && config.CCOtel.GRPCPort == 0 {
+		config.CCOtel.GRPCPort = 54027 // default OTEL gRPC port
+	}
+	if config.SocketPath == "" {
+		config.SocketPath = DefaultSocketPath
+	}
+
 	UserShellTimeConfig = config
 	return
 }
