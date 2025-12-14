@@ -1,5 +1,9 @@
 package model
 
+const (
+	DefaultSocketPath = "/tmp/shelltime.sock"
+)
+
 type Endpoint struct {
 	APIEndpoint string `toml:"apiEndpoint"`
 	Token       string `token:"token"`
@@ -64,6 +68,10 @@ type ShellTimeConfig struct {
 
 	// CCOtel configuration for OTEL-based Claude Code tracking (v2 - gRPC passthrough)
 	CCOtel *CCOtel `toml:"ccotel"`
+
+	// SocketPath is the path to the Unix domain socket used for communication
+	// between the CLI and the daemon.
+	SocketPath string `toml:"socketPath"`
 }
 
 var DefaultAIConfig = &AIConfig{
@@ -90,4 +98,6 @@ var DefaultConfig = ShellTimeConfig{
 	Exclude:       []string{},
 	CCUsage:       nil,
 	CCOtel:        nil,
+
+	SocketPath: DefaultSocketPath,
 }

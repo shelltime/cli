@@ -264,7 +264,7 @@ func DoSyncData(
 	trackingData []model.TrackingData,
 	meta model.TrackingMetaData,
 ) error {
-	socketPath := daemon.DefaultSocketPath
+	socketPath := config.SocketPath
 	isSocketReady := daemon.IsSocketReady(ctx, socketPath)
 
 	logrus.Traceln("is socket ready: ", isSocketReady)
