@@ -3,10 +3,8 @@ package model
 import (
 	"bufio"
 	"fmt"
-	"io"
 	"os"
 	"strings"
-	"time"
 
 	"github.com/gookit/color"
 )
@@ -14,6 +12,7 @@ import (
 const (
 	ccOtelMarkerStart = "# >>> shelltime cc otel >>>"
 	ccOtelMarkerEnd   = "# <<< shelltime cc otel <<<"
+	ccOtelEndpoint    = "http://localhost:54027"
 )
 
 // CCOtelEnvService interface for shell-specific env var setup
@@ -27,33 +26,6 @@ type CCOtelEnvService interface {
 
 // baseCCOtelEnvService provides common functionality
 type baseCCOtelEnvService struct{}
-
-func (b *baseCCOtelEnvService) backupFile(path string) error {
-	if _, err := os.Stat(path); os.IsNotExist(err) {
-		return nil
-	}
-
-	timestamp := time.Now().Format("20060102150405")
-	backupPath := fmt.Sprintf("%s.bak.%s", path, timestamp)
-
-	srcFile, err := os.Open(path)
-	if err != nil {
-		return fmt.Errorf("failed to open source file: %w", err)
-	}
-	defer srcFile.Close()
-
-	dstFile, err := os.OpenFile(backupPath, os.O_CREATE|os.O_WRONLY, 0644)
-	if err != nil {
-		return fmt.Errorf("failed to create backup file: %w", err)
-	}
-	defer dstFile.Close()
-
-	if _, err := io.Copy(dstFile, srcFile); err != nil {
-		return fmt.Errorf("failed to copy file: %w", err)
-	}
-
-	return nil
-}
 
 func (b *baseCCOtelEnvService) addEnvLines(filePath string, envLines []string) error {
 	file, err := os.Open(filePath)
@@ -142,7 +114,7 @@ func NewBashCCOtelEnvService() CCOtelEnvService {
 		"export OTEL_METRICS_EXPORTER=otlp",
 		"export OTEL_LOGS_EXPORTER=otlp",
 		"export OTEL_EXPORTER_OTLP_PROTOCOL=grpc",
-		"export OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4317",
+		"export OTEL_EXPORTER_OTLP_ENDPOINT=" + ccOtelEndpoint,
 		ccOtelMarkerEnd,
 	}
 
@@ -169,18 +141,8 @@ func (s *BashCCOtelEnvService) Install() error {
 		}
 	}
 
-	// Check if already installed
-	installed, err := s.checkEnvLines(s.configPath)
-	if err != nil {
-		return err
-	}
-	if installed {
-		color.Green.Printf("Claude Code OTEL config is already installed in %s\n", s.configPath)
-		return nil
-	}
-
-	// Backup the file
-	if err := s.backupFile(s.configPath); err != nil {
+	// Remove existing env lines first
+	if err := s.removeEnvLines(s.configPath); err != nil {
 		return err
 	}
 
@@ -196,11 +158,6 @@ func (s *BashCCOtelEnvService) Install() error {
 func (s *BashCCOtelEnvService) Uninstall() error {
 	if _, err := os.Stat(s.configPath); os.IsNotExist(err) {
 		return nil
-	}
-
-	// Backup the file
-	if err := s.backupFile(s.configPath); err != nil {
-		return err
 	}
 
 	return s.removeEnvLines(s.configPath)
@@ -242,7 +199,7 @@ func NewZshCCOtelEnvService() CCOtelEnvService {
 		"export OTEL_METRICS_EXPORTER=otlp",
 		"export OTEL_LOGS_EXPORTER=otlp",
 		"export OTEL_EXPORTER_OTLP_PROTOCOL=grpc",
-		"export OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4317",
+		"export OTEL_EXPORTER_OTLP_ENDPOINT=" + ccOtelEndpoint,
 		ccOtelMarkerEnd,
 	}
 
@@ -266,18 +223,8 @@ func (s *ZshCCOtelEnvService) Install() error {
 		return fmt.Errorf("zsh config file not found at %s", s.configPath)
 	}
 
-	// Check if already installed
-	installed, err := s.checkEnvLines(s.configPath)
-	if err != nil {
-		return err
-	}
-	if installed {
-		color.Green.Printf("Claude Code OTEL config is already installed in %s\n", s.configPath)
-		return nil
-	}
-
-	// Backup the file
-	if err := s.backupFile(s.configPath); err != nil {
+	// Remove existing env lines first
+	if err := s.removeEnvLines(s.configPath); err != nil {
 		return err
 	}
 
@@ -293,11 +240,6 @@ func (s *ZshCCOtelEnvService) Install() error {
 func (s *ZshCCOtelEnvService) Uninstall() error {
 	if _, err := os.Stat(s.configPath); os.IsNotExist(err) {
 		return nil
-	}
-
-	// Backup the file
-	if err := s.backupFile(s.configPath); err != nil {
-		return err
 	}
 
 	return s.removeEnvLines(s.configPath)
@@ -339,7 +281,7 @@ func NewFishCCOtelEnvService() CCOtelEnvService {
 		"set -gx OTEL_METRICS_EXPORTER otlp",
 		"set -gx OTEL_LOGS_EXPORTER otlp",
 		"set -gx OTEL_EXPORTER_OTLP_PROTOCOL grpc",
-		"set -gx OTEL_EXPORTER_OTLP_ENDPOINT http://localhost:4317",
+		"set -gx OTEL_EXPORTER_OTLP_ENDPOINT " + ccOtelEndpoint,
 		ccOtelMarkerEnd,
 	}
 
@@ -363,18 +305,8 @@ func (s *FishCCOtelEnvService) Install() error {
 		return fmt.Errorf("fish config file not found at %s", s.configPath)
 	}
 
-	// Check if already installed
-	installed, err := s.checkEnvLines(s.configPath)
-	if err != nil {
-		return err
-	}
-	if installed {
-		color.Green.Printf("Claude Code OTEL config is already installed in %s\n", s.configPath)
-		return nil
-	}
-
-	// Backup the file
-	if err := s.backupFile(s.configPath); err != nil {
+	// Remove existing env lines first
+	if err := s.removeEnvLines(s.configPath); err != nil {
 		return err
 	}
 
@@ -390,11 +322,6 @@ func (s *FishCCOtelEnvService) Install() error {
 func (s *FishCCOtelEnvService) Uninstall() error {
 	if _, err := os.Stat(s.configPath); os.IsNotExist(err) {
 		return nil
-	}
-
-	// Backup the file
-	if err := s.backupFile(s.configPath); err != nil {
-		return err
 	}
 
 	return s.removeEnvLines(s.configPath)
