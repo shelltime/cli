@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.1.37](https://github.com/shelltime/cli/compare/v0.1.36...v0.1.37) (2025-12-15)
+
+
+### Features
+
+* **cli:** add cc install command for Claude Code OTEL setup ([cb252ce](https://github.com/shelltime/cli/commit/cb252ce271b08319e6a711dab78dba2426a226ce))
+* **daemon:** add Claude Code OTEL v2 passthrough collector ([7b4f728](https://github.com/shelltime/cli/commit/7b4f728720ab7d99e09f3d98d98af712916c1ce2))
+* **daemon:** add Claude Code OTEL v2 passthrough collector ([8abfaff](https://github.com/shelltime/cli/commit/8abfaff46deedac40d5678b938d3eed461dbd520))
+
+
+### Miscellaneous Chores
+
+* release 0.1.37 ([448ad8c](https://github.com/shelltime/cli/commit/448ad8c26e7bea59b74a7e3c4fe700e89aabfbea))
+
 ## [0.1.36](https://github.com/shelltime/cli/compare/v0.1.35...v0.1.36) (2025-12-12)
 
 
