@@ -84,33 +84,6 @@ type CCOtelResponse struct {
 	Message          string `json:"message,omitempty"`
 }
 
-// CCSessionEndRequest is the request to POST /api/v1/cc/session/end
-type CCSessionEndRequest struct {
-	Host                     string  `json:"host"`
-	SessionID                string  `json:"sessionId"`
-	EndedAt                  int64   `json:"endedAt"`
-	ActiveTimeSeconds        int     `json:"activeTimeSeconds,omitempty"`
-	TotalPrompts             int     `json:"totalPrompts,omitempty"`
-	TotalToolCalls           int     `json:"totalToolCalls,omitempty"`
-	TotalApiRequests         int     `json:"totalApiRequests,omitempty"`
-	TotalCostUSD             float64 `json:"totalCostUsd,omitempty"`
-	LinesAdded               int     `json:"linesAdded,omitempty"`
-	LinesRemoved             int     `json:"linesRemoved,omitempty"`
-	CommitsCreated           int     `json:"commitsCreated,omitempty"`
-	PRsCreated               int     `json:"prsCreated,omitempty"`
-	TotalInputTokens         int64   `json:"totalInputTokens,omitempty"`
-	TotalOutputTokens        int64   `json:"totalOutputTokens,omitempty"`
-	TotalCacheReadTokens     int64   `json:"totalCacheReadTokens,omitempty"`
-	TotalCacheCreationTokens int64   `json:"totalCacheCreationTokens,omitempty"`
-}
-
-// CCSessionEndResponse is the response from POST /api/v1/cc/session/end
-type CCSessionEndResponse struct {
-	Code    int         `json:"code"`
-	Data    interface{} `json:"data"`
-	Message string      `json:"message"`
-}
-
 // Claude Code OTEL metric types
 const (
 	CCMetricSessionCount        = "session_count"

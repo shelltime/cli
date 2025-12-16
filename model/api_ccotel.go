@@ -29,23 +29,3 @@ func SendCCOtelData(ctx context.Context, req *CCOtelRequest, endpoint Endpoint) 
 
 	return &resp, nil
 }
-
-// SendCCSessionEnd notifies the backend that a session has ended
-// POST /api/v1/cc/session/end
-func SendCCSessionEnd(ctx context.Context, req *CCSessionEndRequest, endpoint Endpoint) error {
-	ctx, span := modelTracer.Start(ctx, "ccotel.session.end")
-	defer span.End()
-
-	var resp CCSessionEndResponse
-	err := SendHTTPRequestJSON(HTTPRequestOptions[*CCSessionEndRequest, CCSessionEndResponse]{
-		Context:  ctx,
-		Endpoint: endpoint,
-		Method:   http.MethodPost,
-		Path:     "/api/v1/cc/session/end",
-		Payload:  req,
-		Response: &resp,
-		Timeout:  30 * time.Second,
-	})
-
-	return err
-}
