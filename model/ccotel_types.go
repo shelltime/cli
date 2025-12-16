@@ -2,11 +2,11 @@ package model
 
 // CCOtelRequest is the main request to POST /api/v1/cc/otel
 type CCOtelRequest struct {
-	Host    string          `json:"host"`
-	Project string          `json:"project"`
-	Session *CCOtelSession  `json:"session"`
-	Events  []CCOtelEvent   `json:"events,omitempty"`
-	Metrics []CCOtelMetric  `json:"metrics,omitempty"`
+	Host    string         `json:"host"`
+	Project string         `json:"project"`
+	Session *CCOtelSession `json:"session"`
+	Events  []CCOtelEvent  `json:"events,omitempty"`
+	Metrics []CCOtelMetric `json:"metrics,omitempty"`
 }
 
 // CCOtelSession represents session data for Claude Code OTEL tracking
@@ -20,6 +20,7 @@ type CCOtelSession struct {
 	OSType                   string  `json:"osType"`
 	OSVersion                string  `json:"osVersion"`
 	HostArch                 string  `json:"hostArch"`
+	WSLVersion               string  `json:"wslVersion,omitempty"`
 	StartedAt                int64   `json:"startedAt"`
 	EndedAt                  int64   `json:"endedAt,omitempty"`
 	ActiveTimeSeconds        int     `json:"activeTimeSeconds,omitempty"`
@@ -55,6 +56,7 @@ type CCOtelEvent struct {
 	Source              string                 `json:"source,omitempty"`
 	Error               string                 `json:"error,omitempty"`
 	PromptLength        int                    `json:"promptLength,omitempty"`
+	Prompt              string                 `json:"prompt,omitempty"`
 	ToolParameters      map[string]interface{} `json:"toolParameters,omitempty"`
 	StatusCode          int                    `json:"statusCode,omitempty"`
 	Attempt             int                    `json:"attempt,omitempty"`
@@ -86,14 +88,14 @@ type CCOtelResponse struct {
 
 // Claude Code OTEL metric types
 const (
-	CCMetricSessionCount        = "session_count"
-	CCMetricLinesOfCodeCount    = "lines_of_code_count"
-	CCMetricPullRequestCount    = "pull_request_count"
-	CCMetricCommitCount         = "commit_count"
-	CCMetricCostUsage           = "cost_usage"
-	CCMetricTokenUsage          = "token_usage"
+	CCMetricSessionCount         = "session_count"
+	CCMetricLinesOfCodeCount     = "lines_of_code_count"
+	CCMetricPullRequestCount     = "pull_request_count"
+	CCMetricCommitCount          = "commit_count"
+	CCMetricCostUsage            = "cost_usage"
+	CCMetricTokenUsage           = "token_usage"
 	CCMetricCodeEditToolDecision = "code_edit_tool_decision"
-	CCMetricActiveTimeTotal     = "active_time_total"
+	CCMetricActiveTimeTotal      = "active_time_total"
 )
 
 // Claude Code OTEL event types
