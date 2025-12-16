@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.39](https://github.com/shelltime/cli/compare/v0.1.38...v0.1.39) (2025-12-16)
+
+
+### Bug Fixes
+
+* **otel:** add missing WSL version, prompt, and tool parameters tracking ([67d6b01](https://github.com/shelltime/cli/commit/67d6b01f101200a8033d4cee49d36cb2d644fb5f))
+
 ## [0.1.38](https://github.com/shelltime/cli/compare/v0.1.37...v0.1.38) (2025-12-16)
 
 
