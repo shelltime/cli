@@ -2,6 +2,7 @@ package daemon
 
 import (
 	"context"
+	"encoding/json"
 	"log/slog"
 	"os"
 	"time"
@@ -187,6 +188,8 @@ func extractSessionFromResource(resource *resourcev1.Resource) *model.CCOtelSess
 			session.OSVersion = value.GetStringValue()
 		case "host.arch":
 			session.HostArch = value.GetStringValue()
+		case "wsl.version":
+			session.WSLVersion = value.GetStringValue()
 		}
 	}
 
@@ -305,6 +308,18 @@ func (p *CCOtelProcessor) parseLogRecord(lr *logsv1.LogRecord) *model.CCOtelEven
 			event.Error = value.GetStringValue()
 		case "prompt_length":
 			event.PromptLength = int(value.GetIntValue())
+		case "prompt":
+			event.Prompt = value.GetStringValue()
+		case "tool_parameters":
+			// tool_parameters comes as a JSON string, parse it into map
+			if jsonStr := value.GetStringValue(); jsonStr != "" {
+				var params map[string]interface{}
+				if err := json.Unmarshal([]byte(jsonStr), &params); err == nil {
+					event.ToolParameters = params
+				} else {
+					slog.Debug("CCOtel: Failed to parse tool_parameters", "error", err)
+				}
+			}
 		case "status_code":
 			event.StatusCode = int(value.GetIntValue())
 		case "attempt":

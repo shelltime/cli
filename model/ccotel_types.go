@@ -2,11 +2,11 @@ package model
 
 // CCOtelRequest is the main request to POST /api/v1/cc/otel
 type CCOtelRequest struct {
-	Host    string          `json:"host"`
-	Project string          `json:"project"`
-	Session *CCOtelSession  `json:"session"`
-	Events  []CCOtelEvent   `json:"events,omitempty"`
-	Metrics []CCOtelMetric  `json:"metrics,omitempty"`
+	Host    string         `json:"host"`
+	Project string         `json:"project"`
+	Session *CCOtelSession `json:"session"`
+	Events  []CCOtelEvent  `json:"events,omitempty"`
+	Metrics []CCOtelMetric `json:"metrics,omitempty"`
 }
 
 // CCOtelSession represents session data for Claude Code OTEL tracking
@@ -20,6 +20,7 @@ type CCOtelSession struct {
 	OSType                   string  `json:"osType"`
 	OSVersion                string  `json:"osVersion"`
 	HostArch                 string  `json:"hostArch"`
+	WSLVersion               string  `json:"wslVersion,omitempty"`
 	StartedAt                int64   `json:"startedAt"`
 	EndedAt                  int64   `json:"endedAt,omitempty"`
 	ActiveTimeSeconds        int     `json:"activeTimeSeconds,omitempty"`
@@ -55,6 +56,7 @@ type CCOtelEvent struct {
 	Source              string                 `json:"source,omitempty"`
 	Error               string                 `json:"error,omitempty"`
 	PromptLength        int                    `json:"promptLength,omitempty"`
+	Prompt              string                 `json:"prompt,omitempty"`
 	ToolParameters      map[string]interface{} `json:"toolParameters,omitempty"`
 	StatusCode          int                    `json:"statusCode,omitempty"`
 	Attempt             int                    `json:"attempt,omitempty"`
@@ -84,43 +86,16 @@ type CCOtelResponse struct {
 	Message          string `json:"message,omitempty"`
 }
 
-// CCSessionEndRequest is the request to POST /api/v1/cc/session/end
-type CCSessionEndRequest struct {
-	Host                     string  `json:"host"`
-	SessionID                string  `json:"sessionId"`
-	EndedAt                  int64   `json:"endedAt"`
-	ActiveTimeSeconds        int     `json:"activeTimeSeconds,omitempty"`
-	TotalPrompts             int     `json:"totalPrompts,omitempty"`
-	TotalToolCalls           int     `json:"totalToolCalls,omitempty"`
-	TotalApiRequests         int     `json:"totalApiRequests,omitempty"`
-	TotalCostUSD             float64 `json:"totalCostUsd,omitempty"`
-	LinesAdded               int     `json:"linesAdded,omitempty"`
-	LinesRemoved             int     `json:"linesRemoved,omitempty"`
-	CommitsCreated           int     `json:"commitsCreated,omitempty"`
-	PRsCreated               int     `json:"prsCreated,omitempty"`
-	TotalInputTokens         int64   `json:"totalInputTokens,omitempty"`
-	TotalOutputTokens        int64   `json:"totalOutputTokens,omitempty"`
-	TotalCacheReadTokens     int64   `json:"totalCacheReadTokens,omitempty"`
-	TotalCacheCreationTokens int64   `json:"totalCacheCreationTokens,omitempty"`
-}
-
-// CCSessionEndResponse is the response from POST /api/v1/cc/session/end
-type CCSessionEndResponse struct {
-	Code    int         `json:"code"`
-	Data    interface{} `json:"data"`
-	Message string      `json:"message"`
-}
-
 // Claude Code OTEL metric types
 const (
-	CCMetricSessionCount        = "session_count"
-	CCMetricLinesOfCodeCount    = "lines_of_code_count"
-	CCMetricPullRequestCount    = "pull_request_count"
-	CCMetricCommitCount         = "commit_count"
-	CCMetricCostUsage           = "cost_usage"
-	CCMetricTokenUsage          = "token_usage"
+	CCMetricSessionCount         = "session_count"
+	CCMetricLinesOfCodeCount     = "lines_of_code_count"
+	CCMetricPullRequestCount     = "pull_request_count"
+	CCMetricCommitCount          = "commit_count"
+	CCMetricCostUsage            = "cost_usage"
+	CCMetricTokenUsage           = "token_usage"
 	CCMetricCodeEditToolDecision = "code_edit_tool_decision"
-	CCMetricActiveTimeTotal     = "active_time_total"
+	CCMetricActiveTimeTotal      = "active_time_total"
 )
 
 // Claude Code OTEL event types
