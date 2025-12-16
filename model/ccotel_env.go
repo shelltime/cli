@@ -115,6 +115,13 @@ func NewBashCCOtelEnvService() CCOtelEnvService {
 		"export OTEL_LOGS_EXPORTER=otlp",
 		"export OTEL_EXPORTER_OTLP_PROTOCOL=grpc",
 		"export OTEL_EXPORTER_OTLP_ENDPOINT=" + ccOtelEndpoint,
+		"export OTEL_METRIC_EXPORT_INTERVAL=10000",
+		"export OTEL_LOGS_EXPORT_INTERVAL=5000",
+		"export OTEL_LOG_USER_PROMPTS=1",
+		"export OTEL_METRICS_INCLUDE_SESSION_ID=true",
+		"export OTEL_METRICS_INCLUDE_VERSION=true",
+		"export OTEL_METRICS_INCLUDE_ACCOUNT_UUID=true",
+		"export OTEL_RESOURCE_ATTRIBUTES=\"user.name=$(whoami),machine.name=$(hostname),team.id=shelltime\"",
 		ccOtelMarkerEnd,
 	}
 
@@ -200,6 +207,13 @@ func NewZshCCOtelEnvService() CCOtelEnvService {
 		"export OTEL_LOGS_EXPORTER=otlp",
 		"export OTEL_EXPORTER_OTLP_PROTOCOL=grpc",
 		"export OTEL_EXPORTER_OTLP_ENDPOINT=" + ccOtelEndpoint,
+		"export OTEL_METRIC_EXPORT_INTERVAL=10000",
+		"export OTEL_LOGS_EXPORT_INTERVAL=5000",
+		"export OTEL_LOG_USER_PROMPTS=1",
+		"export OTEL_METRICS_INCLUDE_SESSION_ID=true",
+		"export OTEL_METRICS_INCLUDE_VERSION=true",
+		"export OTEL_METRICS_INCLUDE_ACCOUNT_UUID=true",
+		"export OTEL_RESOURCE_ATTRIBUTES=\"user.name=$(whoami),machine.name=$(hostname),team.id=shelltime\"",
 		ccOtelMarkerEnd,
 	}
 
@@ -282,6 +296,13 @@ func NewFishCCOtelEnvService() CCOtelEnvService {
 		"set -gx OTEL_LOGS_EXPORTER otlp",
 		"set -gx OTEL_EXPORTER_OTLP_PROTOCOL grpc",
 		"set -gx OTEL_EXPORTER_OTLP_ENDPOINT " + ccOtelEndpoint,
+		"set -gx OTEL_METRIC_EXPORT_INTERVAL 10000",
+		"set -gx OTEL_LOGS_EXPORT_INTERVAL 5000",
+		"set -gx OTEL_LOG_USER_PROMPTS 1",
+		"set -gx OTEL_METRICS_INCLUDE_SESSION_ID true",
+		"set -gx OTEL_METRICS_INCLUDE_VERSION true",
+		"set -gx OTEL_METRICS_INCLUDE_ACCOUNT_UUID true",
+		"set -gx OTEL_RESOURCE_ATTRIBUTES \"user.name=$(whoami),machine.name=$(hostname),team.id=shelltime\"",
 		ccOtelMarkerEnd,
 	}
 
