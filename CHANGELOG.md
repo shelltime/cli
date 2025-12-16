@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.1.38](https://github.com/shelltime/cli/compare/v0.1.37...v0.1.38) (2025-12-16)
+
+
+### Features
+
+* **otel:** add complete OTEL configuration fields ([9eaf222](https://github.com/shelltime/cli/commit/9eaf2220de3b5bcc8d927c739c21bf4b997ff862))
+* **otel:** add complete OTEL configuration fields to cc install/uninstall ([cda5dce](https://github.com/shelltime/cli/commit/cda5dceada30a4b45a53ca6364ef00f0dd26196d)), closes [#142](https://github.com/shelltime/cli/issues/142)
+
+
+### Miscellaneous Chores
+
+* release 0.1.38 ([cca2729](https://github.com/shelltime/cli/commit/cca2729846520b2b754f85c6c87daec700eb1db3))
+
 ## [0.1.37](https://github.com/shelltime/cli/compare/v0.1.36...v0.1.37) (2025-12-15)
 
 
