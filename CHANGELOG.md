@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.40](https://github.com/shelltime/cli/compare/v0.1.39...v0.1.40) (2025-12-17)
+
+
+### Bug Fixes
+
+* **otel:** correctly map type attribute based on metric type ([42feaec](https://github.com/shelltime/cli/commit/42feaecf4babc1ed91074d8acb7b0d24d03b6360))
+
 ## [0.1.39](https://github.com/shelltime/cli/compare/v0.1.38...v0.1.39) (2025-12-16)
 
 
