@@ -245,7 +245,7 @@ func (p *CCOtelProcessor) parseMetric(m *metricsv1.Metric) []model.CCOtelMetric 
 			}
 			// Extract attributes
 			for _, attr := range dp.GetAttributes() {
-				applyMetricAttribute(&metric, attr)
+				applyMetricAttribute(&metric, attr, metricType)
 			}
 			metrics = append(metrics, metric)
 		}
@@ -258,7 +258,7 @@ func (p *CCOtelProcessor) parseMetric(m *metricsv1.Metric) []model.CCOtelMetric 
 				Value:      getDataPointValue(dp),
 			}
 			for _, attr := range dp.GetAttributes() {
-				applyMetricAttribute(&metric, attr)
+				applyMetricAttribute(&metric, attr, metricType)
 			}
 			metrics = append(metrics, metric)
 		}
@@ -392,13 +392,17 @@ func getDataPointValue(dp *metricsv1.NumberDataPoint) float64 {
 }
 
 // applyMetricAttribute applies an attribute to a metric
-func applyMetricAttribute(metric *model.CCOtelMetric, attr *commonv1.KeyValue) {
+func applyMetricAttribute(metric *model.CCOtelMetric, attr *commonv1.KeyValue, metricType string) {
 	key := attr.GetKey()
 	value := attr.GetValue()
 
 	switch key {
 	case "type":
-		metric.TokenType = value.GetStringValue()
+		if metricType == model.CCMetricLinesOfCodeCount {
+			metric.LinesType = value.GetStringValue()
+		} else {
+			metric.TokenType = value.GetStringValue()
+		}
 	case "model":
 		metric.Model = value.GetStringValue()
 	case "tool":
