@@ -121,7 +121,7 @@ func NewBashCCOtelEnvService() CCOtelEnvService {
 		"export OTEL_METRICS_INCLUDE_SESSION_ID=true",
 		"export OTEL_METRICS_INCLUDE_VERSION=true",
 		"export OTEL_METRICS_INCLUDE_ACCOUNT_UUID=true",
-		"export OTEL_RESOURCE_ATTRIBUTES=\"user.name=$(whoami),machine.name=$(hostname),team.id=shelltime\"",
+		"export OTEL_RESOURCE_ATTRIBUTES=\"user.name=$(whoami),machine.name=$(hostname),team.id=shelltime,pwd=$(pwd)\"",
 		ccOtelMarkerEnd,
 	}
 
@@ -213,7 +213,7 @@ func NewZshCCOtelEnvService() CCOtelEnvService {
 		"export OTEL_METRICS_INCLUDE_SESSION_ID=true",
 		"export OTEL_METRICS_INCLUDE_VERSION=true",
 		"export OTEL_METRICS_INCLUDE_ACCOUNT_UUID=true",
-		"export OTEL_RESOURCE_ATTRIBUTES=\"user.name=$(whoami),machine.name=$(hostname),team.id=shelltime\"",
+		"export OTEL_RESOURCE_ATTRIBUTES=\"user.name=$(whoami),machine.name=$(hostname),team.id=shelltime,pwd=$(pwd)\"",
 		ccOtelMarkerEnd,
 	}
 
@@ -302,7 +302,7 @@ func NewFishCCOtelEnvService() CCOtelEnvService {
 		"set -gx OTEL_METRICS_INCLUDE_SESSION_ID true",
 		"set -gx OTEL_METRICS_INCLUDE_VERSION true",
 		"set -gx OTEL_METRICS_INCLUDE_ACCOUNT_UUID true",
-		"set -gx OTEL_RESOURCE_ATTRIBUTES \"user.name=$(whoami),machine.name=$(hostname),team.id=shelltime\"",
+		"set -gx OTEL_RESOURCE_ATTRIBUTES \"user.name=$(whoami),machine.name=$(hostname),team.id=shelltime,pwd=$(pwd)\"",
 		ccOtelMarkerEnd,
 	}
 

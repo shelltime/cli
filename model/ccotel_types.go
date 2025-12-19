@@ -1,48 +1,47 @@
 package model
 
 // CCOtelRequest is the main request to POST /api/v1/cc/otel
+// Flat structure without session - resource attributes are embedded in each metric/event
 type CCOtelRequest struct {
 	Host    string         `json:"host"`
 	Project string         `json:"project"`
-	Session *CCOtelSession `json:"session"`
 	Events  []CCOtelEvent  `json:"events,omitempty"`
 	Metrics []CCOtelMetric `json:"metrics,omitempty"`
 }
 
-// CCOtelSession represents session data for Claude Code OTEL tracking
-type CCOtelSession struct {
-	SessionID                string  `json:"sessionId"`
-	AppVersion               string  `json:"appVersion"`
-	OrganizationID           string  `json:"organizationId,omitempty"`
-	UserAccountUUID          string  `json:"userAccountUuid,omitempty"`
-	TerminalType             string  `json:"terminalType"`
-	ServiceVersion           string  `json:"serviceVersion"`
-	OSType                   string  `json:"osType"`
-	OSVersion                string  `json:"osVersion"`
-	HostArch                 string  `json:"hostArch"`
-	WSLVersion               string  `json:"wslVersion,omitempty"`
-	StartedAt                int64   `json:"startedAt"`
-	EndedAt                  int64   `json:"endedAt,omitempty"`
-	ActiveTimeSeconds        int     `json:"activeTimeSeconds,omitempty"`
-	TotalPrompts             int     `json:"totalPrompts,omitempty"`
-	TotalToolCalls           int     `json:"totalToolCalls,omitempty"`
-	TotalApiRequests         int     `json:"totalApiRequests,omitempty"`
-	TotalCostUSD             float64 `json:"totalCostUsd,omitempty"`
-	LinesAdded               int     `json:"linesAdded,omitempty"`
-	LinesRemoved             int     `json:"linesRemoved,omitempty"`
-	CommitsCreated           int     `json:"commitsCreated,omitempty"`
-	PRsCreated               int     `json:"prsCreated,omitempty"`
-	TotalInputTokens         int64   `json:"totalInputTokens,omitempty"`
-	TotalOutputTokens        int64   `json:"totalOutputTokens,omitempty"`
-	TotalCacheReadTokens     int64   `json:"totalCacheReadTokens,omitempty"`
-	TotalCacheCreationTokens int64   `json:"totalCacheCreationTokens,omitempty"`
+// CCOtelResourceAttributes contains common resource-level attributes
+// extracted from OTEL resources and embedded into each metric/event
+type CCOtelResourceAttributes struct {
+	// Standard resource attributes
+	SessionID       string
+	UserAccountUUID string
+	OrganizationID  string
+	TerminalType    string
+	AppVersion      string
+	ServiceVersion  string
+	OSType          string
+	OSVersion       string
+	HostArch        string
+	WSLVersion      string
+
+	// Additional attributes from data points
+	UserID    string // from user.id (hashed identifier)
+	UserEmail string // from user.email
+
+	// Custom resource attributes (from OTEL_RESOURCE_ATTRIBUTES)
+	UserName    string // from user.name
+	MachineName string // from machine.name
+	TeamID      string // from team.id
+	Pwd         string // from pwd
 }
 
 // CCOtelEvent represents an event from Claude Code (api_request, tool_result, etc.)
+// with embedded resource attributes for a flat, session-less structure
 type CCOtelEvent struct {
 	EventID             string                 `json:"eventId"`
 	EventType           string                 `json:"eventType"`
 	Timestamp           int64                  `json:"timestamp"`
+	EventTimestamp      string                 `json:"eventTimestamp,omitempty"` // ISO 8601 timestamp
 	Model               string                 `json:"model,omitempty"`
 	CostUSD             float64                `json:"costUsd,omitempty"`
 	DurationMs          int                    `json:"durationMs,omitempty"`
@@ -61,9 +60,30 @@ type CCOtelEvent struct {
 	StatusCode          int                    `json:"statusCode,omitempty"`
 	Attempt             int                    `json:"attempt,omitempty"`
 	Language            string                 `json:"language,omitempty"`
+
+	// Embedded resource attributes (previously in session)
+	SessionID       string `json:"sessionId,omitempty"`
+	UserAccountUUID string `json:"userAccountUuid,omitempty"`
+	OrganizationID  string `json:"organizationId,omitempty"`
+	TerminalType    string `json:"terminalType,omitempty"`
+	AppVersion      string `json:"appVersion,omitempty"`
+	OSType          string `json:"osType,omitempty"`
+	OSVersion       string `json:"osVersion,omitempty"`
+	HostArch        string `json:"hostArch,omitempty"`
+
+	// Additional identifiers
+	UserID    string `json:"userId,omitempty"`
+	UserEmail string `json:"userEmail,omitempty"`
+
+	// Custom resource attributes
+	UserName    string `json:"userName,omitempty"`
+	MachineName string `json:"machineName,omitempty"`
+	TeamID      string `json:"teamId,omitempty"`
+	Pwd         string `json:"pwd,omitempty"`
 }
 
 // CCOtelMetric represents a metric data point from Claude Code
+// with embedded resource attributes for a flat, session-less structure
 type CCOtelMetric struct {
 	MetricID   string  `json:"metricId"`
 	MetricType string  `json:"metricType"`
@@ -75,12 +95,31 @@ type CCOtelMetric struct {
 	Tool       string  `json:"tool,omitempty"`
 	Decision   string  `json:"decision,omitempty"`
 	Language   string  `json:"language,omitempty"`
+
+	// Embedded resource attributes (previously in session)
+	SessionID       string `json:"sessionId,omitempty"`
+	UserAccountUUID string `json:"userAccountUuid,omitempty"`
+	OrganizationID  string `json:"organizationId,omitempty"`
+	TerminalType    string `json:"terminalType,omitempty"`
+	AppVersion      string `json:"appVersion,omitempty"`
+	OSType          string `json:"osType,omitempty"`
+	OSVersion       string `json:"osVersion,omitempty"`
+	HostArch        string `json:"hostArch,omitempty"`
+
+	// Additional identifiers
+	UserID    string `json:"userId,omitempty"`
+	UserEmail string `json:"userEmail,omitempty"`
+
+	// Custom resource attributes
+	UserName    string `json:"userName,omitempty"`
+	MachineName string `json:"machineName,omitempty"`
+	TeamID      string `json:"teamId,omitempty"`
+	Pwd         string `json:"pwd,omitempty"`
 }
 
 // CCOtelResponse is the response from POST /api/v1/cc/otel
 type CCOtelResponse struct {
 	Success          bool   `json:"success"`
-	SessionID        int64  `json:"sessionId,omitempty"`
 	EventsProcessed  int    `json:"eventsProcessed"`
 	MetricsProcessed int    `json:"metricsProcessed"`
 	Message          string `json:"message,omitempty"`
