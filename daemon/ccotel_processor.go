@@ -202,6 +202,8 @@ func extractResourceAttributes(resource *resourcev1.Resource) *model.CCOtelResou
 			attrs.MachineName = value.GetStringValue()
 		case "team.id":
 			attrs.TeamID = value.GetStringValue()
+		case "pwd":
+			attrs.Pwd = value.GetStringValue()
 		}
 	}
 
@@ -228,6 +230,7 @@ func applyResourceAttributesToMetric(metric *model.CCOtelMetric, attrs *model.CC
 	metric.UserName = attrs.UserName
 	metric.MachineName = attrs.MachineName
 	metric.TeamID = attrs.TeamID
+	metric.Pwd = attrs.Pwd
 }
 
 // applyResourceAttributesToEvent copies resource attributes into an event
@@ -250,6 +253,7 @@ func applyResourceAttributesToEvent(event *model.CCOtelEvent, attrs *model.CCOte
 	event.UserName = attrs.UserName
 	event.MachineName = attrs.MachineName
 	event.TeamID = attrs.TeamID
+	event.Pwd = attrs.Pwd
 }
 
 // detectProject extracts project from resource attributes or environment

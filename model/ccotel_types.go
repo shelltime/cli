@@ -32,6 +32,7 @@ type CCOtelResourceAttributes struct {
 	UserName    string // from user.name
 	MachineName string // from machine.name
 	TeamID      string // from team.id
+	Pwd         string // from pwd
 }
 
 // CCOtelEvent represents an event from Claude Code (api_request, tool_result, etc.)
@@ -78,6 +79,7 @@ type CCOtelEvent struct {
 	UserName    string `json:"userName,omitempty"`
 	MachineName string `json:"machineName,omitempty"`
 	TeamID      string `json:"teamId,omitempty"`
+	Pwd         string `json:"pwd,omitempty"`
 }
 
 // CCOtelMetric represents a metric data point from Claude Code
@@ -112,6 +114,7 @@ type CCOtelMetric struct {
 	UserName    string `json:"userName,omitempty"`
 	MachineName string `json:"machineName,omitempty"`
 	TeamID      string `json:"teamId,omitempty"`
+	Pwd         string `json:"pwd,omitempty"`
 }
 
 // CCOtelResponse is the response from POST /api/v1/cc/otel
