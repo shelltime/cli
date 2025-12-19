@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.1.41](https://github.com/shelltime/cli/compare/v0.1.40...v0.1.41) (2025-12-19)
+
+
+### Features
+
+* **ccotel:** add pwd to OTEL_RESOURCE_ATTRIBUTES ([38a5570](https://github.com/shelltime/cli/commit/38a5570ec651395d85a23f8416e5f373c5a827a0))
+* **otel:** add pwd (present working directory) to resource attributes ([b718667](https://github.com/shelltime/cli/commit/b71866762f2af3b037a9ae33204e3af937823d99))
+
+
+### Miscellaneous Chores
+
+* release 0.1.41 ([1197b53](https://github.com/shelltime/cli/commit/1197b535b6102af38fa924fce93e090787d5bf65))
+
 ## [0.1.40](https://github.com/shelltime/cli/compare/v0.1.39...v0.1.40) (2025-12-17)
 
 
