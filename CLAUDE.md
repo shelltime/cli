@@ -6,7 +6,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ShellTime CLI is a Go-based command-line tool for tracking DevOps work. It consists of two main binaries:
 - `shelltime`: The main CLI tool for command tracking and management
-- `shelltime-daemon`: A background service for asynchronous command tracking and synchronization
+- `shelltime-daemon`: A background service for asynchronous command tracking, synchronization, and OTEL data collection
 
 ## Development Commands
 
@@ -18,8 +18,8 @@ go build -o shelltime ./cmd/cli/main.go
 # Build the daemon binary
 go build -o shelltime-daemon ./cmd/daemon/main.go
 
-# Build with version information
-go build -ldflags "-X main.version=v0.1.0 -X main.commit=$(git rev-parse HEAD) -X main.date=$(date -u +%Y-%m-%d)" -o shelltime ./cmd/cli/main.go
+# Build with all ldflags (version, commit, AI service config)
+go build -ldflags "-X main.version=v0.1.0 -X main.commit=$(git rev-parse HEAD) -X main.date=$(date -u +%Y-%m-%d) -X main.ppEndpoint=<endpoint> -X main.ppToken=<token>" -o shelltime ./cmd/cli/main.go
 ```
 
 ### Testing
@@ -38,83 +38,58 @@ go test -run TestHandlerName ./daemon/
 
 ### Code Generation
 ```bash
-# Install mockery if not already installed
-go install github.com/vektra/mockery/v2@v2.42.0
-
 # Generate mocks (uses .mockery.yml configuration)
 mockery
 ```
 
 ### Linting
 ```bash
-# Run go vet
 go vet ./...
-
-# Format code
 go fmt ./...
 ```
 
 ## Architecture
 
 ### Package Structure
-- **cmd/**: Entry points for the binaries
-  - `cli/`: Main CLI application entry point
-  - `daemon/`: Daemon service entry point
+- **cmd/cli/**: CLI entry point - registers all commands, initializes services via dependency injection
+- **cmd/daemon/**: Daemon entry point - sets up pub/sub, socket handler, and optional CCOtel gRPC server
+- **commands/**: CLI command implementations - each command in its own file, `base.go` holds injected services
+- **daemon/**: Daemon internals - socket handler, Watermill pub/sub channel, CCOtel gRPC server/processor
+- **model/**: Business logic - API clients, config, crypto, shell hooks, service installers, dotfile handlers
 
-- **commands/**: CLI command implementations (auth, track, sync, gc, daemon management, hooks)
-  - Each command is self-contained in its own file
-  - `base.go` provides shared functionality across commands
-  - Hook management for shell integrations (bash, zsh, fish)
+### Service Interfaces (model package)
+Three key interfaces with dependency injection:
+- `ConfigService`: Reads and merges config from `config.toml` and `config.local.toml`
+- `AIService`: PromptPal integration for AI-powered command suggestions (`shelltime q`)
+- `CommandService`: Executable lookup with fallback paths (handles daemon's limited PATH)
 
-- **daemon/**: Daemon service implementation
-  - Unix domain socket-based IPC communication with CLI
-  - Watermill pub/sub messaging for async command processing
-  - Channel-based architecture for concurrent operations
+Injection happens in `cmd/*/main.go` via `commands.InjectVar()` and `commands.InjectAIService()`.
 
-- **model/**: Core business logic and data models
-  - API client implementations with encryption support
-  - Database operations (local SQLite storage)
-  - Shell-specific hook implementations
-  - System service installers (systemd/launchctl)
-
-### Key Architectural Patterns
-
-1. **Command Pattern**: Each CLI command implements the `urfave/cli/v2` command interface
-2. **Service Pattern**: Interfaces (ConfigService, AIService, CommandService) with dependency injection via `commands.InjectVar()` and `commands.InjectAIService()`
-3. **IPC Communication**: Unix domain sockets for CLI-daemon communication
-4. **Pub/Sub Messaging**: Watermill GoChannel for internal daemon message routing
-5. **Batch Processing**: Commands are buffered locally and synced in batches
-6. **Encryption**: Hybrid RSA/AES-GCM encryption for secure command transmission
+### Daemon Architecture
+1. **SocketHandler**: Unix domain socket server accepting JSON messages from CLI
+2. **GoChannel**: Watermill pub/sub for decoupled message processing
+3. **SocketTopicProcessor**: Consumes messages and routes to appropriate handlers
+4. **CCOtelServer** (optional): gRPC server implementing OTEL collector for Claude Code metrics/logs passthrough
 
 ### Data Flow
-1. Shell hooks capture commands →
-2. CLI stores commands locally (file based) →
-3. Daemon (if installed) processes commands asynchronously →
-4. Batch sync to shelltime.xyz API
+1. Shell hooks capture commands → CLI stores locally (file-based buffer)
+2. CLI sends sync message to daemon via Unix socket
+3. Daemon's pub/sub routes to sync handler
+4. Batch sync to shelltime.xyz API with optional encryption
 
 ### Configuration
-- Config file location: `$HOME/.shelltime/config.toml`
-- Local overrides: `$HOME/.shelltime/config.local.toml` (merged with main config, not committed to version control)
-- Database location: `$HOME/.shelltime/shelltime.db`
-- Daemon socket: `/tmp/shelltime-daemon.sock` (Unix) or named pipe (Windows)
+- Main config: `$HOME/.shelltime/config.toml`
+- Local overrides: `$HOME/.shelltime/config.local.toml` (merged, gitignored)
+- Daemon socket: `/tmp/shelltime.sock` (configurable via `socketPath`)
+- CCOtel gRPC port: configurable via `ccotel.grpcPort` (default: 4317)
 
 ## Commit Rules
 
-You must follow the Conventional Commits rules, ensuring that the scope and module are included.
-
-For example:
-
-```md
-fix(home): add price link on home page
-feat(ai): add AI module
-refactor(cell): update cell module for better maintenance
-perf(parser): improve parser performance by over 30%
-```
+Follow Conventional Commits with scope: `fix(daemon): ...`, `feat(cli): ...`, `refactor(model): ...`
 
 ## Important Notes
 
-- The daemon is optional but recommended for better performance
-- Encryption requires daemon mode and a special token
-- All local storage uses SQLite for reliability
-- The project uses OpenTelemetry for observability (when enabled)
-- Shell hooks are platform-specific and require careful testing
+- Daemon is optional but recommended (<8ms latency vs ~100ms+ direct)
+- Encryption requires daemon mode and a token with encryption capability
+- Shell hooks are platform-specific (bash, zsh, fish) - test on target shells
+- CCOtel feature enables Claude Code metrics/logs passthrough via gRPC (port 4317)
