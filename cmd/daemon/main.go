@@ -105,6 +105,17 @@ func main() {
 		}
 	}
 
+	// Start heartbeat resync service if codeTracking is enabled
+	if cfg.CodeTracking != nil && cfg.CodeTracking.Enabled != nil && *cfg.CodeTracking.Enabled {
+		heartbeatResyncService := daemon.NewHeartbeatResyncService(cfg)
+		if err := heartbeatResyncService.Start(ctx); err != nil {
+			slog.Error("Failed to start heartbeat resync service", slog.Any("err", err))
+		} else {
+			slog.Info("Heartbeat resync service started")
+			defer heartbeatResyncService.Stop()
+		}
+	}
+
 	// Create processor instance
 	processor := daemon.NewSocketHandler(&cfg, pubsub)
 

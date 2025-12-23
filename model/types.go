@@ -31,6 +31,11 @@ type CCOtel struct {
 	GRPCPort int   `toml:"grpcPort"` // default: 4317
 }
 
+// CodeTracking configuration for coding activity heartbeat tracking
+type CodeTracking struct {
+	Enabled *bool `toml:"enabled"`
+}
+
 type ShellTimeConfig struct {
 	Token       string
 	APIEndpoint string
@@ -69,6 +74,9 @@ type ShellTimeConfig struct {
 	// CCOtel configuration for OTEL-based Claude Code tracking (v2 - gRPC passthrough)
 	CCOtel *CCOtel `toml:"ccotel"`
 
+	// CodeTracking configuration for coding activity heartbeat tracking
+	CodeTracking *CodeTracking `toml:"codeTracking"`
+
 	// SocketPath is the path to the Unix domain socket used for communication
 	// between the CLI and the daemon.
 	SocketPath string `toml:"socketPath"`
@@ -98,6 +106,7 @@ var DefaultConfig = ShellTimeConfig{
 	Exclude:       []string{},
 	CCUsage:       nil,
 	CCOtel:        nil,
+	CodeTracking:  nil,
 
 	SocketPath: DefaultSocketPath,
 }
