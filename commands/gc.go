@@ -94,6 +94,9 @@ func commandGC(c *cli.Context) error {
 
 	// save all the data that before cursor
 	for _, cmd := range postCommands {
+		if cmd == nil {
+			continue
+		}
 		if cmd.RecordingTime.After(lastCursor) {
 			newPostCommandList = append(newPostCommandList, cmd)
 		}
