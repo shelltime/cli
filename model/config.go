@@ -92,6 +92,12 @@ func mergeConfig(base, local *ShellTimeConfig) {
 	if local.SocketPath != "" {
 		base.SocketPath = local.SocketPath
 	}
+	if local.CodeTracking != nil {
+		base.CodeTracking = local.CodeTracking
+	}
+	if local.LogCleanup != nil {
+		base.LogCleanup = local.LogCleanup
+	}
 }
 
 func (cs *configService) ReadConfigFile(ctx context.Context, opts ...ReadConfigOption) (config ShellTimeConfig, err error) {
