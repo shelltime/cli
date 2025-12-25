@@ -53,6 +53,8 @@ delete = false            # Destructive commands
 
 Local overrides: `~/.shelltime/config.local.toml`
 
+**[Full Configuration Guide](docs/CONFIG.md)** - Detailed documentation for all options
+
 ## Why Daemon Mode?
 
 | Mode | Latency | Network Blocking |
