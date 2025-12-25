@@ -64,7 +64,11 @@ func commandDaemonStatus(c *cli.Context) error {
 	fmt.Printf("  Socket Path: %s\n", socketPath)
 
 	if cfg.CCOtel != nil && cfg.CCOtel.Enabled != nil && *cfg.CCOtel.Enabled {
-		fmt.Printf("  CCOtel: enabled (port %d)\n", cfg.CCOtel.GRPCPort)
+		debugStatus := "off"
+		if cfg.CCOtel.Debug != nil && *cfg.CCOtel.Debug {
+			debugStatus = "on"
+		}
+		fmt.Printf("  CCOtel: enabled (port %d, debug %s)\n", cfg.CCOtel.GRPCPort, debugStatus)
 	} else {
 		fmt.Println("  CCOtel: disabled")
 	}
