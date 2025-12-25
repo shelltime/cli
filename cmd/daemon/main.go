@@ -2,10 +2,12 @@ package main
 
 import (
 	"context"
+	"flag"
 	"fmt"
 	"log/slog"
 	"os"
 	"os/signal"
+	"runtime"
 	"syscall"
 
 	"github.com/ThreeDotsLabs/watermill"
@@ -26,6 +28,16 @@ var (
 )
 
 func main() {
+	// Handle version flag first, before any service initialization
+	showVersion := flag.Bool("v", false, "Show version information")
+	showVersionLong := flag.Bool("version", false, "Show version information")
+	flag.Parse()
+
+	if *showVersion || *showVersionLong {
+		printVersionInfo()
+		return
+	}
+
 	l := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{
 		AddSource: true,
 		Level:     slog.LevelDebug,
@@ -153,4 +165,14 @@ func main() {
 	// Cleanup
 	pubsub.Close()
 	processor.Stop()
+}
+
+func printVersionInfo() {
+	fmt.Printf("shelltime-daemon %s\n", version)
+	fmt.Printf("  Commit:     %s\n", commit)
+	fmt.Printf("  Build Date: %s\n", date)
+	fmt.Printf("  Go Version: %s\n", runtime.Version())
+	fmt.Printf("  OS/Arch:    %s/%s\n", runtime.GOOS, runtime.GOARCH)
+	fmt.Println()
+	fmt.Println("Use 'shelltime daemon status' to check the running daemon status.")
 }

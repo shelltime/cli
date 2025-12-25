@@ -182,6 +182,10 @@ func (cs *configService) ReadConfigFile(ctx context.Context, opts ...ReadConfigO
 	if config.CCOtel != nil && config.CCOtel.GRPCPort == 0 {
 		config.CCOtel.GRPCPort = 54027 // default OTEL gRPC port
 	}
+
+	if config.CCOtel != nil && config.CCOtel.Debug != nil && *config.CCOtel.Debug {
+		config.CCOtel.Debug = &truthy
+	}
 	if config.SocketPath == "" {
 		config.SocketPath = DefaultSocketPath
 	}

@@ -74,6 +74,7 @@ func (p *CCOtelProcessor) writeDebugFile(filename string, data interface{}) {
 	if _, err := f.WriteString(fmt.Sprintf("\n--- %s ---\n%s\n", timestamp, jsonData)); err != nil {
 		slog.Error("CCOtel: Failed to write debug data", "error", err)
 	}
+	slog.Debug("CCOtel: Wrote debug data", "path", filePath)
 }
 
 // ProcessMetrics receives OTEL metrics and forwards to backend immediately
