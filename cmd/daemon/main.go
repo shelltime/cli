@@ -79,6 +79,15 @@ func main() {
 		return
 	}
 
+	// Start sync circuit breaker service
+	syncCircuitBreakerService := daemon.NewSyncCircuitBreakerService(pubsub)
+	if err := syncCircuitBreakerService.Start(ctx); err != nil {
+		slog.Error("Failed to start sync circuit breaker service", slog.Any("err", err))
+	} else {
+		slog.Info("Sync circuit breaker service started")
+		defer syncCircuitBreakerService.Stop()
+	}
+
 	go daemon.SocketTopicProccessor(msg)
 
 	// Start CCUsage service if enabled (v1 - ccusage CLI based)

@@ -11,6 +11,16 @@ import (
 )
 
 func handlePubSubSync(ctx context.Context, socketMsgPayload interface{}) error {
+	// Check circuit breaker first
+	if syncCircuitBreaker != nil && syncCircuitBreaker.IsOpen() {
+		slog.Error("Circuit breaker is open, saving sync data locally for later retry")
+		if err := syncCircuitBreaker.SaveForRetry(ctx, socketMsgPayload); err != nil {
+			slog.Error("Failed to save sync data for retry", slog.Any("err", err))
+			return err
+		}
+		return nil // Return nil to ack the message
+	}
+
 	pb, err := json.Marshal(socketMsgPayload)
 	if err != nil {
 		slog.Error("Failed to marshal the sync payload again for unmarshal", slog.Any("payload", socketMsgPayload))
@@ -98,8 +108,15 @@ func handlePubSubSync(ctx context.Context, socketMsgPayload interface{}) error {
 	)
 
 	if err != nil {
+		if syncCircuitBreaker != nil {
+			syncCircuitBreaker.RecordFailure()
+		}
 		slog.Error("Failed to sync data to server", slog.Any("err", err))
 		return err
+	}
+
+	if syncCircuitBreaker != nil {
+		syncCircuitBreaker.RecordSuccess()
 	}
 	return nil
 }

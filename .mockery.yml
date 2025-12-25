@@ -26,3 +26,7 @@ packages:
         config:
           dir: "{{.InterfaceDir}}"
           filename: "mock_{{.InterfaceName}}.go"
+      CircuitBreaker:
+        config:
+          dir: "{{.InterfaceDir}}"
+          filename: "mock_{{.InterfaceName}}.go"
