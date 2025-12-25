@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 
 	"github.com/pelletier/go-toml/v2"
 )
@@ -13,11 +14,28 @@ import (
 var UserShellTimeConfig ShellTimeConfig
 
 type ConfigService interface {
-	ReadConfigFile(ctx context.Context) (ShellTimeConfig, error)
+	ReadConfigFile(ctx context.Context, opts ...ReadConfigOption) (ShellTimeConfig, error)
+}
+
+// readConfigOptions holds configuration for ReadConfigFile behavior
+type readConfigOptions struct {
+	skipCache bool
+}
+
+// ReadConfigOption is a functional option for ReadConfigFile
+type ReadConfigOption func(*readConfigOptions)
+
+// WithSkipCache returns an option that skips the cache and reads from disk
+func WithSkipCache() ReadConfigOption {
+	return func(o *readConfigOptions) {
+		o.skipCache = true
+	}
 }
 
 type configService struct {
 	configFilePath string
+	cachedConfig   *ShellTimeConfig
+	mu             sync.RWMutex
 }
 
 func NewConfigService(configFilePath string) ConfigService {
@@ -73,9 +91,26 @@ func mergeConfig(base, local *ShellTimeConfig) {
 	}
 }
 
-func (cs *configService) ReadConfigFile(ctx context.Context) (config ShellTimeConfig, err error) {
+func (cs *configService) ReadConfigFile(ctx context.Context, opts ...ReadConfigOption) (config ShellTimeConfig, err error) {
 	ctx, span := modelTracer.Start(ctx, "config.read")
 	defer span.End()
+
+	// Apply options
+	options := &readConfigOptions{}
+	for _, opt := range opts {
+		opt(options)
+	}
+
+	// Check cache first (unless skipCache is set)
+	if !options.skipCache {
+		cs.mu.RLock()
+		if cs.cachedConfig != nil {
+			config = *cs.cachedConfig
+			cs.mu.RUnlock()
+			return config, nil
+		}
+		cs.mu.RUnlock()
+	}
 
 	configFile := cs.configFilePath
 	existingConfig, err := os.ReadFile(configFile)
@@ -141,6 +176,11 @@ func (cs *configService) ReadConfigFile(ctx context.Context) (config ShellTimeCo
 	if config.SocketPath == "" {
 		config.SocketPath = DefaultSocketPath
 	}
+
+	// Save to cache
+	cs.mu.Lock()
+	cs.cachedConfig = &config
+	cs.mu.Unlock()
 
 	UserShellTimeConfig = config
 	return
