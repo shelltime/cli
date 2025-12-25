@@ -14,7 +14,8 @@ import (
 type SocketMessageType string
 
 const (
-	SocketMessageTypeSync SocketMessageType = "sync"
+	SocketMessageTypeSync      SocketMessageType = "sync"
+	SocketMessageTypeHeartbeat SocketMessageType = "heartbeat"
 )
 
 type SocketMessage struct {
@@ -111,6 +112,22 @@ func (p *SocketHandler) handleConnection(conn net.Conn) {
 		chMsg := message.NewMessage(watermill.NewUUID(), buf)
 		if err := p.channel.Publish(PubSubTopic, chMsg); err != nil {
 			slog.Error("Error to publish topic", slog.Any("err", err))
+		}
+	case SocketMessageTypeHeartbeat:
+		// Only process heartbeat if codeTracking is enabled
+		if p.config.CodeTracking == nil || p.config.CodeTracking.Enabled == nil || !*p.config.CodeTracking.Enabled {
+			slog.Debug("Heartbeat message received but codeTracking is disabled, ignoring")
+			return
+		}
+		buf, err := json.Marshal(msg)
+		if err != nil {
+			slog.Error("Error encoding heartbeat message", slog.Any("err", err))
+			return
+		}
+
+		chMsg := message.NewMessage(watermill.NewUUID(), buf)
+		if err := p.channel.Publish(PubSubTopic, chMsg); err != nil {
+			slog.Error("Error publishing heartbeat topic", slog.Any("err", err))
 		}
 	default:
 		slog.Error("Unknown message type:", slog.String("messageType", string(msg.Type)))

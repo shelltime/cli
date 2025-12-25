@@ -23,6 +23,7 @@ var (
 	COMMAND_PRE_STORAGE_FILE    = COMMAND_STORAGE_FOLDER + "/pre.txt"
 	COMMAND_POST_STORAGE_FILE   = COMMAND_STORAGE_FOLDER + "/post.txt"
 	COMMAND_CURSOR_STORAGE_FILE = COMMAND_STORAGE_FOLDER + "/cursor.txt"
+	HEARTBEAT_LOG_FILE          = COMMAND_BASE_STORAGE_FOLDER + "/coding-heartbeat.data.log"
 )
 
 func InitFolder(baseFolder string) {
@@ -34,6 +35,7 @@ func InitFolder(baseFolder string) {
 	COMMAND_PRE_STORAGE_FILE = COMMAND_STORAGE_FOLDER + "/pre.txt"
 	COMMAND_POST_STORAGE_FILE = COMMAND_STORAGE_FOLDER + "/post.txt"
 	COMMAND_CURSOR_STORAGE_FILE = COMMAND_STORAGE_FOLDER + "/cursor.txt"
+	HEARTBEAT_LOG_FILE = COMMAND_BASE_STORAGE_FOLDER + "/coding-heartbeat.data.log"
 }
 
 // key: ${shell}|${sessionID}|${command}|${username}
