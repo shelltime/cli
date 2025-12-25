@@ -252,13 +252,13 @@ The modern approach using OpenTelemetry gRPC passthrough:
 | Option | Type | Default | Description |
 |--------|------|---------|-------------|
 | `ccotel.enabled` | boolean | `false` | Enable OTEL collection |
-| `ccotel.grpcPort` | integer | `4317` | gRPC server port |
+| `ccotel.grpcPort` | integer | `54027` | gRPC server port |
 | `ccotel.debug` | boolean | `false` | Write debug files |
 
 ```toml
 [ccotel]
 enabled = true
-grpcPort = 4317    # Standard OTEL port
+grpcPort = 54027   # Default ShellTime OTEL port
 debug = false      # Set true to debug issues
 ```
 
@@ -391,7 +391,7 @@ delete = false
 # --- Claude Code Integration ---
 [ccotel]
 enabled = false
-grpcPort = 4317
+grpcPort = 54027
 debug = false
 
 [ccusage]
