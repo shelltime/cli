@@ -1,12 +1,14 @@
 package commands
 
 import (
+	"encoding/json"
 	"fmt"
 	"net"
 	"os"
 	"time"
 
 	"github.com/gookit/color"
+	"github.com/malamtime/cli/daemon"
 	"github.com/malamtime/cli/model"
 	"github.com/urfave/cli/v2"
 )
@@ -37,8 +39,9 @@ func commandDaemonStatus(c *cli.Context) error {
 		printError(fmt.Sprintf("Socket file does not exist at %s", socketPath))
 	}
 
-	// Check 2: Socket connectivity
-	connected, latency, connErr := checkSocketConnection(socketPath, 2*time.Second)
+	// Check 2: Socket connectivity and get status
+	statusResp, latency, connErr := requestDaemonStatus(socketPath, 2*time.Second)
+	connected := statusResp != nil
 	if connected {
 		printSuccess(fmt.Sprintf("Daemon is responding (latency: %v)", latency.Round(time.Microsecond)))
 	} else {
@@ -57,6 +60,15 @@ func commandDaemonStatus(c *cli.Context) error {
 		} else {
 			printWarning("Service is not running via system service manager")
 		}
+	}
+
+	// Daemon info section (if connected)
+	if statusResp != nil {
+		printSectionHeader("Daemon Info")
+		fmt.Printf("  Version:    %s\n", statusResp.Version)
+		fmt.Printf("  Uptime:     %s (since %s)\n", statusResp.Uptime, statusResp.StartedAt.Format("2006-01-02 15:04:05"))
+		fmt.Printf("  Go Version: %s\n", statusResp.GoVersion)
+		fmt.Printf("  Platform:   %s\n", statusResp.Platform)
 	}
 
 	// Configuration section
@@ -97,13 +109,30 @@ func checkSocketFileExists(socketPath string) bool {
 	return err == nil
 }
 
-func checkSocketConnection(socketPath string, timeout time.Duration) (bool, time.Duration, error) {
+func requestDaemonStatus(socketPath string, timeout time.Duration) (*daemon.StatusResponse, time.Duration, error) {
 	start := time.Now()
 	conn, err := net.DialTimeout("unix", socketPath, timeout)
 	if err != nil {
-		return false, 0, err
+		return nil, 0, err
 	}
 	defer conn.Close()
+
+	// Send status request
+	msg := daemon.SocketMessage{
+		Type: daemon.SocketMessageTypeStatus,
+	}
+	encoder := json.NewEncoder(conn)
+	if err := encoder.Encode(msg); err != nil {
+		return nil, 0, err
+	}
+
+	// Read response
+	var response daemon.StatusResponse
+	decoder := json.NewDecoder(conn)
+	if err := decoder.Decode(&response); err != nil {
+		return nil, 0, err
+	}
+
 	latency := time.Since(start)
-	return true, latency, nil
+	return &response, latency, nil
 }

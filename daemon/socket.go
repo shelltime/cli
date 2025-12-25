@@ -2,9 +2,12 @@ package daemon
 
 import (
 	"encoding/json"
+	"fmt"
 	"log/slog"
 	"net"
 	"os"
+	"runtime"
+	"time"
 
 	"github.com/ThreeDotsLabs/watermill"
 	"github.com/ThreeDotsLabs/watermill/message"
@@ -16,7 +19,17 @@ type SocketMessageType string
 const (
 	SocketMessageTypeSync      SocketMessageType = "sync"
 	SocketMessageTypeHeartbeat SocketMessageType = "heartbeat"
+	SocketMessageTypeStatus    SocketMessageType = "status"
 )
+
+// StatusResponse contains daemon status information
+type StatusResponse struct {
+	Version   string    `json:"version"`
+	StartedAt time.Time `json:"startedAt"`
+	Uptime    string    `json:"uptime"`
+	GoVersion string    `json:"goVersion"`
+	Platform  string    `json:"platform"`
+}
 
 type SocketMessage struct {
 	Type SocketMessageType `json:"type"`
@@ -99,10 +112,8 @@ func (p *SocketHandler) handleConnection(conn net.Conn) {
 	}
 
 	switch msg.Type {
-	// case "status":
-	// 	p.handleStatus(conn)
-	// case "track":
-	// 	p.handleTrack(conn, msg.Payload)
+	case SocketMessageTypeStatus:
+		p.handleStatus(conn)
 	case SocketMessageTypeSync:
 		buf, err := json.Marshal(msg)
 		if err != nil {
@@ -132,4 +143,38 @@ func (p *SocketHandler) handleConnection(conn net.Conn) {
 	default:
 		slog.Error("Unknown message type:", slog.String("messageType", string(msg.Type)))
 	}
+}
+
+func (p *SocketHandler) handleStatus(conn net.Conn) {
+	uptime := time.Since(startedAt)
+	response := StatusResponse{
+		Version:   version,
+		StartedAt: startedAt,
+		Uptime:    formatDuration(uptime),
+		GoVersion: runtime.Version(),
+		Platform:  runtime.GOOS + "/" + runtime.GOARCH,
+	}
+
+	encoder := json.NewEncoder(conn)
+	if err := encoder.Encode(response); err != nil {
+		slog.Error("Error encoding status response", slog.Any("err", err))
+	}
+}
+
+func formatDuration(d time.Duration) string {
+	days := int(d.Hours() / 24)
+	hours := int(d.Hours()) % 24
+	minutes := int(d.Minutes()) % 60
+	seconds := int(d.Seconds()) % 60
+
+	if days > 0 {
+		return fmt.Sprintf("%dd %dh %dm %ds", days, hours, minutes, seconds)
+	}
+	if hours > 0 {
+		return fmt.Sprintf("%dh %dm %ds", hours, minutes, seconds)
+	}
+	if minutes > 0 {
+		return fmt.Sprintf("%dm %ds", minutes, seconds)
+	}
+	return fmt.Sprintf("%ds", seconds)
 }
