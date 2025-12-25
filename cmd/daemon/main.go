@@ -2,10 +2,12 @@ package main
 
 import (
 	"context"
+	"flag"
 	"fmt"
 	"log/slog"
 	"os"
 	"os/signal"
+	"runtime"
 	"syscall"
 
 	"github.com/ThreeDotsLabs/watermill"
@@ -26,6 +28,16 @@ var (
 )
 
 func main() {
+	// Handle version flag first, before any service initialization
+	showVersion := flag.Bool("v", false, "Show version information")
+	showVersionLong := flag.Bool("version", false, "Show version information")
+	flag.Parse()
+
+	if *showVersion || *showVersionLong {
+		printVersionInfo()
+		return
+	}
+
 	l := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{
 		AddSource: true,
 		Level:     slog.LevelDebug,
@@ -153,4 +165,75 @@ func main() {
 	// Cleanup
 	pubsub.Close()
 	processor.Stop()
+}
+
+func printVersionInfo() {
+	fmt.Printf("shelltime-daemon %s\n", version)
+	fmt.Printf("  Commit:     %s\n", commit)
+	fmt.Printf("  Build Date: %s\n", date)
+	fmt.Printf("  Go Version: %s\n", runtime.Version())
+	fmt.Printf("  OS/Arch:    %s/%s\n", runtime.GOOS, runtime.GOARCH)
+
+	// Read config and show debug info
+	ctx := context.Background()
+	configFile := os.ExpandEnv(fmt.Sprintf("%s/%s/%s", "$HOME", model.COMMAND_BASE_STORAGE_FOLDER, "config.toml"))
+	configService := model.NewConfigService(configFile)
+	cfg, err := configService.ReadConfigFile(ctx)
+	if err != nil {
+		fmt.Printf("\nConfig: error reading config: %v\n", err)
+		return
+	}
+
+	fmt.Println("\nConfig:")
+	fmt.Printf("  Socket Path: %s\n", cfg.SocketPath)
+	fmt.Printf("  API Endpoint: %s\n", cfg.APIEndpoint)
+
+	// CCOtel config
+	if cfg.CCOtel != nil {
+		fmt.Println("\nCCOtel:")
+		if cfg.CCOtel.Enabled != nil {
+			fmt.Printf("  Enabled:   %v\n", *cfg.CCOtel.Enabled)
+		} else {
+			fmt.Printf("  Enabled:   <nil>\n")
+		}
+		fmt.Printf("  gRPC Port: %d\n", cfg.CCOtel.GRPCPort)
+		if cfg.CCOtel.Debug != nil {
+			fmt.Printf("  Debug:     %v\n", *cfg.CCOtel.Debug)
+		} else {
+			fmt.Printf("  Debug:     <nil>\n")
+		}
+	} else {
+		fmt.Println("\nCCOtel: <not configured>")
+	}
+
+	// CCUsage config
+	if cfg.CCUsage != nil {
+		fmt.Println("\nCCUsage:")
+		if cfg.CCUsage.Enabled != nil {
+			fmt.Printf("  Enabled: %v\n", *cfg.CCUsage.Enabled)
+		} else {
+			fmt.Printf("  Enabled: <nil>\n")
+		}
+	}
+
+	// LogCleanup config
+	if cfg.LogCleanup != nil {
+		fmt.Println("\nLogCleanup:")
+		if cfg.LogCleanup.Enabled != nil {
+			fmt.Printf("  Enabled:     %v\n", *cfg.LogCleanup.Enabled)
+		} else {
+			fmt.Printf("  Enabled:     <nil>\n")
+		}
+		fmt.Printf("  ThresholdMB: %d\n", cfg.LogCleanup.ThresholdMB)
+	}
+
+	// CodeTracking config
+	if cfg.CodeTracking != nil {
+		fmt.Println("\nCodeTracking:")
+		if cfg.CodeTracking.Enabled != nil {
+			fmt.Printf("  Enabled: %v\n", *cfg.CodeTracking.Enabled)
+		} else {
+			fmt.Printf("  Enabled: <nil>\n")
+		}
+	}
 }
