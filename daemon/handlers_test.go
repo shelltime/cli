@@ -54,7 +54,7 @@ func (s *handlersTestSuite) TestSocketTopicProcessorValidSync() {
 
 	msg := message.NewMessage("test-uuid", payload)
 
-	go SocketTopicProccessor(msgChan)
+	go SocketTopicProcessor(msgChan)
 
 	msgChan <- msg
 
@@ -68,7 +68,7 @@ func (s *handlersTestSuite) TestSocketTopicProcessorInvalidFormat() {
 
 	msg := message.NewMessage("test-uuid", []byte("invalid"))
 
-	go SocketTopicProccessor(msgChan)
+	go SocketTopicProcessor(msgChan)
 
 	msgChan <- msg
 
@@ -96,7 +96,7 @@ func (s *handlersTestSuite) TestSocketTopicProcessorNonSync() {
 
 	msg := message.NewMessage("test-uuid", payload)
 
-	go SocketTopicProccessor(msgChan)
+	go SocketTopicProcessor(msgChan)
 
 	msgChan <- msg
 
@@ -117,7 +117,7 @@ func (s *handlersTestSuite) TestSocketTopicProcessorInvalidPayload() {
 
 	msg := message.NewMessage("test-uuid", payload)
 
-	go SocketTopicProccessor(msgChan)
+	go SocketTopicProcessor(msgChan)
 
 	msgChan <- msg
 
@@ -160,7 +160,7 @@ func (s *handlersTestSuite) TestSocketTopicProcessorMultipleMessages() {
 	msg1 := message.NewMessage("test-uuid-1", payload1)
 	msg2 := message.NewMessage("test-uuid-2", payload2)
 
-	go SocketTopicProccessor(msgChan)
+	go SocketTopicProcessor(msgChan)
 
 	msgChan <- msg1
 	msgChan <- msg2

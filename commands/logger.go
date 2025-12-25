@@ -3,8 +3,6 @@ package commands
 import (
 	"log/slog"
 	"os"
-
-	"github.com/sirupsen/logrus"
 )
 
 var loggerFile *os.File
@@ -13,7 +11,6 @@ var SKIP_LOGGER_SETTINGS = false
 
 func SetupLogger(baseFolder string) {
 	if SKIP_LOGGER_SETTINGS {
-		logrus.SetReportCaller(true)
 		return
 	}
 	// TODO: change to size based logger selector
@@ -22,13 +19,13 @@ func SetupLogger(baseFolder string) {
 	if _, err := os.Stat(logFilePath); os.IsNotExist(err) {
 		err := os.MkdirAll(baseFolder, 0755)
 		if err != nil {
-			slog.Error("[ShellTime.xyz] failed to create log directory: ", slog.Any("err", err))
+			slog.Error("[ShellTime.xyz] failed to create log directory", slog.Any("err", err))
 			return
 		}
 
 		_, err = os.Create(logFilePath)
 		if err != nil {
-			slog.Error("[ShellTime.xyz] failed to create log file: ", slog.Any("err", err))
+			slog.Error("[ShellTime.xyz] failed to create log file", slog.Any("err", err))
 			return
 		}
 	}
@@ -36,13 +33,19 @@ func SetupLogger(baseFolder string) {
 	f, err := os.OpenFile(logFilePath, os.O_WRONLY|os.O_CREATE|os.O_APPEND, 0755)
 	if err != nil {
 		os.Stdout.WriteString(err.Error())
-		slog.Error("[ShellTime.xyz] on setup logger error: ", slog.Any("err", err))
+		slog.Error("[ShellTime.xyz] on setup logger error", slog.Any("err", err))
+		return
 	}
 	loggerFile = f
-	logrus.SetReportCaller(true)
-	logrus.SetLevel(logrus.TraceLevel)
-	logrus.SetOutput(loggerFile)
-	logrus.Traceln("Setting up logger with version: ", commitID)
+
+	// Create a new slog handler that writes to the file
+	handler := slog.NewTextHandler(f, &slog.HandlerOptions{
+		AddSource: true,
+		Level:     slog.LevelDebug,
+	})
+	slog.SetDefault(slog.New(handler))
+
+	slog.Debug("Setting up logger", slog.String("version", commitID))
 }
 
 func CloseLogger() {
@@ -52,7 +55,7 @@ func CloseLogger() {
 	if loggerFile == nil {
 		return
 	}
-	logrus.Traceln("going to close...")
+	slog.Debug("going to close...")
 	loggerFile.Close()
 	loggerFile = nil
 }

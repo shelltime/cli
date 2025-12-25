@@ -88,7 +88,7 @@ func main() {
 		defer syncCircuitBreakerService.Stop()
 	}
 
-	go daemon.SocketTopicProccessor(msg)
+	go daemon.SocketTopicProcessor(msg)
 
 	// Start CCUsage service if enabled (v1 - ccusage CLI based)
 	if cfg.CCUsage != nil && cfg.CCUsage.Enabled != nil && *cfg.CCUsage.Enabled {

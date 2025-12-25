@@ -3,11 +3,11 @@ package commands
 import (
 	"bytes"
 	"fmt"
+	"log/slog"
 	"os"
 	"sort"
 
 	"github.com/malamtime/cli/model"
-	"github.com/sirupsen/logrus"
 	"github.com/urfave/cli/v2"
 	"go.opentelemetry.io/otel/trace"
 )
@@ -72,15 +72,14 @@ func commandGC(c *cli.Context) error {
 		cmd := new(model.Command)
 		_, err := cmd.FromLineBytes(raw)
 		if err != nil {
-			err = fmt.Errorf("failed to parse command from line: %v", err)
-			logrus.Warnln(err)
+			slog.Warn("failed to parse command from line", slog.Any("err", err))
 			continue
 		}
 		postCommands[i] = cmd
 	}
 
 	if postCount == 0 {
-		logrus.Traceln("no post commands need to be clean")
+		slog.Debug("no post commands need to be clean")
 		return nil
 	}
 
@@ -144,24 +143,21 @@ func commandGC(c *cli.Context) error {
 
 	if _, err := os.Stat(originalPreFile); err == nil {
 		if err := os.Rename(originalPreFile, preBackupFile); err != nil {
-			err = fmt.Errorf("failed to backup PRE_FILE: %v", err)
-			logrus.Warnln(err)
-			return err
+			slog.Warn("failed to backup PRE_FILE", slog.Any("err", err))
+			return fmt.Errorf("failed to backup PRE_FILE: %v", err)
 		}
 	}
 
 	if _, err := os.Stat(originalPostFile); err == nil {
 		if err := os.Rename(originalPostFile, postBackupFile); err != nil {
-			err = fmt.Errorf("failed to backup POST_FILE: %v", err)
-			logrus.Warnln(err)
-			return err
+			slog.Warn("failed to backup POST_FILE", slog.Any("err", err))
+			return fmt.Errorf("failed to backup POST_FILE: %v", err)
 		}
 	}
 	if _, err := os.Stat(originalCursorFile); err == nil {
 		if err := os.Rename(originalCursorFile, cursorBackupFile); err != nil {
-			err = fmt.Errorf("failed to backup CURSOR_FILE: %v", err)
-			logrus.Warnln(err)
-			return err
+			slog.Warn("failed to backup CURSOR_FILE", slog.Any("err", err))
+			return fmt.Errorf("failed to backup CURSOR_FILE: %v", err)
 		}
 	}
 
@@ -174,9 +170,8 @@ func commandGC(c *cli.Context) error {
 		preFileContent.Write(line)
 	}
 	if err := os.WriteFile(originalPreFile, preFileContent.Bytes(), 0644); err != nil {
-		err = fmt.Errorf("failed to write new PRE_FILE: %v", err)
-		logrus.Warnln(err)
-		return err
+		slog.Warn("failed to write new PRE_FILE", slog.Any("err", err))
+		return fmt.Errorf("failed to write new PRE_FILE: %v", err)
 	}
 
 	postFileContent := bytes.Buffer{}
@@ -189,17 +184,15 @@ func commandGC(c *cli.Context) error {
 	}
 
 	if err := os.WriteFile(originalPostFile, postFileContent.Bytes(), 0644); err != nil {
-		err = fmt.Errorf("failed to write new POST_FILE: %v", err)
-		logrus.Warnln(err)
-		return err
+		slog.Warn("failed to write new POST_FILE", slog.Any("err", err))
+		return fmt.Errorf("failed to write new POST_FILE: %v", err)
 	}
 
 	lastCursorNano := lastCursor.UnixNano()
 	lastCursorBytes := []byte(fmt.Sprintf("%d", lastCursorNano))
 	if err := os.WriteFile(originalCursorFile, lastCursorBytes, 0644); err != nil {
-		err = fmt.Errorf("failed to write new CURSOR_FILE: %v", err)
-		logrus.Warnln(err)
-		return err
+		slog.Warn("failed to write new CURSOR_FILE", slog.Any("err", err))
+		return fmt.Errorf("failed to write new CURSOR_FILE: %v", err)
 	}
 
 	// TODO: delete $HOME/.config/malamtime/ folder

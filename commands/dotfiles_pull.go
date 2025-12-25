@@ -2,11 +2,11 @@ package commands
 
 import (
 	"fmt"
+	"log/slog"
 	"os"
 
 	"github.com/malamtime/cli/model"
 	"github.com/pterm/pterm"
-	"github.com/sirupsen/logrus"
 	"github.com/urfave/cli/v2"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
@@ -37,7 +37,7 @@ func printPullResults(result map[model.DotfileAppName][]dotfilePullFileResult, d
 
 	// No files to process
 	if totalProcessed == 0 && totalFailed == 0 && totalSkipped == 0 {
-		logrus.Infoln("No dotfiles found to process")
+		slog.Info("No dotfiles found to process")
 		pterm.Info.Println("No dotfiles to process")
 		return
 	}
@@ -117,7 +117,7 @@ func printPullResults(result map[model.DotfileAppName][]dotfilePullFileResult, d
 	}
 
 	// Log for debugging
-	logrus.Infof("Pull complete - Processed: %d, Skipped: %d, Failed: %d", totalProcessed, totalSkipped, totalFailed)
+	slog.Info("Pull complete", slog.Int("processed", totalProcessed), slog.Int("skipped", totalSkipped), slog.Int("failed", totalFailed))
 }
 
 func pullDotfiles(c *cli.Context) error {
@@ -131,7 +131,7 @@ func pullDotfiles(c *cli.Context) error {
 
 	config, err := configService.ReadConfigFile(ctx)
 	if err != nil {
-		logrus.Errorln(err)
+		slog.Error("failed to read config file", slog.Any("err", err))
 		return err
 	}
 
@@ -169,15 +169,15 @@ func pullDotfiles(c *cli.Context) error {
 	}
 
 	// Fetch dotfiles from server
-	logrus.Infof("Fetching dotfiles from server...")
+	slog.Info("Fetching dotfiles from server...")
 	resp, err := model.FetchDotfilesFromServer(ctx, mainEndpoint, filter)
 	if err != nil {
-		logrus.Errorln("Failed to fetch dotfiles from server:", err)
+		slog.Error("Failed to fetch dotfiles from server", slog.Any("err", err))
 		return err
 	}
 
 	if resp == nil || len(resp.Data.FetchUser.Dotfiles.Apps) == 0 {
-		logrus.Infoln("No dotfiles found on server")
+		slog.Info("No dotfiles found on server")
 		fmt.Println("\n📭 No dotfiles found on server")
 		return nil
 	}
@@ -188,18 +188,18 @@ func pullDotfiles(c *cli.Context) error {
 		appName := model.DotfileAppName(appData.App)
 		app, exists := appHandlers[appName]
 		if !exists {
-			logrus.Warnf("Unknown app type: %s", appData.App)
+			slog.Warn("Unknown app type", slog.String("app", appData.App))
 			continue
 		}
 
-		logrus.Infof("Processing %s dotfiles...", appData.App)
+		slog.Info("Processing dotfiles...", slog.String("app", appData.App))
 
 		// Collect files to process for this app
 		filesToProcess := make(map[string]string)
 
 		for _, file := range appData.Files {
 			if len(file.Records) == 0 {
-				logrus.Debugf("No records found for %s", file.Path)
+				slog.Debug("No records found", slog.String("path", file.Path))
 				continue
 			}
 
@@ -246,7 +246,7 @@ func pullDotfiles(c *cli.Context) error {
 		// Check which files are different
 		equalityMap, err := app.IsEqual(ctx, filesToProcess)
 		if err != nil {
-			logrus.Warnf("Failed to check file equality for %s: %v", appData.App, err)
+			slog.Warn("Failed to check file equality", slog.String("app", appData.App), slog.Any("err", err))
 		}
 
 		// Filter out files that are already equal
@@ -255,7 +255,7 @@ func pullDotfiles(c *cli.Context) error {
 
 		for path, content := range filesToProcess {
 			if isEqual, exists := equalityMap[path]; exists && isEqual {
-				logrus.Debugf("Skipping %s - content is identical", path)
+				slog.Debug("Skipping - content is identical", slog.String("path", path))
 				result[appName] = append(result[appName], dotfilePullFileResult{
 					path:      path,
 					isSkipped: true,
@@ -267,7 +267,7 @@ func pullDotfiles(c *cli.Context) error {
 		}
 
 		if len(filesToUpdate) == 0 {
-			logrus.Infof("All %s files are up to date", appData.App)
+			slog.Info("All files are up to date", slog.String("app", appData.App))
 			continue
 		}
 
@@ -275,12 +275,12 @@ func pullDotfiles(c *cli.Context) error {
 
 		// Backup files that will be modified (handles dry-run internally)
 		if err := app.Backup(ctx, pathsToActuallyBackup, dryRun); err != nil {
-			logrus.Warnf("Failed to backup files for %s: %v", appData.App, err)
+			slog.Warn("Failed to backup files", slog.String("app", appData.App), slog.Any("err", err))
 		}
 
 		// Save the updated files (handles dry-run internally)
 		if err := app.Save(ctx, filesToUpdate, dryRun); err != nil {
-			logrus.Errorf("Failed to save files for %s: %v", appData.App, err)
+			slog.Error("Failed to save files", slog.String("app", appData.App), slog.Any("err", err))
 			for f := range filesToUpdate {
 				results = append(results, dotfilePullFileResult{
 					path:     f,

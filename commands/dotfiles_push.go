@@ -2,10 +2,10 @@ package commands
 
 import (
 	"fmt"
+	"log/slog"
 	"os"
 
 	"github.com/malamtime/cli/model"
-	"github.com/sirupsen/logrus"
 	"github.com/urfave/cli/v2"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
@@ -21,7 +21,7 @@ func pushDotfiles(c *cli.Context) error {
 
 	config, err := configService.ReadConfigFile(ctx)
 	if err != nil {
-		logrus.Errorln(err)
+		slog.Error("failed to read config file", slog.Any("err", err))
 		return err
 	}
 
@@ -66,7 +66,7 @@ func pushDotfiles(c *cli.Context) error {
 			if app, ok := appMap[appName]; ok {
 				selectedApps = append(selectedApps, app)
 			} else {
-				logrus.Warnf("Unknown app: %s", appName)
+				slog.Warn("Unknown app", slog.String("app", appName))
 			}
 		}
 	}
@@ -74,31 +74,31 @@ func pushDotfiles(c *cli.Context) error {
 	// Collect all dotfiles
 	var allDotfiles []model.DotfileItem
 	for _, app := range selectedApps {
-		logrus.Infof("Collecting dotfiles for %s", app.Name())
+		slog.Info("Collecting dotfiles", slog.String("app", app.Name()))
 		dotfiles, err := app.CollectDotfiles(ctx)
 		if err != nil {
-			logrus.Errorf("Failed to collect dotfiles for %s: %v", app.Name(), err)
+			slog.Error("Failed to collect dotfiles", slog.String("app", app.Name()), slog.Any("err", err))
 			continue
 		}
 		allDotfiles = append(allDotfiles, dotfiles...)
 	}
 
 	if len(allDotfiles) == 0 {
-		logrus.Infoln("No dotfiles found to push")
+		slog.Info("No dotfiles found to push")
 		return nil
 	}
 
 	// Send to server
-	logrus.Infof("Pushing %d dotfiles to server", len(allDotfiles))
+	slog.Info("Pushing dotfiles to server", slog.Int("count", len(allDotfiles)))
 	userID, err := model.SendDotfilesToServer(ctx, mainEndpoint, allDotfiles)
 	if err != nil {
-		logrus.Errorln("Failed to send dotfiles to server:", err)
+		slog.Error("Failed to send dotfiles to server", slog.Any("err", err))
 		return err
 	}
 
 	// Generate web link for managing dotfiles
 	webLink := fmt.Sprintf("%s/users/%d/settings/dotfiles", config.WebEndpoint, userID)
-	logrus.Infof("Successfully pushed dotfiles. Manage them at: %s", webLink)
+	slog.Info("Successfully pushed dotfiles", slog.String("webLink", webLink))
 	fmt.Printf("\n✅ Successfully pushed %d dotfiles to server\n", len(allDotfiles))
 	fmt.Printf("📁 Manage your dotfiles at: %s\n", webLink)
 

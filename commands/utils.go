@@ -2,11 +2,10 @@ package commands
 
 import (
 	"fmt"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"strings"
-
-	"github.com/sirupsen/logrus"
 )
 
 func expandPath(path string) (string, error) {
@@ -24,7 +23,7 @@ func expandPath(path string) (string, error) {
 func AdjustPathForCurrentUser(path string) string {
 	homeDir, err := os.UserHomeDir()
 	if err != nil {
-		logrus.Warnf("Failed to get home directory: %v", err)
+		slog.Warn("Failed to get home directory", slog.Any("err", err))
 		return path
 	}
 

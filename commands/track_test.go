@@ -17,7 +17,6 @@ import (
 	"time"
 
 	"github.com/malamtime/cli/model"
-	"github.com/sirupsen/logrus"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/suite"
@@ -33,7 +32,6 @@ type trackTestSuite struct {
 
 // before each test
 func (s *trackTestSuite) SetupSuite() {
-	logrus.SetLevel(logrus.TraceLevel)
 	s.baseTimeFolder = strconv.Itoa(int(time.Now().Unix()))
 	otel.SetTracerProvider(noop.NewTracerProvider())
 	SKIP_LOGGER_SETTINGS = true
@@ -263,7 +261,7 @@ func (s *trackTestSuite) TestTrackWithSendData() {
 	// Check the cursor file should be only one line
 	cursorContent, err = os.ReadFile(cursorFile)
 	assert.Nil(s.T(), err)
-	logrus.Infoln(string(cursorContent))
+	s.T().Log("cursor content:", string(cursorContent))
 	cursorLines := bytes.Split(cursorContent, []byte("\n"))
 	assert.Len(s.T(), cursorLines, 1)
 
@@ -271,7 +269,7 @@ func (s *trackTestSuite) TestTrackWithSendData() {
 	preContent, err := os.ReadFile(preFile)
 	assert.Nil(s.T(), err)
 	preContent = bytes.TrimSpace(preContent)
-	logrus.Infoln(string(preContent))
+	s.T().Log("pre content:", string(preContent))
 	preLines := bytes.Split(preContent, []byte("\n"))
 	assert.LessOrEqual(s.T(), len(preLines)-1, times)
 	assert.Contains(s.T(), string(preContent), "unfinished_cmd")
@@ -280,7 +278,7 @@ func (s *trackTestSuite) TestTrackWithSendData() {
 	postContent, err = os.ReadFile(postFile)
 	assert.Nil(s.T(), err)
 	postContent = bytes.TrimSpace(postContent)
-	logrus.Infoln(string(postContent))
+	s.T().Log("post content:", string(postContent))
 	postBytesLines := bytes.Split(postContent, []byte("\n"))
 	assert.Less(s.T(), len(postBytesLines), times)
 	assert.NotContains(s.T(), string(postContent), "unfinished_cmd")

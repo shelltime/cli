@@ -9,7 +9,6 @@ import (
 	"testing"
 
 	"github.com/malamtime/cli/model"
-	"github.com/sirupsen/logrus"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/suite"
@@ -29,7 +28,6 @@ type queryTestSuite struct {
 
 // SetupSuite runs once before all tests
 func (s *queryTestSuite) SetupSuite() {
-	logrus.SetLevel(logrus.TraceLevel)
 	otel.SetTracerProvider(noop.NewTracerProvider())
 	SKIP_LOGGER_SETTINGS = true
 }

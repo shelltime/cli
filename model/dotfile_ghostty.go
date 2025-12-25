@@ -4,11 +4,10 @@ import (
 	"bufio"
 	"context"
 	"fmt"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"strings"
-
-	"github.com/sirupsen/logrus"
 )
 
 // GhosttyApp handles Ghostty terminal configuration files
@@ -131,7 +130,7 @@ func (g *GhosttyApp) Save(ctx context.Context, files map[string]string, isDryRun
 	for path, remoteContent := range files {
 		expandedPath, err := g.expandPath(path)
 		if err != nil {
-			logrus.Warnf("Failed to expand path %s: %v", path, err)
+			slog.Warn("Failed to expand path", slog.String("path", path), slog.Any("err", err))
 			continue
 		}
 
@@ -140,7 +139,7 @@ func (g *GhosttyApp) Save(ctx context.Context, files map[string]string, isDryRun
 		if existingBytes, err := os.ReadFile(expandedPath); err == nil {
 			localContent = string(existingBytes)
 		} else if !os.IsNotExist(err) {
-			logrus.Warnf("Failed to read existing file %s: %v", expandedPath, err)
+			slog.Warn("Failed to read existing file", slog.String("path", expandedPath), slog.Any("err", err))
 			continue
 		}
 
@@ -154,7 +153,7 @@ func (g *GhosttyApp) Save(ctx context.Context, files map[string]string, isDryRun
 
 		// Check if there are any differences
 		if localContent == mergedContent {
-			logrus.Infof("No changes needed for %s", expandedPath)
+			slog.Info("No changes needed", slog.String("path", expandedPath))
 			continue
 		}
 
@@ -198,15 +197,15 @@ func (g *GhosttyApp) Save(ctx context.Context, files map[string]string, isDryRun
 		// Ensure directory exists
 		dir := filepath.Dir(expandedPath)
 		if err := os.MkdirAll(dir, 0755); err != nil {
-			logrus.Warnf("Failed to create directory %s: %v", dir, err)
+			slog.Warn("Failed to create directory", slog.String("dir", dir), slog.Any("err", err))
 			continue
 		}
 
 		// Write merged content
 		if err := os.WriteFile(expandedPath, []byte(mergedContent), 0644); err != nil {
-			logrus.Warnf("Failed to save file %s: %v", expandedPath, err)
+			slog.Warn("Failed to save file", slog.String("path", expandedPath), slog.Any("err", err))
 		} else {
-			logrus.Infof("Saved merged config to %s", expandedPath)
+			slog.Info("Saved merged config", slog.String("path", expandedPath))
 		}
 	}
 

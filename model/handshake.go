@@ -7,11 +7,11 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"net/http"
 	"os"
 	"time"
 
-	"github.com/sirupsen/logrus"
 	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 )
 
@@ -46,7 +46,7 @@ func (hs handshakeService) send(ctx context.Context, path string, jsonData []byt
 
 	req, err := http.NewRequestWithContext(ctx, "POST", hs.config.APIEndpoint+"/api/v1/handshake"+path, bytes.NewBuffer(jsonData))
 	if err != nil {
-		logrus.Errorln(err)
+		slog.Error("failed to create request", slog.Any("err", err))
 		return
 	}
 
@@ -54,15 +54,15 @@ func (hs handshakeService) send(ctx context.Context, path string, jsonData []byt
 	req.Header.Set("User-Agent", fmt.Sprintf("shelltimeCLI@%s", commitID))
 	resp, err := hc.Do(req)
 	if err != nil {
-		logrus.Errorln(err)
+		slog.Error("failed to send request", slog.Any("err", err))
 		return
 	}
 	defer resp.Body.Close()
 
-	logrus.Traceln("http: ", resp.Status)
+	slog.Debug("http response", slog.String("status", resp.Status))
 	buf, err := io.ReadAll(resp.Body)
 	if err != nil {
-		logrus.Errorln(err)
+		slog.Error("failed to read response body", slog.Any("err", err))
 		return
 	}
 
@@ -84,7 +84,7 @@ type handshakeInitRequest struct {
 func (hs handshakeService) Init(ctx context.Context) (string, error) {
 	sysInfo, err := GetOSAndVersion()
 	if err != nil {
-		logrus.Errorln(err)
+		slog.Error("failed to get OS version", slog.Any("err", err))
 		sysInfo = &SysInfo{
 			Os:      "unknown",
 			Version: "unknown",
@@ -104,7 +104,7 @@ func (hs handshakeService) Init(ctx context.Context) (string, error) {
 
 	jsonData, err := json.Marshal(data)
 	if err != nil {
-		logrus.Errorln(err)
+		slog.Error("failed to marshal handshake init request", slog.Any("err", err))
 		return "", err
 	}
 
@@ -131,7 +131,7 @@ func (hs handshakeService) Check(ctx context.Context, handshakeId string) (token
 
 	jsonData, err := json.Marshal(data)
 	if err != nil {
-		logrus.Errorln(err)
+		slog.Error("failed to marshal handshake check request", slog.Any("err", err))
 		return "", err
 	}
 

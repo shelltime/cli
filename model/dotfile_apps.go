@@ -4,12 +4,11 @@ import (
 	"context"
 	"crypto/sha256"
 	"fmt"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"strings"
 	"time"
-
-	"github.com/sirupsen/logrus"
 )
 
 type DotfileAppName string
@@ -122,14 +121,14 @@ func (b *BaseApp) CollectFromPaths(_ context.Context, appName string, paths []st
 	for _, path := range paths {
 		expandedPath, err := b.expandPath(path)
 		if err != nil {
-			logrus.Debugf("Failed to expand path %s: %v", path, err)
+			slog.Debug("Failed to expand path", slog.String("path", path), slog.Any("err", err))
 			continue
 		}
 
 		// Check if it's a directory or file
 		fileInfo, err := os.Stat(expandedPath)
 		if err != nil {
-			logrus.Debugf("Path not found: %s", expandedPath)
+			slog.Debug("Path not found", slog.String("path", expandedPath))
 			continue
 		}
 
@@ -137,14 +136,14 @@ func (b *BaseApp) CollectFromPaths(_ context.Context, appName string, paths []st
 			// For directories, collect specific files
 			files, err := b.collectFromDirectory(expandedPath)
 			if err != nil {
-				logrus.Debugf("Failed to collect from directory %s: %v", expandedPath, err)
+				slog.Debug("Failed to collect from directory", slog.String("path", expandedPath), slog.Any("err", err))
 				continue
 			}
 
 			for _, file := range files {
 				content, modTime, err := b.readFileContent(file)
 				if err != nil {
-					logrus.Debugf("Failed to read file %s: %v", file, err)
+					slog.Debug("Failed to read file", slog.String("file", file), slog.Any("err", err))
 					continue
 				}
 
@@ -166,7 +165,7 @@ func (b *BaseApp) CollectFromPaths(_ context.Context, appName string, paths []st
 			// Single file
 			content, modTime, err := b.readFileContent(expandedPath)
 			if err != nil {
-				logrus.Debugf("Failed to read file %s: %v", expandedPath, err)
+				slog.Debug("Failed to read file", slog.String("path", expandedPath), slog.Any("err", err))
 				continue
 			}
 
@@ -236,7 +235,7 @@ func (b *BaseApp) IsEqual(_ context.Context, files map[string]string) (map[strin
 	for path, remoteContent := range files {
 		expandedPath, err := b.expandPath(path)
 		if err != nil {
-			logrus.Debugf("Failed to expand path %s: %v", path, err)
+			slog.Debug("Failed to expand path", slog.String("path", path), slog.Any("err", err))
 			result[path] = false
 			continue
 		}
@@ -248,7 +247,7 @@ func (b *BaseApp) IsEqual(_ context.Context, files map[string]string) (map[strin
 				// File doesn't exist locally, so it's not equal
 				result[path] = false
 			} else {
-				logrus.Debugf("Failed to read file %s: %v", expandedPath, err)
+				slog.Debug("Failed to read file", slog.String("path", expandedPath), slog.Any("err", err))
 				result[path] = false
 			}
 			continue
@@ -271,14 +270,14 @@ func (b *BaseApp) Backup(ctx context.Context, paths []string, isDryRun bool) err
 	for _, path := range paths {
 		expandedPath, err := b.expandPath(path)
 		if err != nil {
-			logrus.Warnf("Failed to expand path %s: %v", path, err)
+			slog.Warn("Failed to expand path", slog.String("path", path), slog.Any("err", err))
 			continue
 		}
 
 		// Check if file exists
 		if _, err := os.Stat(expandedPath); err != nil {
 			if !os.IsNotExist(err) {
-				logrus.Warnf("Failed to stat file %s: %v", expandedPath, err)
+				slog.Warn("Failed to stat file", slog.String("path", expandedPath), slog.Any("err", err))
 			}
 			continue // Skip if file doesn't exist
 		}
@@ -287,17 +286,17 @@ func (b *BaseApp) Backup(ctx context.Context, paths []string, isDryRun bool) err
 		backupPath := expandedPath + ".backup." + time.Now().Format("20060102-150405")
 		existingContent, err := os.ReadFile(expandedPath)
 		if err != nil {
-			logrus.Warnf("Failed to read existing file for backup: %v", err)
+			slog.Warn("Failed to read existing file for backup", slog.Any("err", err))
 			continue
 		}
 
 		if isDryRun {
-			logrus.Infof("[DRY RUN] Would create backup for %s", expandedPath)
+			slog.Info("[DRY RUN] Would create backup", slog.String("path", expandedPath))
 		} else {
 			if err := os.WriteFile(backupPath, existingContent, 0644); err != nil {
-				logrus.Warnf("Failed to create backup at %s: %v", backupPath, err)
+				slog.Warn("Failed to create backup", slog.String("backupPath", backupPath), slog.Any("err", err))
 			} else {
-				logrus.Infof("Created backup at %s", backupPath)
+				slog.Info("Created backup", slog.String("backupPath", backupPath))
 			}
 		}
 	}
@@ -312,7 +311,7 @@ func (b *BaseApp) Save(ctx context.Context, files map[string]string, isDryRun bo
 	for path, newContent := range files {
 		expandedPath, err := b.expandPath(path)
 		if err != nil {
-			logrus.Warnf("Failed to expand path %s: %v", path, err)
+			slog.Warn("Failed to expand path", slog.String("path", path), slog.Any("err", err))
 			continue
 		}
 
@@ -321,7 +320,7 @@ func (b *BaseApp) Save(ctx context.Context, files map[string]string, isDryRun bo
 		if existingBytes, err := os.ReadFile(expandedPath); err == nil {
 			existingContent = string(existingBytes)
 		} else if !os.IsNotExist(err) {
-			logrus.Warnf("Failed to read existing file %s: %v", expandedPath, err)
+			slog.Warn("Failed to read existing file", slog.String("path", expandedPath), slog.Any("err", err))
 			continue
 		}
 
@@ -362,15 +361,15 @@ func (b *BaseApp) Save(ctx context.Context, files map[string]string, isDryRun bo
 		// Ensure directory exists
 		dir := filepath.Dir(expandedPath)
 		if err := os.MkdirAll(dir, 0755); err != nil {
-			logrus.Warnf("Failed to create directory %s: %v", dir, err)
+			slog.Warn("Failed to create directory", slog.String("dir", dir), slog.Any("err", err))
 			continue
 		}
 
 		// Write merged content
 		if err := os.WriteFile(expandedPath, mergedContent, 0644); err != nil {
-			logrus.Warnf("Failed to save file %s: %v", expandedPath, err)
+			slog.Warn("Failed to save file", slog.String("path", expandedPath), slog.Any("err", err))
 		} else {
-			logrus.Infof("Saved new content to %s", expandedPath)
+			slog.Info("Saved new content", slog.String("path", expandedPath))
 		}
 	}
 

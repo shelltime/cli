@@ -3,6 +3,7 @@ package commands
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"os"
 	"os/exec"
 	"runtime"
@@ -12,7 +13,6 @@ import (
 	"github.com/briandowns/spinner"
 	"github.com/gookit/color"
 	"github.com/malamtime/cli/model"
-	"github.com/sirupsen/logrus"
 	"github.com/urfave/cli/v2"
 )
 
@@ -51,7 +51,7 @@ func commandQuery(c *cli.Context) error {
 	// Get system context
 	systemContext, err := getSystemContext(query)
 	if err != nil {
-		logrus.Warnf("Failed to get system context: %v", err)
+		slog.Warn("Failed to get system context", slog.Any("err", err))
 	}
 
 	s := spinner.New(spinner.CharSets[35], 200*time.Millisecond)
@@ -77,7 +77,7 @@ func commandQuery(c *cli.Context) error {
 	// Check auto-run configuration
 	cfg, err := configService.ReadConfigFile(ctx)
 	if err != nil {
-		logrus.Warnf("Failed to read config for auto-run check: %v", err)
+		slog.Warn("Failed to read config for auto-run check", slog.Any("err", err))
 		// If can't read config, just display the command
 		displayCommand(newCommand)
 		return nil

@@ -3,6 +3,7 @@ package commands
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"os"
 	"time"
 
@@ -11,7 +12,6 @@ import (
 	"github.com/malamtime/cli/model"
 	"github.com/pelletier/go-toml/v2"
 	"github.com/pkg/browser"
-	"github.com/sirupsen/logrus"
 	"github.com/urfave/cli/v2"
 	"go.opentelemetry.io/otel/trace"
 )
@@ -102,7 +102,7 @@ func ApplyTokenByHandshake(_ctx context.Context, config model.ShellTimeConfig) (
 	feLink := fmt.Sprintf("%s/cli/integration?hid=%s", config.WebEndpoint, hid)
 
 	if err := browser.OpenURL(feLink); err != nil {
-		logrus.Errorln(err)
+		slog.Error("failed to open browser", slog.Any("err", err))
 	}
 
 	color.Green.Println(fmt.Sprintf("Open %s to continue", feLink))

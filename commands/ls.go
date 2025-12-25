@@ -4,6 +4,7 @@ package commands
 import (
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"os"
 	"strconv"
 	"time"
@@ -11,7 +12,6 @@ import (
 	"github.com/gookit/color"
 	"github.com/malamtime/cli/model"
 	"github.com/olekukonko/tablewriter"
-	"github.com/sirupsen/logrus"
 	"github.com/urfave/cli/v2"
 	"go.opentelemetry.io/otel/trace"
 )
@@ -81,7 +81,7 @@ func commandList(c *cli.Context) error {
 		postCommand := new(model.Command)
 		_, err := postCommand.FromLineBytes(line)
 		if err != nil {
-			logrus.Errorln("Failed to parse post command: ", err, string(line))
+			slog.Error("Failed to parse post command", slog.Any("err", err), slog.String("line", string(line)))
 			continue
 		}
 

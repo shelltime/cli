@@ -3,11 +3,10 @@ package model
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"os"
 	"os/user"
-
-	"github.com/sirupsen/logrus"
 )
 
 // Alias represents a shell alias
@@ -37,13 +36,13 @@ type importShellAliasResponse struct {
 // SendAliasesToServer sends the collected aliases to the server
 func SendAliasesToServer(ctx context.Context, endpoint Endpoint, aliases []string, isFullyRefresh bool, shellType, fileLocation string) error {
 	if len(aliases) == 0 {
-		logrus.Infoln("No aliases to send")
+		slog.Info("No aliases to send")
 		return nil
 	}
 
 	sysInfo, err := GetOSAndVersion()
 	if err != nil {
-		logrus.Warnln(err)
+		slog.Warn("failed to get OS version", slog.Any("err", err))
 		sysInfo = &SysInfo{
 			Os:      "unknown",
 			Version: "unknown",
@@ -52,7 +51,7 @@ func SendAliasesToServer(ctx context.Context, endpoint Endpoint, aliases []strin
 
 	hostname, err := os.Hostname()
 	if err != nil {
-		logrus.Warnln("Failed to get hostname:", err)
+		slog.Warn("Failed to get hostname", slog.Any("err", err))
 		hostname = "unknown"
 	}
 
@@ -60,7 +59,7 @@ func SendAliasesToServer(ctx context.Context, endpoint Endpoint, aliases []strin
 	if username == "" {
 		currentUser, err := user.Current()
 		if err != nil {
-			logrus.Warnln("Failed to get username:", err)
+			slog.Warn("Failed to get username", slog.Any("err", err))
 			username = "unknown"
 		} else {
 			username = currentUser.Username
@@ -92,6 +91,6 @@ func SendAliasesToServer(ctx context.Context, endpoint Endpoint, aliases []strin
 		return fmt.Errorf("failed to send aliases to server: %w", err)
 	}
 
-	logrus.Infoln("save aliases successfully", resp.Count)
+	slog.Info("save aliases successfully", slog.Int("count", resp.Count))
 	return nil
 }

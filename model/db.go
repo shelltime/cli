@@ -6,11 +6,10 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"log/slog"
 	"os"
 	"strconv"
 	"time"
-
-	"github.com/sirupsen/logrus"
 )
 
 const (
@@ -47,10 +46,10 @@ type preCommandTree map[string][]*Command
 func GetPreCommandsTree(ctx context.Context) (result preCommandTree, err error) {
 	ctx, span := modelTracer.Start(ctx, "db.getPreCmdsTree")
 	defer span.End()
-	preFilePath := os.ExpandEnv(fmt.Sprintf("%s/%s", "$HOME", COMMAND_PRE_STORAGE_FILE))
+	preFilePath := GetPreCommandFilePath()
 	preFileHandler, err := os.Open(preFilePath)
 	if err != nil {
-		logrus.Errorln("Failed to open pre-command file:", err)
+		slog.Error("Failed to open pre-command file", slog.Any("err", err))
 		return nil, err
 	}
 	defer preFileHandler.Close()
@@ -64,7 +63,7 @@ func GetPreCommandsTree(ctx context.Context) (result preCommandTree, err error) 
 		cmd := new(Command)
 		_, err := cmd.FromLineBytes(line)
 		if err != nil {
-			logrus.Errorln("Invalid line parse in pre-command file:", line, err)
+			slog.Error("Invalid line parse in pre-command file", slog.String("line", string(line)), slog.Any("err", err))
 			continue
 		}
 
@@ -86,10 +85,10 @@ func GetPreCommandsTree(ctx context.Context) (result preCommandTree, err error) 
 func GetPreCommands(ctx context.Context) ([]*Command, error) {
 	ctx, span := modelTracer.Start(ctx, "db.getPreCmds")
 	defer span.End()
-	preFilePath := os.ExpandEnv(fmt.Sprintf("%s/%s", "$HOME", COMMAND_PRE_STORAGE_FILE))
+	preFilePath := GetPreCommandFilePath()
 	preFileHandler, err := os.Open(preFilePath)
 	if err != nil {
-		logrus.Errorln("Failed to open pre-command file:", err)
+		slog.Error("Failed to open pre-command file", slog.Any("err", err))
 		return nil, err
 	}
 	defer preFileHandler.Close()
@@ -107,14 +106,14 @@ func GetPreCommands(ctx context.Context) ([]*Command, error) {
 		cmd := new(Command)
 		_, err := cmd.FromLineBytes(raw)
 		if err != nil {
-			logrus.Errorln("Invalid line parse in pre-command file:", string(raw), err)
+			slog.Error("Invalid line parse in pre-command file", slog.String("line", string(raw)), slog.Any("err", err))
 			continue
 		}
 		result = append(result, cmd)
 	}
 
 	if err := scanner.Err(); err != nil {
-		logrus.Errorln("Error reading file:", err)
+		slog.Error("Error reading file", slog.Any("err", err))
 		return nil, err
 	}
 
@@ -125,7 +124,7 @@ func GetLastCursor(ctx context.Context) (cursorTime time.Time, noCursorExist boo
 	ctx, span := modelTracer.Start(ctx, "db.getLastCursor")
 	defer span.End()
 	noCursorExist = false
-	cursorFilePath := os.ExpandEnv(fmt.Sprintf("%s/%s", "$HOME", COMMAND_CURSOR_STORAGE_FILE))
+	cursorFilePath := GetCursorFilePath()
 	cursorFile, err := os.Open(cursorFilePath)
 	if err != nil {
 		if os.IsNotExist(err) {
@@ -134,7 +133,7 @@ func GetLastCursor(ctx context.Context) (cursorTime time.Time, noCursorExist boo
 			err = nil
 			return
 		}
-		logrus.Errorln("Failed to open cursor file:", err)
+		slog.Error("Failed to open cursor file", slog.Any("err", err))
 		return
 	}
 	defer cursorFile.Close()
@@ -142,7 +141,7 @@ func GetLastCursor(ctx context.Context) (cursorTime time.Time, noCursorExist boo
 	fileContent, err := io.ReadAll(cursorFile)
 
 	if err != nil {
-		logrus.Errorln("Error reading cursor file:", err)
+		slog.Error("Error reading cursor file", slog.Any("err", err))
 		return cursorTime, false, err
 	}
 
@@ -161,7 +160,7 @@ func GetLastCursor(ctx context.Context) (cursorTime time.Time, noCursorExist boo
 
 	cursor, err := strconv.Atoi(lastLine)
 	if err != nil {
-		logrus.Errorln("Failed to parse cursor value:", err)
+		slog.Error("Failed to parse cursor value", slog.Any("err", err))
 		return
 	}
 	cursorTime = time.Unix(0, int64(cursor))
@@ -171,10 +170,10 @@ func GetLastCursor(ctx context.Context) (cursorTime time.Time, noCursorExist boo
 func GetPostCommands(ctx context.Context) ([][]byte, int, error) {
 	ctx, span := modelTracer.Start(ctx, "db.getPostCmds")
 	defer span.End()
-	postFilePath := os.ExpandEnv(fmt.Sprintf("%s/%s", "$HOME", COMMAND_POST_STORAGE_FILE))
+	postFilePath := GetPostCommandFilePath()
 	postFileHandler, err := os.Open(postFilePath)
 	if err != nil {
-		logrus.Errorln("Failed to open file:", err)
+		slog.Error("Failed to open file", slog.Any("err", err))
 		return nil, 0, err
 	}
 	defer postFileHandler.Close()
@@ -192,7 +191,7 @@ func GetPostCommands(ctx context.Context) ([][]byte, int, error) {
 	}
 
 	if err := scanner.Err(); err != nil {
-		logrus.Errorln("Error reading file:", err)
+		slog.Error("Error reading file", slog.Any("err", err))
 		return nil, 0, err
 	}
 	lineCount := len(nonEmptyContent)
