@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.1.44](https://github.com/shelltime/cli/compare/v0.1.43...v0.1.44) (2025-12-25)
+
+
+### Bug Fixes
+
+* **daemon:** handle bool values sent as strings in OTEL processor ([4134b61](https://github.com/shelltime/cli/commit/4134b618a8fba8f6140eea152a5d926f4c46ff51))
+* **daemon:** handle bool values sent as strings in OTEL processor ([1e8fc8f](https://github.com/shelltime/cli/commit/1e8fc8fe8b18cb501f1d382f9191ef8dade45666))
+
 ## [0.1.43](https://github.com/shelltime/cli/compare/v0.1.42...v0.1.43) (2025-12-25)
 
 
