@@ -76,3 +76,18 @@ func GetBinFolderPath() string {
 func GetHooksFolderPath() string {
 	return GetStoragePath("hooks")
 }
+
+// GetDaemonLogsPath returns the path to the daemon logs folder
+func GetDaemonLogsPath() string {
+	return GetStoragePath("logs")
+}
+
+// GetDaemonLogFilePath returns the path to the daemon output log file (macOS)
+func GetDaemonLogFilePath() string {
+	return GetStoragePath("logs", "shelltime-daemon.log")
+}
+
+// GetDaemonErrFilePath returns the path to the daemon error log file (macOS)
+func GetDaemonErrFilePath() string {
+	return GetStoragePath("logs", "shelltime-daemon.err")
+}

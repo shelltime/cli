@@ -37,6 +37,12 @@ type CodeTracking struct {
 	Enabled *bool `toml:"enabled"`
 }
 
+// LogCleanup configuration for automatic log file cleanup
+type LogCleanup struct {
+	Enabled     *bool `toml:"enabled"`     // default: true (enabled by default)
+	ThresholdMB int64 `toml:"thresholdMB"` // default: 100 MB
+}
+
 type ShellTimeConfig struct {
 	Token       string
 	APIEndpoint string
@@ -78,6 +84,9 @@ type ShellTimeConfig struct {
 	// CodeTracking configuration for coding activity heartbeat tracking
 	CodeTracking *CodeTracking `toml:"codeTracking"`
 
+	// LogCleanup configuration for automatic log file cleanup in daemon
+	LogCleanup *LogCleanup `toml:"logCleanup"`
+
 	// SocketPath is the path to the Unix domain socket used for communication
 	// between the CLI and the daemon.
 	SocketPath string `toml:"socketPath"`
@@ -105,9 +114,10 @@ var DefaultConfig = ShellTimeConfig{
 	Encrypted:     nil,
 	AI:            DefaultAIConfig,
 	Exclude:       []string{},
-	CCUsage:       nil,
-	CCOtel:        nil,
-	CodeTracking:  nil,
+	CCUsage:      nil,
+	CCOtel:       nil,
+	CodeTracking: nil,
+	LogCleanup:   nil,
 
 	SocketPath: DefaultSocketPath,
 }

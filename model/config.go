@@ -86,6 +86,9 @@ func mergeConfig(base, local *ShellTimeConfig) {
 	if local.CCOtel != nil {
 		base.CCOtel = local.CCOtel
 	}
+	if local.LogCleanup != nil {
+		base.LogCleanup = local.LogCleanup
+	}
 	if local.SocketPath != "" {
 		base.SocketPath = local.SocketPath
 	}
@@ -175,6 +178,21 @@ func (cs *configService) ReadConfigFile(ctx context.Context, opts ...ReadConfigO
 	}
 	if config.SocketPath == "" {
 		config.SocketPath = DefaultSocketPath
+	}
+
+	// Initialize LogCleanup with defaults if not present (enabled by default with 100MB threshold)
+	if config.LogCleanup == nil {
+		config.LogCleanup = &LogCleanup{
+			Enabled:     &truthy,
+			ThresholdMB: 100,
+		}
+	} else {
+		if config.LogCleanup.Enabled == nil {
+			config.LogCleanup.Enabled = &truthy
+		}
+		if config.LogCleanup.ThresholdMB == 0 {
+			config.LogCleanup.ThresholdMB = 100
+		}
 	}
 
 	// Save to cache
