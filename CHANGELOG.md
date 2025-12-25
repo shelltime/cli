@@ -1,5 +1,63 @@
 # Changelog
 
+## [0.1.42](https://github.com/shelltime/cli/compare/v0.1.41...v0.1.42) (2025-12-25)
+
+
+### Features
+
+* **ccotel:** add debug config for raw JSON output ([86893b0](https://github.com/shelltime/cli/commit/86893b0ad330aa3979e3464cb577bf9fff3c6b57))
+* **ccotel:** add debug config for raw JSON output ([fb5e9b5](https://github.com/shelltime/cli/commit/fb5e9b56945363df6c562e82af264c24c94aa2db))
+* **daemon:** add circuit breaker for sync handler ([0e1cc16](https://github.com/shelltime/cli/commit/0e1cc164d6718a61c75cc6d3baa21a8d8a71aeb9))
+* **daemon:** add circuit breaker for sync handler ([30dd270](https://github.com/shelltime/cli/commit/30dd270da3da8b027c305e7413a61de7ea21f3c9))
+* **daemon:** add coding heartbeat tracking with offline persistence ([f3f61bf](https://github.com/shelltime/cli/commit/f3f61bf41bfd67b43098272ba855a7a8179d2c9e))
+* **daemon:** add coding heartbeat tracking with offline persistence ([a65e336](https://github.com/shelltime/cli/commit/a65e3367e0e8f33186f1f4a5318648a81b397e6d))
+* **daemon:** add daily cleanup timer service for large log files ([c6d7429](https://github.com/shelltime/cli/commit/c6d742971c6161ce28e577afbc5b612ed053bf6a))
+* **daemon:** add daily cleanup timer service for large log files ([723e1f8](https://github.com/shelltime/cli/commit/723e1f8935dda581290aef3966d5cba7ec014e5b))
+* **daemon:** add status subcommand ([592954d](https://github.com/shelltime/cli/commit/592954d701a579ad4012cfff7d525b5d8fa66f5f))
+* **daemon:** add status subcommand ([0e71436](https://github.com/shelltime/cli/commit/0e71436c6b6acc14eb7d353524a9177f1feb2192))
+* **model:** add cache support to ConfigService with skip option ([b86fa51](https://github.com/shelltime/cli/commit/b86fa51d5d9efd5556747d280646f2a456043e77))
+
+
+### Bug Fixes
+
+* **config:** add missing merge logic for CodeTracking and LogCleanup ([6cbbcb3](https://github.com/shelltime/cli/commit/6cbbcb32917335de448f9072f4f6a79e4bfe27e8))
+* **gc:** add nil check when processing post commands ([7aa6099](https://github.com/shelltime/cli/commit/7aa60997bd2b082689c4a10423337019c0f329d4))
+* **model:** use template variable for binary path in Linux service file ([957afb9](https://github.com/shelltime/cli/commit/957afb9e43caaba74b9bb7370184ab6f4661c101)), closes [#152](https://github.com/shelltime/cli/issues/152)
+* **test:** add LogCleanup to mocked config in track_test ([af725dd](https://github.com/shelltime/cli/commit/af725dda54abf243c70092842e2fc9a0a5fa31af))
+
+
+### Code Refactoring
+
+* **cli:** rename init command to auth and add new init orchestrator ([5373104](https://github.com/shelltime/cli/commit/5373104c586aea40a0290538bb186a185c3defc8))
+* **cli:** rename init command to auth and add new init orchestrator ([cdb6faf](https://github.com/shelltime/cli/commit/cdb6faf024fbd966cb3f8756b211f79d43771b0b))
+* **gc:** use path helpers and add automatic large log cleanup ([dc03563](https://github.com/shelltime/cli/commit/dc0356334f16c11f15b7983192f269585db254b7))
+* **gc:** use path helpers and add automatic large log cleanup ([0cf2e17](https://github.com/shelltime/cli/commit/0cf2e17c33ba6b20065e5dacb27c73679b30fc2e))
+* **logging:** replace logrus with stdlib slog and add path helpers ([03f7962](https://github.com/shelltime/cli/commit/03f7962b72c66f6d257c6ee5dceb28f536d722a7))
+* **logging:** replace logrus with stdlib slog and add path helpers ([6144805](https://github.com/shelltime/cli/commit/6144805b4b63527574cfd3a834e034face533b27))
+* **model:** move circuit breaker to model package with tests ([bb37156](https://github.com/shelltime/cli/commit/bb37156f57a7ed516195d968138c0ca87246294e))
+* **model:** use filepath.Join for cross-platform path handling ([b6e8bf6](https://github.com/shelltime/cli/commit/b6e8bf6f4ed5c045255a8eb931a9c2d2b5043df1))
+
+
+### Documentation
+
+* **claude:** improve CLAUDE.md with architecture details ([79ffaa9](https://github.com/shelltime/cli/commit/79ffaa9634ea8530b6b3cf476ecfe74bebda94ca))
+* **claude:** improve CLAUDE.md with architecture details ([abbca7c](https://github.com/shelltime/cli/commit/abbca7cc75fad78da82085ee26b85eb369cbabd3))
+
+
+### Miscellaneous Chores
+
+* release 0.1.42 ([7d2fa44](https://github.com/shelltime/cli/commit/7d2fa4442aa79ec46bbeabc9606a514c30e92171))
+
+
+### Continuous Integration
+
+* **release:** include all commit types in changelog ([a064fbc](https://github.com/shelltime/cli/commit/a064fbc1eed8fa09d60476d146baee5616772a2e))
+
+
+### Tests
+
+* **config:** add tests for LogCleanup and CodeTracking config ([8055c17](https://github.com/shelltime/cli/commit/8055c177e3bd618a7ce1dc6545754de1b658488f))
+
 ## [0.1.41](https://github.com/shelltime/cli/compare/v0.1.40...v0.1.41) (2025-12-19)
 
 
