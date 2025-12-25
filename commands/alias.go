@@ -2,11 +2,11 @@ package commands
 
 import (
 	"context"
+	"log/slog"
 	"os"
 	"strings"
 
 	"github.com/malamtime/cli/model"
-	"github.com/sirupsen/logrus"
 	"github.com/urfave/cli/v2"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
@@ -51,25 +51,24 @@ func importAliases(c *cli.Context) error {
 	ctx, span := commandTracer.Start(c.Context, "alias-import", trace.WithSpanKind(trace.SpanKindClient))
 	defer span.End()
 	SetupLogger(os.ExpandEnv("$HOME/" + model.COMMAND_BASE_STORAGE_FOLDER))
-	logrus.SetLevel(logrus.TraceLevel)
 
 	isFullyRefresh := c.Bool("fully-refresh")
 	span.SetAttributes(attribute.Bool("fully-refresh", isFullyRefresh))
 
 	zshConfigFile, err := expandPath(c.String("zsh-config"))
 	if err != nil {
-		logrus.Errorln(err)
+		slog.Error("failed to expand zsh config path", slog.Any("err", err))
 		return err
 	}
 	fishConfigFile, err := expandPath(c.String("fish-config"))
 	if err != nil {
-		logrus.Errorln(err)
+		slog.Error("failed to expand fish config path", slog.Any("err", err))
 		return err
 	}
 
 	config, err := configService.ReadConfigFile(ctx)
 	if err != nil {
-		logrus.Errorln(err)
+		slog.Error("failed to read config file", slog.Any("err", err))
 		return err
 	}
 
@@ -81,10 +80,10 @@ func importAliases(c *cli.Context) error {
 	if _, err := os.Stat(zshConfigFile); err == nil {
 		aliases, err := parseZshAliases(ctx, zshConfigFile)
 		if err != nil {
-			logrus.Errorln("Failed to parse zsh aliases:", err)
+			slog.Error("Failed to parse zsh aliases", slog.Any("err", err))
 			return err
 		}
-		logrus.Traceln("Found aliases in zsh configuration", len(aliases))
+		slog.Debug("Found aliases in zsh configuration", slog.Int("count", len(aliases)))
 		err = model.SendAliasesToServer(
 			ctx,
 			mainEndpoint,
@@ -94,7 +93,7 @@ func importAliases(c *cli.Context) error {
 			zshConfigFile,
 		)
 		if err != nil {
-			logrus.Errorln("Failed to send aliases to server:", err)
+			slog.Error("Failed to send aliases to server", slog.Any("err", err))
 			return err
 		}
 	}
@@ -102,10 +101,10 @@ func importAliases(c *cli.Context) error {
 	if _, err := os.Stat(fishConfigFile); err == nil {
 		aliases, err := parseFishAliases(ctx, fishConfigFile)
 		if err != nil {
-			logrus.Errorln("Failed to parse fish aliases:", err)
+			slog.Error("Failed to parse fish aliases", slog.Any("err", err))
 			return err
 		}
-		logrus.Traceln("Found aliases in fish configuration", len(aliases))
+		slog.Debug("Found aliases in fish configuration", slog.Int("count", len(aliases)))
 		err = model.SendAliasesToServer(
 			ctx,
 			mainEndpoint,
@@ -115,12 +114,12 @@ func importAliases(c *cli.Context) error {
 			fishConfigFile,
 		)
 		if err != nil {
-			logrus.Errorln("Failed to send aliases to server:", err)
+			slog.Error("Failed to send aliases to server", slog.Any("err", err))
 			return err
 		}
 	}
 
-	logrus.Infoln("Successfully imported aliases")
+	slog.Info("Successfully imported aliases")
 	return nil
 }
 

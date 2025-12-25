@@ -2,10 +2,9 @@ package model
 
 import (
 	"context"
+	"log/slog"
 	"net/http"
 	"sync"
-
-	"github.com/sirupsen/logrus"
 )
 
 type errorResponse struct {
@@ -56,10 +55,10 @@ func doSendData(ctx context.Context, endpoint Endpoint, data PostTrackArgs) erro
 		Payload:  data,
 		Response: nil,
 	})
-	logrus.Traceln("http: ", "/api/v1/track", len(data.Data), data.Meta)
+	slog.Debug("http track request", slog.String("path", "/api/v1/track"), slog.Int("dataLen", len(data.Data)))
 
 	if err != nil {
-		logrus.Errorln(err)
+		slog.Error("failed to send data", slog.Any("err", err))
 		return err
 	}
 	return nil
@@ -70,7 +69,7 @@ func SendLocalDataToServer(ctx context.Context, config ShellTimeConfig, data Pos
 	ctx, span := modelTracer.Start(ctx, "sync.local")
 	defer span.End()
 	if config.Token == "" {
-		logrus.Traceln("no token available. do not sync to server")
+		slog.Debug("no token available. do not sync to server")
 		return nil
 	}
 

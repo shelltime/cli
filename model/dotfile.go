@@ -3,11 +3,10 @@ package model
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"os"
 	"time"
-
-	"github.com/sirupsen/logrus"
 )
 
 // DotfileItem represents a single dotfile to be sent to the server
@@ -49,14 +48,14 @@ type dotfilePushResponse struct {
 // SendDotfilesToServer sends the collected dotfiles to the server
 func SendDotfilesToServer(ctx context.Context, endpoint Endpoint, dotfiles []DotfileItem) (int, error) {
 	if len(dotfiles) == 0 {
-		logrus.Infoln("No dotfiles to send")
+		slog.Info("No dotfiles to send")
 		return 0, nil
 	}
 
 	// Get system info for hostname
 	hostname, err := os.Hostname()
 	if err != nil {
-		logrus.Warnln("Failed to get hostname:", err)
+		slog.Warn("Failed to get hostname", slog.Any("err", err))
 		hostname = "unknown"
 	}
 
@@ -85,12 +84,12 @@ func SendDotfilesToServer(ctx context.Context, endpoint Endpoint, dotfiles []Dot
 		return 0, fmt.Errorf("failed to send dotfiles to server: %w", err)
 	}
 
-	logrus.Infof("Pushed dotfiles successfully - Success: %d, Failed: %d", resp.Success, resp.Failed)
+	slog.Info("Pushed dotfiles successfully", slog.Int("success", resp.Success), slog.Int("failed", resp.Failed))
 
 	// Log any errors
 	for _, result := range resp.Results {
 		if result.Status == "error" {
-			logrus.Warnf("Error pushing %s (%s): %s", result.App, result.Path, result.Error)
+			slog.Warn("Error pushing dotfile", slog.String("app", result.App), slog.String("path", result.Path), slog.String("error", result.Error))
 		}
 	}
 

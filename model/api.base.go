@@ -7,10 +7,10 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"net/http"
 	"time"
 
-	"github.com/sirupsen/logrus"
 	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 )
 
@@ -33,7 +33,7 @@ func SendHTTPRequestJSON[T any, R any](opts HTTPRequestOptions[T, R]) error {
 
 	jsonData, err := json.Marshal(opts.Payload)
 	if err != nil {
-		logrus.Errorln(err)
+		slog.Error("failed to marshal payload", slog.Any("err", err))
 		return err
 	}
 
@@ -49,7 +49,7 @@ func SendHTTPRequestJSON[T any, R any](opts HTTPRequestOptions[T, R]) error {
 
 	req, err := http.NewRequestWithContext(ctx, opts.Method, opts.Endpoint.APIEndpoint+opts.Path, bytes.NewBuffer(jsonData))
 	if err != nil {
-		logrus.Errorln(err)
+		slog.Error("failed to create request", slog.Any("err", err))
 		return err
 	}
 
@@ -62,16 +62,16 @@ func SendHTTPRequestJSON[T any, R any](opts HTTPRequestOptions[T, R]) error {
 	req.Header.Set("User-Agent", fmt.Sprintf("shelltimeCLI@%s", commitID))
 	req.Header.Set("Authorization", "CLI "+opts.Endpoint.Token)
 
-	logrus.Traceln("http: ", req.URL.String())
+	slog.Debug("http request", slog.String("url", req.URL.String()))
 
 	resp, err := client.Do(req)
 	if err != nil {
-		logrus.Errorln(err)
+		slog.Error("failed to send request", slog.Any("err", err))
 		return err
 	}
 	defer resp.Body.Close()
 
-	logrus.Traceln("http: ", resp.Status)
+	slog.Debug("http response", slog.String("status", resp.Status))
 
 	if resp.StatusCode == http.StatusNoContent {
 		return nil
@@ -79,7 +79,7 @@ func SendHTTPRequestJSON[T any, R any](opts HTTPRequestOptions[T, R]) error {
 
 	buf, err := io.ReadAll(resp.Body)
 	if err != nil {
-		logrus.Errorln(err)
+		slog.Error("failed to read response body", slog.Any("err", err))
 		return err
 	}
 
@@ -87,10 +87,10 @@ func SendHTTPRequestJSON[T any, R any](opts HTTPRequestOptions[T, R]) error {
 		var msg errorResponse
 		err = json.Unmarshal(buf, &msg)
 		if err != nil {
-			logrus.Errorln("Failed to parse error response:", err)
+			slog.Error("Failed to parse error response", slog.Any("err", err))
 			return fmt.Errorf("HTTP error: %d", resp.StatusCode)
 		}
-		logrus.Errorln("Error response:", msg.ErrorMessage)
+		slog.Error("Error response", slog.String("message", msg.ErrorMessage))
 		return errors.New(msg.ErrorMessage)
 	}
 
@@ -98,7 +98,7 @@ func SendHTTPRequestJSON[T any, R any](opts HTTPRequestOptions[T, R]) error {
 	if opts.Response != nil {
 		err = json.Unmarshal(buf, opts.Response)
 		if err != nil {
-			logrus.Errorln("Failed to unmarshal JSON response:", err)
+			slog.Error("Failed to unmarshal JSON response", slog.Any("err", err))
 			return err
 		}
 	}

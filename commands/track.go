@@ -3,12 +3,12 @@ package commands
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"os"
 	"time"
 
 	"github.com/malamtime/cli/daemon"
 	"github.com/malamtime/cli/model"
-	"github.com/sirupsen/logrus"
 	"github.com/urfave/cli/v2"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
@@ -58,16 +58,16 @@ func commandTrack(c *cli.Context) error {
 	defer span.End()
 	SetupLogger(os.ExpandEnv("$HOME/" + model.COMMAND_BASE_STORAGE_FOLDER))
 
-	logrus.Traceln(c.Args().First())
+	slog.Debug("track command args", slog.String("first", c.Args().First()))
 	config, err := configService.ReadConfigFile(ctx)
 	if err != nil {
-		logrus.Errorln(err)
+		slog.Error("failed to read config file", slog.Any("err", err))
 		return err
 	}
 
 	hostname, err := os.Hostname()
 	if err != nil {
-		logrus.Errorln(err)
+		slog.Error("failed to get hostname", slog.Any("err", err))
 		return err
 	}
 
@@ -91,7 +91,7 @@ func commandTrack(c *cli.Context) error {
 
 	// Check if command should be excluded
 	if model.ShouldExcludeCommand(cmdCommand, config.Exclude) {
-		logrus.Debugf("Command excluded by pattern: %s", cmdCommand)
+		slog.Debug("Command excluded by pattern", slog.String("command", cmdCommand))
 		return nil
 	}
 
@@ -104,7 +104,7 @@ func commandTrack(c *cli.Context) error {
 		err = instance.DoUpdate(result)
 	}
 	if err != nil {
-		logrus.Errorln(err)
+		slog.Error("failed to save/update command", slog.Any("err", err))
 		return err
 	}
 
@@ -135,7 +135,7 @@ func trySyncLocalToServer(
 	}
 
 	if len(postFileContent) == 0 || lineCount == 0 {
-		logrus.Traceln("Not enough records to sync, current count:", lineCount)
+		slog.Debug("Not enough records to sync", slog.Int("lineCount", lineCount))
 		return nil
 	}
 
@@ -151,7 +151,7 @@ func trySyncLocalToServer(
 
 	sysInfo, err := model.GetOSAndVersion()
 	if err != nil {
-		logrus.Warnln(err)
+		slog.Warn("failed to get OS version", slog.Any("err", err))
 		sysInfo = &model.SysInfo{
 			Os:      "unknown",
 			Version: "unknown",
@@ -173,7 +173,7 @@ func trySyncLocalToServer(
 		postCommand := new(model.Command)
 		recordingTime, err := postCommand.FromLineBytes(line)
 		if err != nil {
-			logrus.Errorln("Failed to parse post command: ", err, string(line))
+			slog.Error("Failed to parse post command", slog.Any("err", err), slog.String("line", string(line)))
 			continue
 		}
 
@@ -202,7 +202,7 @@ func trySyncLocalToServer(
 
 		// Check if command should be excluded during sync
 		if model.ShouldExcludeCommand(postCommand.Command, config.Exclude) {
-			logrus.Tracef("Command excluded during sync: %s", postCommand.Command)
+			slog.Debug("Command excluded during sync", slog.String("command", postCommand.Command))
 			continue
 		}
 
@@ -231,7 +231,7 @@ func trySyncLocalToServer(
 	}
 
 	if len(trackingData) == 0 {
-		logrus.Traceln("no tracking data need to be sync")
+		slog.Debug("no tracking data need to be sync")
 		return nil
 	}
 
@@ -239,14 +239,14 @@ func trySyncLocalToServer(
 	if !isForceSync {
 		// allow first command to be sync with server
 		if len(trackingData) < config.FlushCount && !noCursorExist {
-			logrus.Traceln("not enough data need to flush, abort. current is:", len(trackingData))
+			slog.Debug("not enough data need to flush, abort", slog.Int("current", len(trackingData)))
 			return nil
 		}
 	}
 
 	err = DoSyncData(ctx, config, latestRecordingTime, trackingData, meta)
 	if err != nil {
-		logrus.Errorln("Failed to send data to server:", err)
+		slog.Error("Failed to send data to server", slog.Any("err", err))
 		return err
 	}
 
@@ -267,7 +267,7 @@ func DoSyncData(
 	socketPath := config.SocketPath
 	isSocketReady := daemon.IsSocketReady(ctx, socketPath)
 
-	logrus.Traceln("is socket ready: ", isSocketReady)
+	slog.Debug("is socket ready", slog.Bool("ready", isSocketReady))
 
 	// if the socket not ready, just call http to sync data
 	if !isSocketReady {
@@ -285,17 +285,17 @@ func DoSyncData(
 func updateCursorToFile(ctx context.Context, latestRecordingTime time.Time) error {
 	ctx, span := commandTracer.Start(ctx, "updateCurosr")
 	defer span.End()
-	cursorFilePath := os.ExpandEnv(fmt.Sprintf("%s/%s", "$HOME", model.COMMAND_CURSOR_STORAGE_FILE))
+	cursorFilePath := model.GetCursorFilePath()
 	cursorFile, err := os.OpenFile(cursorFilePath, os.O_APPEND|os.O_WRONLY|os.O_CREATE, 0644)
 	if err != nil {
-		logrus.Errorln("Failed to open cursor file for writing:", err)
+		slog.Error("Failed to open cursor file for writing", slog.Any("err", err))
 		return err
 	}
 	defer cursorFile.Close()
 
 	_, err = cursorFile.WriteString(fmt.Sprintf("\n%d\n", latestRecordingTime.UnixNano()))
 	if err != nil {
-		logrus.Errorln("Failed to write to cursor file:", err)
+		slog.Error("Failed to write to cursor file", slog.Any("err", err))
 		return err
 	}
 	return nil

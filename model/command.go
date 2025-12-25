@@ -4,12 +4,11 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"os"
 	"strconv"
 	"strings"
 	"time"
-
-	"github.com/sirupsen/logrus"
 )
 
 // pre commands here
@@ -43,7 +42,7 @@ type Command struct {
 }
 
 func ensureStorageFolder() error {
-	storageFolder := os.ExpandEnv("$HOME/" + COMMAND_STORAGE_FOLDER)
+	storageFolder := GetCommandsStoragePath()
 	if _, err := os.Stat(storageFolder); os.IsNotExist(err) {
 		if err := os.MkdirAll(storageFolder, 0755); err != nil {
 			return fmt.Errorf("failed to create command storage folder: %v", err)
@@ -63,19 +62,17 @@ func (c Command) DoSavePre() error {
 		return err
 	}
 
-	preFile := os.ExpandEnv(os.ExpandEnv("$HOME/" + COMMAND_PRE_STORAGE_FILE))
+	preFile := GetPreCommandFilePath()
 	f, err := os.OpenFile(preFile, os.O_APPEND|os.O_WRONLY|os.O_CREATE, 0644)
 	if err != nil {
-		err = fmt.Errorf("failed to open pre-command storage file: %v", err)
-		logrus.Errorln(err)
-		return err
+		slog.Error("failed to open pre-command storage file", slog.Any("err", err))
+		return fmt.Errorf("failed to open pre-command storage file: %v", err)
 	}
 	defer f.Close()
 
 	if _, err := f.Write(buf); err != nil {
-		err = fmt.Errorf("failed to write to pre-command storage file: %v", err)
-		logrus.Errorln(err)
-		return err
+		slog.Error("failed to write to pre-command storage file", slog.Any("err", err))
+		return fmt.Errorf("failed to write to pre-command storage file: %v", err)
 	}
 	return nil
 }
@@ -93,7 +90,7 @@ func (c Command) DoUpdate(result int) error {
 		return err
 	}
 
-	postFile := os.ExpandEnv("$HOME/" + COMMAND_POST_STORAGE_FILE)
+	postFile := GetPostCommandFilePath()
 	f, err := os.OpenFile(postFile, os.O_APPEND|os.O_WRONLY|os.O_CREATE, 0644)
 	if err != nil {
 		return fmt.Errorf("failed to open post-command storage file: %v", err)
@@ -173,21 +170,21 @@ func (cmd *Command) FromLine(line string) (recordingTime time.Time, err error) {
 	parts := strings.Split(line, string(SEPARATOR))
 	if len(parts) != 2 {
 		err = fmt.Errorf("Invalid line format in pre-command file: %s", line)
-		logrus.Errorln(err)
+		slog.Error("invalid line format", slog.String("line", line))
 		return
 	}
 
 	err = json.Unmarshal([]byte(parts[0]), cmd)
 	if err != nil {
 		err = fmt.Errorf("failed to unmarshal command: %v, %s", err, parts[0])
-		logrus.Errorln(err)
+		slog.Error("failed to unmarshal command", slog.Any("err", err))
 		return
 	}
 
 	unixNano, err := strconv.ParseInt(parts[1], 10, 64)
 	if err != nil {
 		err = fmt.Errorf("failed to parse timestamp: %v, %s", err, parts[1])
-		logrus.Errorln(err)
+		slog.Error("failed to parse timestamp", slog.Any("err", err))
 		return
 	}
 	recordingTime = time.Unix(0, unixNano)
@@ -199,21 +196,21 @@ func (cmd *Command) FromLineBytes(line []byte) (recordingTime time.Time, err err
 	parts := bytes.Split(line, []byte{SEPARATOR})
 	if len(parts) != 2 {
 		err = fmt.Errorf("Invalid line format in FromLineBytes: %s", string(line))
-		logrus.Errorln(err)
+		slog.Error("invalid line format", slog.String("line", string(line)))
 		return
 	}
 
 	err = json.Unmarshal(parts[0], cmd)
 	if err != nil {
 		err = fmt.Errorf("failed to unmarshal command: %v, %s, %s", err, string(parts[0]), string(line))
-		logrus.Errorln(err)
+		slog.Error("failed to unmarshal command", slog.Any("err", err))
 		return
 	}
 
 	unixNano, err := strconv.ParseInt(string(parts[1]), 10, 64)
 	if err != nil {
 		err = fmt.Errorf("failed to parse timestamp: %v, %s", err, string(parts[1]))
-		logrus.Errorln(err)
+		slog.Error("failed to parse timestamp", slog.Any("err", err))
 		return
 	}
 	recordingTime = time.Unix(0, unixNano)

@@ -8,7 +8,7 @@ import (
 	"github.com/ThreeDotsLabs/watermill/message"
 )
 
-func SocketTopicProccessor(messages <-chan *message.Message) {
+func SocketTopicProcessor(messages <-chan *message.Message) {
 	for msg := range messages {
 		ctx := context.Background()
 		slog.InfoContext(ctx, "received message: ", slog.String("msg.uuid", msg.UUID))

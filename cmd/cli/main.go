@@ -3,12 +3,12 @@ package main
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"os"
 	"time"
 
 	"github.com/malamtime/cli/commands"
 	"github.com/malamtime/cli/model"
-	"github.com/sirupsen/logrus"
 	"github.com/uptrace/uptrace-go/uptrace"
 	"github.com/urfave/cli/v2"
 	"go.opentelemetry.io/otel/attribute"
@@ -110,7 +110,7 @@ func main() {
 	}
 	err = app.Run(os.Args)
 	if err != nil {
-		logrus.Errorln(err)
+		slog.Error("CLI error", slog.Any("err", err))
 	}
 	commands.CloseLogger()
 }

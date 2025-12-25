@@ -1,10 +1,10 @@
 package commands
 
 import (
+	"log/slog"
 	"os"
 
 	"github.com/malamtime/cli/model"
-	"github.com/sirupsen/logrus"
 	"github.com/urfave/cli/v2"
 	"go.opentelemetry.io/otel/trace"
 )
@@ -34,7 +34,7 @@ func commandSync(c *cli.Context) error {
 
 	config, err := configService.ReadConfigFile(ctx)
 	if err != nil {
-		logrus.Errorln(err)
+		slog.Error("failed to read config file", slog.Any("err", err))
 		return err
 	}
 

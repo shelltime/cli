@@ -1,9 +1,8 @@
 package model
 
 import (
+	"log/slog"
 	"regexp"
-
-	"github.com/sirupsen/logrus"
 )
 
 // ShouldExcludeCommand checks if a command matches any of the exclude patterns
@@ -19,12 +18,12 @@ func ShouldExcludeCommand(command string, excludePatterns []string) bool {
 
 		re, err := regexp.Compile(pattern)
 		if err != nil {
-			logrus.Warnf("Invalid exclude pattern '%s': %v", pattern, err)
+			slog.Warn("Invalid exclude pattern", slog.String("pattern", pattern), slog.Any("err", err))
 			continue
 		}
 
 		if re.MatchString(command) {
-			logrus.Tracef("Command '%s' matches exclude pattern '%s'", command, pattern)
+			slog.Debug("Command matches exclude pattern", slog.String("command", command), slog.String("pattern", pattern))
 			return true
 		}
 	}
