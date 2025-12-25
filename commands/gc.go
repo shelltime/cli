@@ -2,6 +2,7 @@ package commands
 
 import (
 	"bytes"
+	"context"
 	"fmt"
 	"log/slog"
 	"os"
@@ -11,6 +12,8 @@ import (
 	"github.com/urfave/cli/v2"
 	"go.opentelemetry.io/otel/trace"
 )
+
+const logFileSizeThreshold int64 = 50 * 1024 * 1024 // 50 MB
 
 var GCCommand *cli.Command = &cli.Command{
 	Name:  "gc",
@@ -31,28 +34,74 @@ var GCCommand *cli.Command = &cli.Command{
 	Action: commandGC,
 }
 
-func commandGC(c *cli.Context) error {
-	ctx, span := commandTracer.Start(c.Context, "gc", trace.WithSpanKind(trace.SpanKindClient))
-	defer span.End()
-	storageFolder := os.ExpandEnv("$HOME/" + model.COMMAND_BASE_STORAGE_FOLDER)
-	if _, err := os.Stat(storageFolder); os.IsNotExist(err) {
-		return nil
+// cleanLogFile removes a log file if it exceeds the threshold or if force is true.
+// Returns the size of the deleted file (0 if not deleted or file doesn't exist).
+func cleanLogFile(filePath string, threshold int64, force bool) (int64, error) {
+	info, err := os.Stat(filePath)
+	if os.IsNotExist(err) {
+		return 0, nil
+	}
+	if err != nil {
+		return 0, fmt.Errorf("failed to stat file %s: %w", filePath, err)
 	}
 
-	if c.Bool("withLog") {
-		logFile := os.ExpandEnv("$HOME/" + model.COMMAND_BASE_STORAGE_FOLDER + "/log.log")
-		if err := os.Remove(logFile); err != nil && !os.IsNotExist(err) {
-			return fmt.Errorf("failed to remove log file: %v", err)
+	fileSize := info.Size()
+	if !force && fileSize < threshold {
+		return 0, nil
+	}
+
+	if err := os.Remove(filePath); err != nil {
+		return 0, fmt.Errorf("failed to remove file %s: %w", filePath, err)
+	}
+
+	slog.Info("cleaned log file", slog.String("file", filePath), slog.Int64("size_bytes", fileSize))
+	return fileSize, nil
+}
+
+// cleanLargeLogFiles checks all log files and removes those exceeding the size threshold.
+// If force is true, removes all log files regardless of size.
+func cleanLargeLogFiles(force bool) (int64, error) {
+	logFiles := []string{
+		model.GetLogFilePath(),
+		model.GetHeartbeatLogFilePath(),
+		model.GetSyncPendingFilePath(),
+	}
+
+	var totalFreed int64
+	for _, filePath := range logFiles {
+		freed, err := cleanLogFile(filePath, logFileSizeThreshold, force)
+		if err != nil {
+			slog.Warn("failed to clean log file", slog.String("file", filePath), slog.Any("err", err))
+			continue
+		}
+		totalFreed += freed
+	}
+
+	return totalFreed, nil
+}
+
+// backupAndWriteFile backs up the existing file and writes new content.
+func backupAndWriteFile(filePath string, content []byte) error {
+	backupFile := filePath + ".bak"
+
+	if _, err := os.Stat(filePath); err == nil {
+		if err := os.Rename(filePath, backupFile); err != nil {
+			slog.Warn("failed to backup file", slog.String("file", filePath), slog.Any("err", err))
+			return fmt.Errorf("failed to backup file %s: %w", filePath, err)
 		}
 	}
 
-	if !c.Bool("skipLogCreation") {
-		// only can setup logger after the log file clean
-		SetupLogger(storageFolder)
-		defer CloseLogger()
+	if err := os.WriteFile(filePath, content, 0644); err != nil {
+		slog.Warn("failed to write file", slog.String("file", filePath), slog.Any("err", err))
+		return fmt.Errorf("failed to write file %s: %w", filePath, err)
 	}
 
-	commandsFolder := os.ExpandEnv("$HOME/" + model.COMMAND_STORAGE_FOLDER)
+	return nil
+}
+
+// cleanCommandFiles cleans up the command storage files based on the cursor position.
+func cleanCommandFiles(ctx context.Context) error {
+	commandsFolder := model.GetCommandsStoragePath()
 	if _, err := os.Stat(commandsFolder); os.IsNotExist(err) {
 		return nil
 	}
@@ -133,66 +182,74 @@ func commandGC(c *cli.Context) error {
 			)
 	})
 
-	originalPreFile := os.ExpandEnv("$HOME/" + model.COMMAND_PRE_STORAGE_FILE)
-	originalPostFile := os.ExpandEnv("$HOME/" + model.COMMAND_POST_STORAGE_FILE)
-	originalCursorFile := os.ExpandEnv("$HOME/" + model.COMMAND_CURSOR_STORAGE_FILE)
-
-	preBackupFile := originalPreFile + ".bak"
-	postBackupFile := originalPostFile + ".bak"
-	cursorBackupFile := originalCursorFile + ".bak"
-
-	if _, err := os.Stat(originalPreFile); err == nil {
-		if err := os.Rename(originalPreFile, preBackupFile); err != nil {
-			slog.Warn("failed to backup PRE_FILE", slog.Any("err", err))
-			return fmt.Errorf("failed to backup PRE_FILE: %v", err)
-		}
-	}
-
-	if _, err := os.Stat(originalPostFile); err == nil {
-		if err := os.Rename(originalPostFile, postBackupFile); err != nil {
-			slog.Warn("failed to backup POST_FILE", slog.Any("err", err))
-			return fmt.Errorf("failed to backup POST_FILE: %v", err)
-		}
-	}
-	if _, err := os.Stat(originalCursorFile); err == nil {
-		if err := os.Rename(originalCursorFile, cursorBackupFile); err != nil {
-			slog.Warn("failed to backup CURSOR_FILE", slog.Any("err", err))
-			return fmt.Errorf("failed to backup CURSOR_FILE: %v", err)
-		}
-	}
-
+	// Build pre file content
 	preFileContent := bytes.Buffer{}
 	for _, cmd := range newPreCommandList {
 		line, err := cmd.ToLine(cmd.RecordingTime)
 		if err != nil {
-			return fmt.Errorf("failed to convert command to line: %v", err)
+			return fmt.Errorf("failed to convert command to line: %w", err)
 		}
 		preFileContent.Write(line)
 	}
-	if err := os.WriteFile(originalPreFile, preFileContent.Bytes(), 0644); err != nil {
-		slog.Warn("failed to write new PRE_FILE", slog.Any("err", err))
-		return fmt.Errorf("failed to write new PRE_FILE: %v", err)
-	}
 
+	// Build post file content
 	postFileContent := bytes.Buffer{}
 	for _, cmd := range newPostCommandList {
 		line, err := cmd.ToLine(cmd.RecordingTime)
 		if err != nil {
-			return fmt.Errorf("failed to convert command to line: %v", err)
+			return fmt.Errorf("failed to convert command to line: %w", err)
 		}
 		postFileContent.Write(line)
 	}
 
-	if err := os.WriteFile(originalPostFile, postFileContent.Bytes(), 0644); err != nil {
-		slog.Warn("failed to write new POST_FILE", slog.Any("err", err))
-		return fmt.Errorf("failed to write new POST_FILE: %v", err)
+	// Build cursor file content
+	lastCursorNano := lastCursor.UnixNano()
+	cursorContent := []byte(fmt.Sprintf("%d", lastCursorNano))
+
+	// Backup and write all files
+	if err := backupAndWriteFile(model.GetPreCommandFilePath(), preFileContent.Bytes()); err != nil {
+		return err
 	}
 
-	lastCursorNano := lastCursor.UnixNano()
-	lastCursorBytes := []byte(fmt.Sprintf("%d", lastCursorNano))
-	if err := os.WriteFile(originalCursorFile, lastCursorBytes, 0644); err != nil {
-		slog.Warn("failed to write new CURSOR_FILE", slog.Any("err", err))
-		return fmt.Errorf("failed to write new CURSOR_FILE: %v", err)
+	if err := backupAndWriteFile(model.GetPostCommandFilePath(), postFileContent.Bytes()); err != nil {
+		return err
+	}
+
+	if err := backupAndWriteFile(model.GetCursorFilePath(), cursorContent); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func commandGC(c *cli.Context) error {
+	ctx, span := commandTracer.Start(c.Context, "gc", trace.WithSpanKind(trace.SpanKindClient))
+	defer span.End()
+
+	storageFolder := model.GetBaseStoragePath()
+	if _, err := os.Stat(storageFolder); os.IsNotExist(err) {
+		return nil
+	}
+
+	// Clean log files: force clean if --withLog, otherwise only clean large files
+	forceCleanLogs := c.Bool("withLog")
+	freedBytes, err := cleanLargeLogFiles(forceCleanLogs)
+	if err != nil {
+		slog.Warn("error during log cleanup", slog.Any("err", err))
+	}
+	if freedBytes > 0 {
+		slog.Info("freed space from log files", slog.Int64("bytes", freedBytes))
+	}
+
+	if !c.Bool("skipLogCreation") {
+		// only can setup logger after the log file clean
+		SetupLogger(storageFolder)
+		defer CloseLogger()
+	}
+
+	// Clean command files
+	if err := cleanCommandFiles(ctx); err != nil {
+		return err
 	}
 
 	// TODO: delete $HOME/.config/malamtime/ folder
