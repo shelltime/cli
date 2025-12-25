@@ -93,6 +93,7 @@ func main() {
 	}
 
 	app.Commands = []*cli.Command{
+		commands.InitCommand,
 		commands.AuthCommand,
 		commands.TrackCommand,
 		commands.GCCommand,

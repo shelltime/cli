@@ -17,8 +17,8 @@ import (
 )
 
 var AuthCommand *cli.Command = &cli.Command{
-	Name:  "init",
-	Usage: "init your shelltime.xyz config",
+	Name:  "auth",
+	Usage: "Authenticate with shelltime.xyz",
 	Flags: []cli.Flag{
 		&cli.StringFlag{
 			Name:     "token",
