@@ -1,7 +1,6 @@
 package model
 
 import (
-	"fmt"
 	"os"
 	"path/filepath"
 )
@@ -9,13 +8,18 @@ import (
 // GetBaseStoragePath returns the base storage path for shelltime
 // e.g., /Users/username/.shelltime
 func GetBaseStoragePath() string {
-	return os.ExpandEnv("$HOME/" + COMMAND_BASE_STORAGE_FOLDER)
+	home, err := os.UserHomeDir()
+	if err != nil {
+		// Fallback for environments where home dir is not available.
+		return filepath.Join(os.TempDir(), COMMAND_BASE_STORAGE_FOLDER)
+	}
+	return filepath.Join(home, COMMAND_BASE_STORAGE_FOLDER)
 }
 
 // GetStoragePath returns the full path for a given subpath within the storage folder
 // e.g., GetStoragePath("config.toml") returns /Users/username/.shelltime/config.toml
-func GetStoragePath(subpath string) string {
-	return filepath.Join(GetBaseStoragePath(), subpath)
+func GetStoragePath(subpaths ...string) string {
+	return filepath.Join(append([]string{GetBaseStoragePath()}, subpaths...)...)
 }
 
 // GetConfigFilePath returns the path to the main config file
@@ -35,40 +39,40 @@ func GetLogFilePath() string {
 
 // GetCommandsStoragePath returns the path to the commands storage folder
 func GetCommandsStoragePath() string {
-	return os.ExpandEnv("$HOME/" + COMMAND_STORAGE_FOLDER)
+	return GetStoragePath("commands")
 }
 
 // GetPreCommandFilePath returns the path to the pre-command storage file
 func GetPreCommandFilePath() string {
-	return os.ExpandEnv("$HOME/" + COMMAND_PRE_STORAGE_FILE)
+	return GetStoragePath("commands", "pre.txt")
 }
 
 // GetPostCommandFilePath returns the path to the post-command storage file
 func GetPostCommandFilePath() string {
-	return os.ExpandEnv("$HOME/" + COMMAND_POST_STORAGE_FILE)
+	return GetStoragePath("commands", "post.txt")
 }
 
 // GetCursorFilePath returns the path to the cursor storage file
 func GetCursorFilePath() string {
-	return os.ExpandEnv("$HOME/" + COMMAND_CURSOR_STORAGE_FILE)
+	return GetStoragePath("commands", "cursor.txt")
 }
 
 // GetHeartbeatLogFilePath returns the path to the heartbeat log file
 func GetHeartbeatLogFilePath() string {
-	return os.ExpandEnv("$HOME/" + HEARTBEAT_LOG_FILE)
+	return GetStoragePath("coding-heartbeat.data.log")
 }
 
 // GetSyncPendingFilePath returns the path to the sync pending file
 func GetSyncPendingFilePath() string {
-	return os.ExpandEnv("$HOME/" + SYNC_PENDING_FILE)
+	return GetStoragePath("sync-pending.jsonl")
 }
 
 // GetBinFolderPath returns the path to the bin folder
 func GetBinFolderPath() string {
-	return os.ExpandEnv(fmt.Sprintf("$HOME/%s/bin", COMMAND_BASE_STORAGE_FOLDER))
+	return GetStoragePath("bin")
 }
 
 // GetHooksFolderPath returns the path to the hooks folder
 func GetHooksFolderPath() string {
-	return os.ExpandEnv(fmt.Sprintf("$HOME/%s/hooks", COMMAND_BASE_STORAGE_FOLDER))
+	return GetStoragePath("hooks")
 }
