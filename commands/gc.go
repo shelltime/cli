@@ -13,8 +13,6 @@ import (
 	"go.opentelemetry.io/otel/trace"
 )
 
-const logFileSizeThreshold int64 = 50 * 1024 * 1024 // 50 MB
-
 var GCCommand *cli.Command = &cli.Command{
 	Name:  "gc",
 	Usage: "clean internal storage",
@@ -32,52 +30,6 @@ var GCCommand *cli.Command = &cli.Command{
 		},
 	},
 	Action: commandGC,
-}
-
-// cleanLogFile removes a log file if it exceeds the threshold or if force is true.
-// Returns the size of the deleted file (0 if not deleted or file doesn't exist).
-func cleanLogFile(filePath string, threshold int64, force bool) (int64, error) {
-	info, err := os.Stat(filePath)
-	if os.IsNotExist(err) {
-		return 0, nil
-	}
-	if err != nil {
-		return 0, fmt.Errorf("failed to stat file %s: %w", filePath, err)
-	}
-
-	fileSize := info.Size()
-	if !force && fileSize < threshold {
-		return 0, nil
-	}
-
-	if err := os.Remove(filePath); err != nil {
-		return 0, fmt.Errorf("failed to remove file %s: %w", filePath, err)
-	}
-
-	slog.Info("cleaned log file", slog.String("file", filePath), slog.Int64("size_bytes", fileSize))
-	return fileSize, nil
-}
-
-// cleanLargeLogFiles checks all log files and removes those exceeding the size threshold.
-// If force is true, removes all log files regardless of size.
-func cleanLargeLogFiles(force bool) (int64, error) {
-	logFiles := []string{
-		model.GetLogFilePath(),
-		model.GetHeartbeatLogFilePath(),
-		model.GetSyncPendingFilePath(),
-	}
-
-	var totalFreed int64
-	for _, filePath := range logFiles {
-		freed, err := cleanLogFile(filePath, logFileSizeThreshold, force)
-		if err != nil {
-			slog.Warn("failed to clean log file", slog.String("file", filePath), slog.Any("err", err))
-			continue
-		}
-		totalFreed += freed
-	}
-
-	return totalFreed, nil
 }
 
 // backupAndWriteFile backs up the existing file and writes new content.
@@ -231,9 +183,17 @@ func commandGC(c *cli.Context) error {
 		return nil
 	}
 
+	// Get config for threshold
+	cfg, err := configService.ReadConfigFile(ctx)
+	if err != nil {
+		slog.Warn("failed to read config, using default threshold", slog.Any("err", err))
+		cfg.LogCleanup = &model.LogCleanup{ThresholdMB: 100}
+	}
+	thresholdBytes := cfg.LogCleanup.ThresholdMB * 1024 * 1024
+
 	// Clean log files: force clean if --withLog, otherwise only clean large files
 	forceCleanLogs := c.Bool("withLog")
-	freedBytes, err := cleanLargeLogFiles(forceCleanLogs)
+	freedBytes, err := model.CleanLargeLogFiles(thresholdBytes, forceCleanLogs)
 	if err != nil {
 		slog.Warn("error during log cleanup", slog.Any("err", err))
 	}

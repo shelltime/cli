@@ -122,11 +122,16 @@ func (s *trackTestSuite) TestTrackWithSendData() {
 	}))
 	defer server.Close()
 	cs := model.NewMockConfigService(s.T())
+	truthy := true
 	mockedConfig := model.ShellTimeConfig{
 		Token:       "TOKEN001",
 		APIEndpoint: server.URL,
 		FlushCount:  7,
 		GCTime:      8,
+		LogCleanup: &model.LogCleanup{
+			Enabled:     &truthy,
+			ThresholdMB: 100,
+		},
 	}
 	cs.On("ReadConfigFile", mock.Anything).Return(mockedConfig, nil)
 	model.UserShellTimeConfig = mockedConfig

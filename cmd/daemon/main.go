@@ -88,6 +88,18 @@ func main() {
 		defer syncCircuitBreakerService.Stop()
 	}
 
+	// Start cleanup timer service if enabled (enabled by default)
+	if cfg.LogCleanup != nil && cfg.LogCleanup.Enabled != nil && *cfg.LogCleanup.Enabled {
+		cleanupTimerService := daemon.NewCleanupTimerService(cfg)
+		if err := cleanupTimerService.Start(ctx); err != nil {
+			slog.Error("Failed to start cleanup timer service", slog.Any("err", err))
+		} else {
+			slog.Info("Cleanup timer service started",
+				slog.Int64("thresholdMB", cfg.LogCleanup.ThresholdMB))
+			defer cleanupTimerService.Stop()
+		}
+	}
+
 	go daemon.SocketTopicProcessor(msg)
 
 	// Start CCUsage service if enabled (v1 - ccusage CLI based)
