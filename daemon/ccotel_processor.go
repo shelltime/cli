@@ -131,7 +131,7 @@ func (p *CCOtelProcessor) ProcessMetrics(ctx context.Context, req *collmetricsv1
 
 // ProcessLogs receives OTEL logs/events and forwards to backend immediately
 func (p *CCOtelProcessor) ProcessLogs(ctx context.Context, req *collogsv1.ExportLogsServiceRequest) (*collogsv1.ExportLogsServiceResponse, error) {
-	slog.Debug("CCOtel: Processing logs request", "resourceLogsCount", len(req.GetResourceLogs()))
+	slog.Debug("CCOtel: Processing logs request", "resourceLogsCount", len(req.GetResourceLogs()), slog.Bool("debug", p.debug))
 
 	if p.debug {
 		p.writeDebugFile("ccotel-debug-logs.txt", req)
