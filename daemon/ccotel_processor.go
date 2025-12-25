@@ -408,9 +408,15 @@ func (p *CCOtelProcessor) parseLogRecord(lr *logsv1.LogRecord, resourceAttrs *mo
 		case "tool_name":
 			event.ToolName = value.GetStringValue()
 		case "success":
-			event.Success = value.GetBoolValue()
+			event.Success = getBoolFromValue(value)
 		case "decision":
 			event.Decision = value.GetStringValue()
+		// case "decision_source":
+		// 	event.DecisionSource = value.GetStringValue()
+		// case "decision_type":
+		// 	event.DecisionType = value.GetStringValue()
+		// case "tool_result_size_bytes":
+		// 	event.ToolResultSizeBytes = getIntFromValue(value)
 		case "source":
 			event.Source = value.GetStringValue()
 		case "error":
@@ -528,6 +534,20 @@ func getIntFromValue(value *commonv1.AnyValue) int {
 		}
 	}
 	return 0
+}
+
+func getBoolFromValue(value *commonv1.AnyValue) bool {
+	// First try to get as bool
+	if boolVal := value.GetBoolValue(); boolVal {
+		return boolVal
+	}
+	// Try to parse from string (Claude Code sends some values as strings)
+	if strVal := value.GetStringValue(); strVal != "" {
+		if parsed, err := strconv.ParseBool(strVal); err == nil {
+			return parsed
+		}
+	}
+	return false
 }
 
 // getFloatFromValue extracts a float64 from an OTEL value, handling both double and string formats
