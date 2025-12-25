@@ -1,5 +1,34 @@
 # Changelog
 
+## [0.1.43](https://github.com/shelltime/cli/compare/v0.1.42...v0.1.43) (2025-12-25)
+
+
+### Features
+
+* **daemon:** add socket-based status query with uptime tracking ([59e5d9a](https://github.com/shelltime/cli/commit/59e5d9aa30db4c21605a80e43fb290c450f0f267))
+* **daemon:** add version command with config debug info ([a31d021](https://github.com/shelltime/cli/commit/a31d021173d6f957add7f01bf1dca257be5a7063))
+* **daemon:** add version command with config debug info ([e9344c4](https://github.com/shelltime/cli/commit/e9344c49ea8086e545bece6631d2a4ad6a213b8d))
+* **daemon:** display CCOtel debug config in status command ([1ace77e](https://github.com/shelltime/cli/commit/1ace77e32929abd8a65a69fb0f2052ffd6a0c970))
+* **daemon:** display CCOtel debug config in status command ([2a91532](https://github.com/shelltime/cli/commit/2a9153269eaa6c897d96109bc6163c9defa179d7))
+
+
+### Bug Fixes
+
+* **daemon:** add debug flag to CCOtel logs debug message ([c7cdfd4](https://github.com/shelltime/cli/commit/c7cdfd4166e4e9de9e07a1d51f1444304071b055))
+* **docs:** correct default grpcPort value to 54027 ([3d75da3](https://github.com/shelltime/cli/commit/3d75da3d1948a4f5343d07a306f9bf462141793e))
+* **model:** normalize CCOtel debug flag to use consistent truthy variable ([6c5b6a5](https://github.com/shelltime/cli/commit/6c5b6a5af7eef8b6df2c4b66b0854bcb45aa2342))
+
+
+### Documentation
+
+* **config:** add comprehensive configuration documentation ([e9f1fb7](https://github.com/shelltime/cli/commit/e9f1fb7a41d3577be31173dc71a3b0e494ea6f10))
+* **config:** add comprehensive configuration documentation ([5a2d694](https://github.com/shelltime/cli/commit/5a2d694048c9280c7b1285c30816a26a9c0afdcd))
+
+
+### Miscellaneous Chores
+
+* release 0.1.43 ([1afb762](https://github.com/shelltime/cli/commit/1afb7627557a251a28917009ca7aaa4b910f691a))
+
 ## [0.1.42](https://github.com/shelltime/cli/compare/v0.1.41...v0.1.42) (2025-12-25)
 
 
