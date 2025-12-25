@@ -29,6 +29,7 @@ type CCUsage struct {
 type CCOtel struct {
 	Enabled  *bool `toml:"enabled"`
 	GRPCPort int   `toml:"grpcPort"` // default: 4317
+	Debug    *bool `toml:"debug"`    // write raw JSON to debug files
 }
 
 // CodeTracking configuration for coding activity heartbeat tracking

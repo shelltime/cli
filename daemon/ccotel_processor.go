@@ -3,9 +3,12 @@ package daemon
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"log/slog"
 	"os"
+	"path/filepath"
 	"strconv"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/malamtime/cli/model"
@@ -22,6 +25,7 @@ type CCOtelProcessor struct {
 	config   model.ShellTimeConfig
 	endpoint model.Endpoint
 	hostname string
+	debug    bool
 }
 
 // NewCCOtelProcessor creates a new CCOtel processor
@@ -31,6 +35,8 @@ func NewCCOtelProcessor(config model.ShellTimeConfig) *CCOtelProcessor {
 		hostname = "unknown"
 	}
 
+	debug := config.CCOtel != nil && config.CCOtel.Debug != nil && *config.CCOtel.Debug
+
 	return &CCOtelProcessor{
 		config: config,
 		endpoint: model.Endpoint{
@@ -38,12 +44,45 @@ func NewCCOtelProcessor(config model.ShellTimeConfig) *CCOtelProcessor {
 			APIEndpoint: config.APIEndpoint,
 		},
 		hostname: hostname,
+		debug:    debug,
+	}
+}
+
+// writeDebugFile appends JSON-formatted data to a debug file
+func (p *CCOtelProcessor) writeDebugFile(filename string, data interface{}) {
+	debugDir := filepath.Join(os.TempDir(), "shelltime")
+	if err := os.MkdirAll(debugDir, 0755); err != nil {
+		slog.Error("CCOtel: Failed to create debug directory", "error", err)
+		return
+	}
+
+	filePath := filepath.Join(debugDir, filename)
+	f, err := os.OpenFile(filePath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+	if err != nil {
+		slog.Error("CCOtel: Failed to open debug file", "error", err, "path", filePath)
+		return
+	}
+	defer f.Close()
+
+	jsonData, err := json.MarshalIndent(data, "", "  ")
+	if err != nil {
+		slog.Error("CCOtel: Failed to marshal debug data", "error", err)
+		return
+	}
+
+	timestamp := time.Now().Format(time.RFC3339)
+	if _, err := f.WriteString(fmt.Sprintf("\n--- %s ---\n%s\n", timestamp, jsonData)); err != nil {
+		slog.Error("CCOtel: Failed to write debug data", "error", err)
 	}
 }
 
 // ProcessMetrics receives OTEL metrics and forwards to backend immediately
 func (p *CCOtelProcessor) ProcessMetrics(ctx context.Context, req *collmetricsv1.ExportMetricsServiceRequest) (*collmetricsv1.ExportMetricsServiceResponse, error) {
 	slog.Debug("CCOtel: Processing metrics request", "resourceMetricsCount", len(req.GetResourceMetrics()))
+
+	if p.debug {
+		p.writeDebugFile("ccotel-debug-metrics.txt", req)
+	}
 
 	for _, rm := range req.GetResourceMetrics() {
 		resource := rm.GetResource()
@@ -93,6 +132,10 @@ func (p *CCOtelProcessor) ProcessMetrics(ctx context.Context, req *collmetricsv1
 // ProcessLogs receives OTEL logs/events and forwards to backend immediately
 func (p *CCOtelProcessor) ProcessLogs(ctx context.Context, req *collogsv1.ExportLogsServiceRequest) (*collogsv1.ExportLogsServiceResponse, error) {
 	slog.Debug("CCOtel: Processing logs request", "resourceLogsCount", len(req.GetResourceLogs()))
+
+	if p.debug {
+		p.writeDebugFile("ccotel-debug-logs.txt", req)
+	}
 
 	for _, rl := range req.GetResourceLogs() {
 		resource := rl.GetResource()
