@@ -142,3 +142,162 @@ FlushCount = 10`
 		})
 	}
 }
+
+func TestLogCleanupDefaults(t *testing.T) {
+	// Create a temporary directory for test configs
+	tmpDir, err := os.MkdirTemp("", "shelltime-test-*")
+	require.NoError(t, err)
+	defer os.RemoveAll(tmpDir)
+
+	// Create config file without LogCleanup section
+	baseConfigPath := filepath.Join(tmpDir, "config.toml")
+	baseConfig := `Token = 'test-token'
+APIEndpoint = 'https://api.test.com'`
+	err = os.WriteFile(baseConfigPath, []byte(baseConfig), 0644)
+	require.NoError(t, err)
+
+	cs := NewConfigService(baseConfigPath)
+	config, err := cs.ReadConfigFile(context.Background())
+	require.NoError(t, err)
+
+	// Verify LogCleanup defaults are applied
+	require.NotNil(t, config.LogCleanup, "LogCleanup should be initialized with defaults")
+	assert.True(t, *config.LogCleanup.Enabled, "LogCleanup.Enabled should default to true")
+	assert.Equal(t, int64(100), config.LogCleanup.ThresholdMB, "LogCleanup.ThresholdMB should default to 100")
+}
+
+func TestLogCleanupCustomValues(t *testing.T) {
+	// Create a temporary directory for test configs
+	tmpDir, err := os.MkdirTemp("", "shelltime-test-*")
+	require.NoError(t, err)
+	defer os.RemoveAll(tmpDir)
+
+	// Create config file with custom LogCleanup settings
+	baseConfigPath := filepath.Join(tmpDir, "config.toml")
+	baseConfig := `Token = 'test-token'
+APIEndpoint = 'https://api.test.com'
+
+[logCleanup]
+enabled = false
+thresholdMB = 200`
+	err = os.WriteFile(baseConfigPath, []byte(baseConfig), 0644)
+	require.NoError(t, err)
+
+	cs := NewConfigService(baseConfigPath)
+	config, err := cs.ReadConfigFile(context.Background())
+	require.NoError(t, err)
+
+	// Verify custom LogCleanup values are used
+	require.NotNil(t, config.LogCleanup, "LogCleanup should be present")
+	assert.False(t, *config.LogCleanup.Enabled, "LogCleanup.Enabled should be false")
+	assert.Equal(t, int64(200), config.LogCleanup.ThresholdMB, "LogCleanup.ThresholdMB should be 200")
+}
+
+func TestLogCleanupPartialConfig(t *testing.T) {
+	testCases := []struct {
+		name              string
+		config            string
+		expectedEnabled   bool
+		expectedThreshold int64
+	}{
+		{
+			name: "Only enabled set to false",
+			config: `Token = 'test-token'
+[logCleanup]
+enabled = false`,
+			expectedEnabled:   false,
+			expectedThreshold: 100, // default
+		},
+		{
+			name: "Only threshold set",
+			config: `Token = 'test-token'
+[logCleanup]
+thresholdMB = 50`,
+			expectedEnabled:   true, // default
+			expectedThreshold: 50,
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			tmpDir, err := os.MkdirTemp("", "shelltime-test-*")
+			require.NoError(t, err)
+			defer os.RemoveAll(tmpDir)
+
+			baseConfigPath := filepath.Join(tmpDir, "config.toml")
+			err = os.WriteFile(baseConfigPath, []byte(tc.config), 0644)
+			require.NoError(t, err)
+
+			cs := NewConfigService(baseConfigPath)
+			config, err := cs.ReadConfigFile(context.Background())
+			require.NoError(t, err)
+
+			require.NotNil(t, config.LogCleanup, "LogCleanup should be present")
+			assert.Equal(t, tc.expectedEnabled, *config.LogCleanup.Enabled, "LogCleanup.Enabled mismatch")
+			assert.Equal(t, tc.expectedThreshold, config.LogCleanup.ThresholdMB, "LogCleanup.ThresholdMB mismatch")
+		})
+	}
+}
+
+func TestLogCleanupMergeFromLocal(t *testing.T) {
+	// Create a temporary directory for test configs
+	tmpDir, err := os.MkdirTemp("", "shelltime-test-*")
+	require.NoError(t, err)
+	defer os.RemoveAll(tmpDir)
+
+	// Create base config file with LogCleanup
+	baseConfigPath := filepath.Join(tmpDir, "config.toml")
+	baseConfig := `Token = 'base-token'
+[logCleanup]
+enabled = true
+thresholdMB = 100`
+	err = os.WriteFile(baseConfigPath, []byte(baseConfig), 0644)
+	require.NoError(t, err)
+
+	// Create local config file that overrides LogCleanup
+	localConfigPath := filepath.Join(tmpDir, "config.local.toml")
+	localConfig := `[logCleanup]
+enabled = false
+thresholdMB = 500`
+	err = os.WriteFile(localConfigPath, []byte(localConfig), 0644)
+	require.NoError(t, err)
+
+	cs := NewConfigService(baseConfigPath)
+	config, err := cs.ReadConfigFile(context.Background())
+	require.NoError(t, err)
+
+	// Verify local config overrides base LogCleanup
+	require.NotNil(t, config.LogCleanup, "LogCleanup should be present")
+	assert.False(t, *config.LogCleanup.Enabled, "LogCleanup.Enabled should be overridden by local config")
+	assert.Equal(t, int64(500), config.LogCleanup.ThresholdMB, "LogCleanup.ThresholdMB should be overridden by local config")
+}
+
+func TestCodeTrackingMergeFromLocal(t *testing.T) {
+	// Create a temporary directory for test configs
+	tmpDir, err := os.MkdirTemp("", "shelltime-test-*")
+	require.NoError(t, err)
+	defer os.RemoveAll(tmpDir)
+
+	// Create base config file with CodeTracking disabled
+	baseConfigPath := filepath.Join(tmpDir, "config.toml")
+	baseConfig := `Token = 'base-token'
+[codeTracking]
+enabled = false`
+	err = os.WriteFile(baseConfigPath, []byte(baseConfig), 0644)
+	require.NoError(t, err)
+
+	// Create local config file that enables CodeTracking
+	localConfigPath := filepath.Join(tmpDir, "config.local.toml")
+	localConfig := `[codeTracking]
+enabled = true`
+	err = os.WriteFile(localConfigPath, []byte(localConfig), 0644)
+	require.NoError(t, err)
+
+	cs := NewConfigService(baseConfigPath)
+	config, err := cs.ReadConfigFile(context.Background())
+	require.NoError(t, err)
+
+	// Verify local config overrides base CodeTracking
+	require.NotNil(t, config.CodeTracking, "CodeTracking should be present")
+	assert.True(t, *config.CodeTracking.Enabled, "CodeTracking.Enabled should be overridden by local config")
+}
