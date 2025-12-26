@@ -4,7 +4,7 @@ After=network.target
 
 [Service]
 Type=simple
-ExecStart=/bin/sh -c 'exec $(getent passwd $USER | cut -d: -f7) -l -c "{{.BaseFolder}}/bin/shelltime-daemon"'
+ExecStart=/bin/sh -c 'exec $(getent passwd $(id -un) | cut -d: -f7) -l -c "{{.BaseFolder}}/bin/shelltime-daemon"'
 Restart=always
 
 # Resource limits

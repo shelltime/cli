@@ -166,7 +166,8 @@ func (l *LinuxDaemonInstaller) GetDaemonServiceFile(username string) (buf bytes.
 		return
 	}
 	err = tmpl.Execute(&buf, map[string]string{
-		"UserName": username,
+		"UserName":   username,
+		"BaseFolder": l.baseFolder,
 	})
 	return
 }
