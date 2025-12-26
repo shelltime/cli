@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.45](https://github.com/shelltime/cli/compare/v0.1.44...v0.1.45) (2025-12-26)
+
+
+### Bug Fixes
+
+* **daemon:** fix Linux systemd service template rendering ([3647289](https://github.com/shelltime/cli/commit/3647289c3f8722f9d58ad7885d74eaef9c1d62b3))
+
 ## [0.1.44](https://github.com/shelltime/cli/compare/v0.1.43...v0.1.44) (2025-12-25)
 
 
