@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.1.46](https://github.com/shelltime/cli/compare/v0.1.45...v0.1.46) (2025-12-27)
+
+
+### Bug Fixes
+
+* **daemon:** set XDG_RUNTIME_DIR for systemctl --user commands on Linux ([5cba371](https://github.com/shelltime/cli/commit/5cba37131d102c827ad7786e244daa83bb752e78))
+* **daemon:** set XDG_RUNTIME_DIR for systemctl --user commands on Linux ([22fa970](https://github.com/shelltime/cli/commit/22fa970aea373cb2c2f4bcf76fac1cbdd5ab260c))
+* **model:** add nil check in FindClosestCommand to prevent panic ([7d2ba1d](https://github.com/shelltime/cli/commit/7d2ba1d0b4c7b2ad995ce8ff32573745332d2827))
+
 ## [0.1.45](https://github.com/shelltime/cli/compare/v0.1.44...v0.1.45) (2025-12-26)
 
 
