@@ -9,6 +9,7 @@ import (
 	"os/user"
 	"path/filepath"
 	"text/template"
+	"time"
 
 	"github.com/gookit/color"
 )
@@ -26,8 +27,57 @@ func NewLinuxDaemonInstaller(baseFolder, user string) *LinuxDaemonInstaller {
 	return &LinuxDaemonInstaller{baseFolder: baseFolder, user: user}
 }
 
+// getXDGRuntimeDir returns the XDG_RUNTIME_DIR path for the current user
+func (l *LinuxDaemonInstaller) getXDGRuntimeDir() string {
+	// First check if it's already set in environment
+	if dir := os.Getenv("XDG_RUNTIME_DIR"); dir != "" {
+		return dir
+	}
+	// Fall back to standard path
+	return fmt.Sprintf("/run/user/%d", os.Getuid())
+}
+
+// ensureUserSystemdSession ensures the user's systemd session is available
+// by checking for XDG_RUNTIME_DIR and enabling linger if necessary
+func (l *LinuxDaemonInstaller) ensureUserSystemdSession() error {
+	runtimeDir := l.getXDGRuntimeDir()
+
+	// Check if runtime directory exists
+	if _, err := os.Stat(runtimeDir); err == nil {
+		return nil // Directory exists, we're good
+	}
+
+	// Try to enable linger to start user systemd session
+	color.Yellow.Println("🔧 Enabling user session persistence (loginctl enable-linger)...")
+	cmd := exec.Command("loginctl", "enable-linger", l.user)
+	if err := cmd.Run(); err != nil {
+		return fmt.Errorf("failed to enable linger for user %s: %w. Please run: sudo loginctl enable-linger %s", l.user, err, l.user)
+	}
+
+	// Wait for runtime directory to be created (up to 5 seconds)
+	for i := 0; i < 10; i++ {
+		time.Sleep(500 * time.Millisecond)
+		if _, err := os.Stat(runtimeDir); err == nil {
+			return nil
+		}
+	}
+
+	return fmt.Errorf("XDG_RUNTIME_DIR (%s) not available. Please log in interactively or run: sudo loginctl enable-linger %s", runtimeDir, l.user)
+}
+
+// systemctlUserCmd creates an exec.Cmd for systemctl --user with proper environment
+func (l *LinuxDaemonInstaller) systemctlUserCmd(args ...string) *exec.Cmd {
+	fullArgs := append([]string{"--user"}, args...)
+	cmd := exec.Command("systemctl", fullArgs...)
+
+	// Set up environment with XDG_RUNTIME_DIR
+	cmd.Env = append(os.Environ(), fmt.Sprintf("XDG_RUNTIME_DIR=%s", l.getXDGRuntimeDir()))
+
+	return cmd
+}
+
 func (l *LinuxDaemonInstaller) Check() error {
-	cmd := exec.Command("systemctl", "--user", "is-active", "shelltime")
+	cmd := l.systemctlUserCmd("is-active", "shelltime")
 	if err := cmd.Run(); err == nil {
 		return nil
 	}
@@ -44,11 +94,11 @@ func (l *LinuxDaemonInstaller) CheckAndStopExistingService() error {
 			return fmt.Errorf("failed to get current user: %w", err)
 		}
 		servicePath := filepath.Join(currentUser.HomeDir, ".config/systemd/user/shelltime.service")
-		if err := exec.Command("systemctl", "--user", "stop", "shelltime").Run(); err != nil {
+		if err := l.systemctlUserCmd("stop", "shelltime").Run(); err != nil {
 			return fmt.Errorf("failed to stop existing service: %w", err)
 		}
 		// Also disable to clean up
-		_ = exec.Command("systemctl", "--user", "disable", "shelltime").Run()
+		_ = l.systemctlUserCmd("disable", "shelltime").Run()
 		// Remove old symlink if exists
 		_ = os.Remove(servicePath)
 	}
@@ -111,18 +161,23 @@ func (l *LinuxDaemonInstaller) RegisterService() error {
 }
 
 func (l *LinuxDaemonInstaller) StartService() error {
+	// Ensure user systemd session is available
+	if err := l.ensureUserSystemdSession(); err != nil {
+		return err
+	}
+
 	color.Yellow.Println("🔄 Reloading systemd...")
-	if err := exec.Command("systemctl", "--user", "daemon-reload").Run(); err != nil {
+	if err := l.systemctlUserCmd("daemon-reload").Run(); err != nil {
 		return fmt.Errorf("failed to reload systemd: %w", err)
 	}
 
 	color.Yellow.Println("✨ Enabling service...")
-	if err := exec.Command("systemctl", "--user", "enable", "shelltime").Run(); err != nil {
+	if err := l.systemctlUserCmd("enable", "shelltime").Run(); err != nil {
 		return fmt.Errorf("failed to enable service: %w", err)
 	}
 
 	color.Yellow.Println("🚀 Starting service...")
-	if err := exec.Command("systemctl", "--user", "start", "shelltime").Run(); err != nil {
+	if err := l.systemctlUserCmd("start", "shelltime").Run(); err != nil {
 		return fmt.Errorf("failed to start service: %w", err)
 	}
 	return nil
@@ -142,8 +197,8 @@ func (l *LinuxDaemonInstaller) UnregisterService() error {
 
 	color.Yellow.Println("🛑 Stopping and disabling service if running...")
 	// Try to stop and disable the service
-	_ = exec.Command("systemctl", "--user", "stop", "shelltime").Run()
-	_ = exec.Command("systemctl", "--user", "disable", "shelltime").Run()
+	_ = l.systemctlUserCmd("stop", "shelltime").Run()
+	_ = l.systemctlUserCmd("disable", "shelltime").Run()
 
 	color.Yellow.Println("🗑  Removing service files...")
 	// Remove symlink from systemd
@@ -152,7 +207,7 @@ func (l *LinuxDaemonInstaller) UnregisterService() error {
 	}
 
 	color.Yellow.Println("🔄 Reloading systemd...")
-	if err := exec.Command("systemctl", "--user", "daemon-reload").Run(); err != nil {
+	if err := l.systemctlUserCmd("daemon-reload").Run(); err != nil {
 		return fmt.Errorf("failed to reload systemd: %w", err)
 	}
 
