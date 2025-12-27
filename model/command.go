@@ -225,6 +225,9 @@ func (cmd Command) FindClosestCommand(commandList []*Command, withSameKey bool) 
 	myKey := cmd.GetUniqueKey()
 
 	for _, c := range commandList {
+		if c == nil {
+			continue
+		}
 		if withSameKey {
 			ck := c.GetUniqueKey()
 			if myKey != ck {
