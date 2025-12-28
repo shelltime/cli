@@ -5,8 +5,8 @@ const (
 )
 
 type Endpoint struct {
-	APIEndpoint string `toml:"apiEndpoint" yaml:"apiEndpoint" json:"apiEndpoint"`
-	Token       string `toml:"token" yaml:"token" json:"token"`
+	APIEndpoint string `toml:"APIEndpoint" yaml:"apiEndpoint" json:"apiEndpoint"`
+	Token       string `toml:"Token" yaml:"token" json:"token"`
 }
 
 type AIAgentConfig struct {
@@ -46,14 +46,14 @@ type LogCleanup struct {
 }
 
 type ShellTimeConfig struct {
-	Token       string `toml:"token" yaml:"token" json:"token"`
-	APIEndpoint string `toml:"apiEndpoint" yaml:"apiEndpoint" json:"apiEndpoint"`
-	WebEndpoint string `toml:"webEndpoint" yaml:"webEndpoint" json:"webEndpoint"`
+	Token       string `toml:"Token" yaml:"token" json:"token"`
+	APIEndpoint string `toml:"APIEndpoint" yaml:"apiEndpoint" json:"apiEndpoint"`
+	WebEndpoint string `toml:"WebEndpoint" yaml:"webEndpoint" json:"webEndpoint"`
 	// how often sync to server
-	FlushCount int `toml:"flushCount" yaml:"flushCount" json:"flushCount"`
+	FlushCount int `toml:"FlushCount" yaml:"flushCount" json:"flushCount"`
 	// how long the synced data would keep in db:
 	// unit is days
-	GCTime int `toml:"gcTime" yaml:"gcTime" json:"gcTime"`
+	GCTime int `toml:"GCTime" yaml:"gcTime" json:"gcTime"`
 
 	// is data should be masking?
 	// @default true
@@ -116,10 +116,10 @@ var DefaultConfig = ShellTimeConfig{
 	Encrypted:     nil,
 	AI:            DefaultAIConfig,
 	Exclude:       []string{},
-	CCUsage:      nil,
-	CCOtel:       nil,
-	CodeTracking: nil,
-	LogCleanup:   nil,
+	CCUsage:       nil,
+	CCOtel:        nil,
+	CodeTracking:  nil,
+	LogCleanup:    nil,
 
 	SocketPath: DefaultSocketPath,
 }
