@@ -11,9 +11,22 @@ func SendHeartbeatsToServer(ctx context.Context, cfg ShellTimeConfig, payload He
 	ctx, span := modelTracer.Start(ctx, "api.sendHeartbeats")
 	defer span.End()
 
+	// Use custom endpoint/token from CodeTracking if specified, otherwise fall back to global
+	apiEndpoint := cfg.APIEndpoint
+	token := cfg.Token
+
+	if cfg.CodeTracking != nil {
+		if cfg.CodeTracking.APIEndpoint != "" {
+			apiEndpoint = cfg.CodeTracking.APIEndpoint
+		}
+		if cfg.CodeTracking.Token != "" {
+			token = cfg.CodeTracking.Token
+		}
+	}
+
 	endpoint := Endpoint{
-		Token:       cfg.Token,
-		APIEndpoint: cfg.APIEndpoint,
+		Token:       token,
+		APIEndpoint: apiEndpoint,
 	}
 
 	var response HeartbeatResponse
