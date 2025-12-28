@@ -60,7 +60,7 @@ type ShellTimeConfig struct {
 	DataMasking *bool `toml:"dataMasking" yaml:"dataMasking" json:"dataMasking"`
 
 	// for debug purpose
-	Endpoints []Endpoint `toml:"ENDPOINTS" yaml:"endpoints" json:"endpoints"`
+	Endpoints []Endpoint `toml:"ENDPOINTS,omitempty" yaml:"endpoints,omitempty" json:"endpoints,omitempty"`
 
 	// WARNING
 	// This config will track each command metrics you run in current shell.
