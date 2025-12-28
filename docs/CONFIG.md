@@ -283,7 +283,13 @@ Track coding activity heartbeats:
 ```toml
 [codeTracking]
 enabled = false
+# Optional: use a custom API endpoint for heartbeats (defaults to global apiEndpoint)
+apiEndpoint = "https://api.custom-heartbeat.com"
+# Optional: use a custom token for heartbeats (defaults to global token)
+token = "custom-heartbeat-token"
 ```
+
+When `apiEndpoint` or `token` is set under `[codeTracking]`, heartbeat data will use these values instead of the global configuration. This allows you to send coding activity to a different server or authenticate with a separate token.
 
 ---
 
@@ -399,6 +405,8 @@ enabled = false
 
 [codeTracking]
 enabled = false
+# apiEndpoint = "https://api.custom-heartbeat.com"  # Optional: custom endpoint
+# token = "custom-heartbeat-token"                   # Optional: custom token
 
 # --- Log Management ---
 [logCleanup]

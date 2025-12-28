@@ -301,3 +301,136 @@ enabled = true`
 	require.NotNil(t, config.CodeTracking, "CodeTracking should be present")
 	assert.True(t, *config.CodeTracking.Enabled, "CodeTracking.Enabled should be overridden by local config")
 }
+
+func TestCodeTrackingCustomEndpointAndToken(t *testing.T) {
+	// Create a temporary directory for test configs
+	tmpDir, err := os.MkdirTemp("", "shelltime-test-*")
+	require.NoError(t, err)
+	defer os.RemoveAll(tmpDir)
+
+	// Create config file with custom CodeTracking endpoint and token
+	baseConfigPath := filepath.Join(tmpDir, "config.toml")
+	baseConfig := `Token = 'global-token'
+APIEndpoint = 'https://api.global.com'
+
+[codeTracking]
+enabled = true
+apiEndpoint = 'https://api.custom-heartbeat.com'
+token = 'custom-heartbeat-token'`
+	err = os.WriteFile(baseConfigPath, []byte(baseConfig), 0644)
+	require.NoError(t, err)
+
+	cs := NewConfigService(baseConfigPath)
+	config, err := cs.ReadConfigFile(context.Background())
+	require.NoError(t, err)
+
+	// Verify global config values
+	assert.Equal(t, "global-token", config.Token)
+	assert.Equal(t, "https://api.global.com", config.APIEndpoint)
+
+	// Verify CodeTracking custom values
+	require.NotNil(t, config.CodeTracking, "CodeTracking should be present")
+	assert.True(t, *config.CodeTracking.Enabled)
+	assert.Equal(t, "https://api.custom-heartbeat.com", config.CodeTracking.APIEndpoint)
+	assert.Equal(t, "custom-heartbeat-token", config.CodeTracking.Token)
+}
+
+func TestCodeTrackingPartialCustomConfig(t *testing.T) {
+	testCases := []struct {
+		name                string
+		config              string
+		expectedAPIEndpoint string
+		expectedToken       string
+	}{
+		{
+			name: "Only custom apiEndpoint",
+			config: `Token = 'global-token'
+APIEndpoint = 'https://api.global.com'
+
+[codeTracking]
+enabled = true
+apiEndpoint = 'https://api.custom.com'`,
+			expectedAPIEndpoint: "https://api.custom.com",
+			expectedToken:       "", // empty, should fall back to global
+		},
+		{
+			name: "Only custom token",
+			config: `Token = 'global-token'
+APIEndpoint = 'https://api.global.com'
+
+[codeTracking]
+enabled = true
+token = 'custom-token'`,
+			expectedAPIEndpoint: "", // empty, should fall back to global
+			expectedToken:       "custom-token",
+		},
+		{
+			name: "No custom endpoint or token",
+			config: `Token = 'global-token'
+APIEndpoint = 'https://api.global.com'
+
+[codeTracking]
+enabled = true`,
+			expectedAPIEndpoint: "",
+			expectedToken:       "",
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			tmpDir, err := os.MkdirTemp("", "shelltime-test-*")
+			require.NoError(t, err)
+			defer os.RemoveAll(tmpDir)
+
+			baseConfigPath := filepath.Join(tmpDir, "config.toml")
+			err = os.WriteFile(baseConfigPath, []byte(tc.config), 0644)
+			require.NoError(t, err)
+
+			cs := NewConfigService(baseConfigPath)
+			config, err := cs.ReadConfigFile(context.Background())
+			require.NoError(t, err)
+
+			require.NotNil(t, config.CodeTracking, "CodeTracking should be present")
+			assert.Equal(t, tc.expectedAPIEndpoint, config.CodeTracking.APIEndpoint)
+			assert.Equal(t, tc.expectedToken, config.CodeTracking.Token)
+		})
+	}
+}
+
+func TestCodeTrackingMergeEndpointFromLocal(t *testing.T) {
+	// Create a temporary directory for test configs
+	tmpDir, err := os.MkdirTemp("", "shelltime-test-*")
+	require.NoError(t, err)
+	defer os.RemoveAll(tmpDir)
+
+	// Create base config file with CodeTracking
+	baseConfigPath := filepath.Join(tmpDir, "config.toml")
+	baseConfig := `Token = 'base-token'
+APIEndpoint = 'https://api.base.com'
+
+[codeTracking]
+enabled = true
+apiEndpoint = 'https://api.base-heartbeat.com'
+token = 'base-heartbeat-token'`
+	err = os.WriteFile(baseConfigPath, []byte(baseConfig), 0644)
+	require.NoError(t, err)
+
+	// Create local config file that overrides CodeTracking endpoint and token
+	localConfigPath := filepath.Join(tmpDir, "config.local.toml")
+	localConfig := `[codeTracking]
+enabled = true
+apiEndpoint = 'https://api.local-heartbeat.com'
+token = 'local-heartbeat-token'`
+	err = os.WriteFile(localConfigPath, []byte(localConfig), 0644)
+	require.NoError(t, err)
+
+	cs := NewConfigService(baseConfigPath)
+	config, err := cs.ReadConfigFile(context.Background())
+	require.NoError(t, err)
+
+	// Verify local config overrides base CodeTracking
+	require.NotNil(t, config.CodeTracking, "CodeTracking should be present")
+	assert.True(t, *config.CodeTracking.Enabled)
+	assert.Equal(t, "https://api.local-heartbeat.com", config.CodeTracking.APIEndpoint)
+	assert.Equal(t, "local-heartbeat-token", config.CodeTracking.Token)
+}

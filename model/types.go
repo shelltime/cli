@@ -34,7 +34,9 @@ type CCOtel struct {
 
 // CodeTracking configuration for coding activity heartbeat tracking
 type CodeTracking struct {
-	Enabled *bool `toml:"enabled"`
+	Enabled     *bool  `toml:"enabled"`
+	APIEndpoint string `toml:"apiEndpoint"` // Custom API endpoint for heartbeats
+	Token       string `toml:"token"`       // Custom token for heartbeats
 }
 
 // LogCleanup configuration for automatic log file cleanup
