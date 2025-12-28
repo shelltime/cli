@@ -10,10 +10,10 @@ import (
 	"github.com/briandowns/spinner"
 	"github.com/gookit/color"
 	"github.com/malamtime/cli/model"
-	"github.com/pelletier/go-toml/v2"
 	"github.com/pkg/browser"
 	"github.com/urfave/cli/v2"
 	"go.opentelemetry.io/otel/trace"
+	"gopkg.in/yaml.v3"
 )
 
 var AuthCommand *cli.Command = &cli.Command{
@@ -43,9 +43,9 @@ func commandAuth(c *cli.Context) error {
 	SetupLogger(configDir)
 
 	var config model.ShellTimeConfig
-	configFile := configDir + "/config.toml"
+	configFile := configDir + "/config.yaml"
 	if _, err := os.Stat(configFile); os.IsNotExist(err) {
-		content, err := toml.Marshal(model.DefaultConfig)
+		content, err := yaml.Marshal(model.DefaultConfig)
 		if err != nil {
 			return fmt.Errorf("failed to marshal default config: %w", err)
 		}
@@ -73,7 +73,7 @@ func commandAuth(c *cli.Context) error {
 	}
 
 	config.Token = newToken
-	content, err := toml.Marshal(config)
+	content, err := yaml.Marshal(config)
 	if err != nil {
 		return fmt.Errorf("failed to marshal config: %w", err)
 	}
