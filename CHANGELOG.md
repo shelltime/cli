@@ -1,5 +1,28 @@
 # Changelog
 
+## [0.1.47](https://github.com/shelltime/cli/compare/v0.1.46...v0.1.47) (2025-12-28)
+
+
+### Features
+
+* **auth:** add schema header to generated YAML config ([9b218ca](https://github.com/shelltime/cli/commit/9b218ca6539486bc3926fa6ec69b81b2f71b1008))
+* **auth:** generate local JSON schema on init ([9a4d888](https://github.com/shelltime/cli/commit/9a4d8886cd68c5d95eb3e26caa2f6f1bbcc7135b))
+* **codeTracking:** add custom apiEndpoint and token configuration ([7198a07](https://github.com/shelltime/cli/commit/7198a07942fbd9acd7b5f30f90a7bd1f32284dbd))
+* **codeTracking:** add custom apiEndpoint and token configuration ([fd8ce21](https://github.com/shelltime/cli/commit/fd8ce21e944c8eb68385d14dcdeb2d1d30b82c25))
+* **config:** add YAML config support with JSON schema generation ([6225ec4](https://github.com/shelltime/cli/commit/6225ec4b163cb9fc4ad72761e755105781adf282))
+* **config:** add YAML config support with JSON schema generation ([2b7c909](https://github.com/shelltime/cli/commit/2b7c909c9ec7767b32b5b129f69ce5bd60d12738))
+
+
+### Bug Fixes
+
+* **auth:** generate YAML config instead of TOML on init ([addddfc](https://github.com/shelltime/cli/commit/addddfcad07bb12dc18aa2fb5cfd183f09fcd862))
+* **types:** use capitalized TOML tags for backward compatibility ([129c9a4](https://github.com/shelltime/cli/commit/129c9a46f159b283dd09c28346baa53e08f4c38e))
+
+
+### Miscellaneous Chores
+
+* release 0.1.47 ([edb803d](https://github.com/shelltime/cli/commit/edb803d6a7d3b5e657bcd271c426a62028b227d1))
+
 ## [0.1.46](https://github.com/shelltime/cli/compare/v0.1.45...v0.1.46) (2025-12-27)
 
 
