@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.49](https://github.com/shelltime/cli/compare/v0.1.48...v0.1.49) (2025-12-28)
+
+
+### Code Refactoring
+
+* **model:** add omitempty tags to config struct fields ([fc590ea](https://github.com/shelltime/cli/commit/fc590ea44aa453e799d8efed700b9090e2e0438b))
+
 ## [0.1.48](https://github.com/shelltime/cli/compare/v0.1.47...v0.1.48) (2025-12-28)
 
 
