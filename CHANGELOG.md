@@ -1,5 +1,15 @@
 # Changelog
 
+## [0.1.48](https://github.com/shelltime/cli/compare/v0.1.47...v0.1.48) (2025-12-28)
+
+
+### Bug Fixes
+
+* **config:** make endpoints optional and use relative schema path ([31f2565](https://github.com/shelltime/cli/commit/31f2565028f745368a8bbe612cf74651bb0ab51b))
+* **config:** make endpoints optional and use relative schema path ([35ffcde](https://github.com/shelltime/cli/commit/35ffcde728f5bce5a0516fd0ac10642d10a07685))
+* **daemon:** add acknowledgment response for heartbeat messages ([d4a2ed9](https://github.com/shelltime/cli/commit/d4a2ed9150dbc32ecb109d7048a1f283d9da1062))
+* **daemon:** add acknowledgment response for heartbeat messages ([4bcd308](https://github.com/shelltime/cli/commit/4bcd30810119d16cac953d5776bc39608f2f6df6))
+
 ## [0.1.47](https://github.com/shelltime/cli/compare/v0.1.46...v0.1.47) (2025-12-28)
 
 
