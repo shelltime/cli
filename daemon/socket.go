@@ -128,6 +128,8 @@ func (p *SocketHandler) handleConnection(conn net.Conn) {
 		// Only process heartbeat if codeTracking is enabled
 		if p.config.CodeTracking == nil || p.config.CodeTracking.Enabled == nil || !*p.config.CodeTracking.Enabled {
 			slog.Debug("Heartbeat message received but codeTracking is disabled, ignoring")
+			encoder := json.NewEncoder(conn)
+			encoder.Encode(map[string]string{"status": "disabled"})
 			return
 		}
 		buf, err := json.Marshal(msg)
@@ -140,6 +142,10 @@ func (p *SocketHandler) handleConnection(conn net.Conn) {
 		if err := p.channel.Publish(PubSubTopic, chMsg); err != nil {
 			slog.Error("Error publishing heartbeat topic", slog.Any("err", err))
 		}
+
+		// Send acknowledgment to client
+		encoder := json.NewEncoder(conn)
+		encoder.Encode(map[string]string{"status": "ok"})
 	default:
 		slog.Error("Unknown message type:", slog.String("messageType", string(msg.Type)))
 	}
