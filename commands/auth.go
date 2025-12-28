@@ -49,6 +49,9 @@ func commandAuth(c *cli.Context) error {
 		if err != nil {
 			return fmt.Errorf("failed to marshal default config: %w", err)
 		}
+		// Prepend $schema for IDE autocompletion support
+		schemaHeader := "# yaml-language-server: $schema=https://shelltime.xyz/schemas/config.schema.json\n"
+		content = append([]byte(schemaHeader), content...)
 		err = os.WriteFile(configFile, content, 0644)
 		if err != nil {
 			return fmt.Errorf("failed to create config file: %w", err)
