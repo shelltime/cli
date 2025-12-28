@@ -45,8 +45,8 @@ func main() {
 	slog.SetDefault(l)
 
 	ctx := context.Background()
-	configFile := os.ExpandEnv(fmt.Sprintf("%s/%s/%s", "$HOME", model.COMMAND_BASE_STORAGE_FOLDER, "config.toml"))
-	daemonConfigService := model.NewConfigService(configFile)
+	configDir := os.ExpandEnv(fmt.Sprintf("%s/%s", "$HOME", model.COMMAND_BASE_STORAGE_FOLDER))
+	daemonConfigService := model.NewConfigService(configDir)
 	cfg, err := daemonConfigService.ReadConfigFile(ctx)
 	if err != nil {
 		slog.Error("Failed to get daemon config", slog.Any("err", err))

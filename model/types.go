@@ -5,93 +5,93 @@ const (
 )
 
 type Endpoint struct {
-	APIEndpoint string `toml:"apiEndpoint"`
-	Token       string `token:"token"`
+	APIEndpoint string `toml:"apiEndpoint" yaml:"apiEndpoint" json:"apiEndpoint"`
+	Token       string `toml:"token" yaml:"token" json:"token"`
 }
 
 type AIAgentConfig struct {
 	// AutoRun settings for different command types
-	View   bool `toml:"view"`
-	Edit   bool `toml:"edit"`
-	Delete bool `toml:"delete"`
+	View   bool `toml:"view" yaml:"view" json:"view"`
+	Edit   bool `toml:"edit" yaml:"edit" json:"edit"`
+	Delete bool `toml:"delete" yaml:"delete" json:"delete"`
 }
 
 type AIConfig struct {
-	Agent    AIAgentConfig `toml:"agent"`
-	ShowTips *bool         `toml:"showTips"`
+	Agent    AIAgentConfig `toml:"agent" yaml:"agent" json:"agent"`
+	ShowTips *bool         `toml:"showTips" yaml:"showTips" json:"showTips"`
 }
 
 type CCUsage struct {
-	Enabled *bool `toml:"enabled"`
+	Enabled *bool `toml:"enabled" yaml:"enabled" json:"enabled"`
 }
 
 // CCOtel configuration for OTEL-based Claude Code tracking (v2)
 type CCOtel struct {
-	Enabled  *bool `toml:"enabled"`
-	GRPCPort int   `toml:"grpcPort"` // default: 4317
-	Debug    *bool `toml:"debug"`    // write raw JSON to debug files
+	Enabled  *bool `toml:"enabled" yaml:"enabled" json:"enabled"`
+	GRPCPort int   `toml:"grpcPort" yaml:"grpcPort" json:"grpcPort"` // default: 4317
+	Debug    *bool `toml:"debug" yaml:"debug" json:"debug"`          // write raw JSON to debug files
 }
 
 // CodeTracking configuration for coding activity heartbeat tracking
 type CodeTracking struct {
-	Enabled     *bool  `toml:"enabled"`
-	APIEndpoint string `toml:"apiEndpoint"` // Custom API endpoint for heartbeats
-	Token       string `toml:"token"`       // Custom token for heartbeats
+	Enabled     *bool  `toml:"enabled" yaml:"enabled" json:"enabled"`
+	APIEndpoint string `toml:"apiEndpoint" yaml:"apiEndpoint" json:"apiEndpoint"` // Custom API endpoint for heartbeats
+	Token       string `toml:"token" yaml:"token" json:"token"`                   // Custom token for heartbeats
 }
 
 // LogCleanup configuration for automatic log file cleanup
 type LogCleanup struct {
-	Enabled     *bool `toml:"enabled"`     // default: true (enabled by default)
-	ThresholdMB int64 `toml:"thresholdMB"` // default: 100 MB
+	Enabled     *bool `toml:"enabled" yaml:"enabled" json:"enabled"`             // default: true (enabled by default)
+	ThresholdMB int64 `toml:"thresholdMB" yaml:"thresholdMB" json:"thresholdMB"` // default: 100 MB
 }
 
 type ShellTimeConfig struct {
-	Token       string
-	APIEndpoint string
-	WebEndpoint string
+	Token       string `toml:"token" yaml:"token" json:"token"`
+	APIEndpoint string `toml:"apiEndpoint" yaml:"apiEndpoint" json:"apiEndpoint"`
+	WebEndpoint string `toml:"webEndpoint" yaml:"webEndpoint" json:"webEndpoint"`
 	// how often sync to server
-	FlushCount int
+	FlushCount int `toml:"flushCount" yaml:"flushCount" json:"flushCount"`
 	// how long the synced data would keep in db:
 	// unit is days
-	GCTime int
+	GCTime int `toml:"gcTime" yaml:"gcTime" json:"gcTime"`
 
 	// is data should be masking?
 	// @default true
-	DataMasking *bool `toml:"dataMasking"`
+	DataMasking *bool `toml:"dataMasking" yaml:"dataMasking" json:"dataMasking"`
 
 	// for debug purpose
-	Endpoints []Endpoint `toml:"ENDPOINTS"`
+	Endpoints []Endpoint `toml:"ENDPOINTS" yaml:"endpoints" json:"endpoints"`
 
 	// WARNING
 	// This config will track each command metrics you run in current shell.
 	// Use this config only the developer asked you to do so.
 	// This could be very slow on each command you run.
-	EnableMetrics *bool `toml:"enableMetrics"`
+	EnableMetrics *bool `toml:"enableMetrics" yaml:"enableMetrics" json:"enableMetrics"`
 
-	Encrypted *bool `toml:"encrypted"`
+	Encrypted *bool `toml:"encrypted" yaml:"encrypted" json:"encrypted"`
 
 	// AI configuration
-	AI *AIConfig `toml:"ai"`
+	AI *AIConfig `toml:"ai" yaml:"ai" json:"ai"`
 
 	// Exclude patterns - regular expressions to exclude commands from being saved
 	// Commands matching any of these patterns will not be synced to the server
-	Exclude []string `toml:"exclude"`
+	Exclude []string `toml:"exclude" yaml:"exclude" json:"exclude"`
 
 	// CCUsage configuration for Claude Code usage tracking (v1 - ccusage CLI based)
-	CCUsage *CCUsage `toml:"ccusage"`
+	CCUsage *CCUsage `toml:"ccusage" yaml:"ccusage" json:"ccusage"`
 
 	// CCOtel configuration for OTEL-based Claude Code tracking (v2 - gRPC passthrough)
-	CCOtel *CCOtel `toml:"ccotel"`
+	CCOtel *CCOtel `toml:"ccotel" yaml:"ccotel" json:"ccotel"`
 
 	// CodeTracking configuration for coding activity heartbeat tracking
-	CodeTracking *CodeTracking `toml:"codeTracking"`
+	CodeTracking *CodeTracking `toml:"codeTracking" yaml:"codeTracking" json:"codeTracking"`
 
 	// LogCleanup configuration for automatic log file cleanup in daemon
-	LogCleanup *LogCleanup `toml:"logCleanup"`
+	LogCleanup *LogCleanup `toml:"logCleanup" yaml:"logCleanup" json:"logCleanup"`
 
 	// SocketPath is the path to the Unix domain socket used for communication
 	// between the CLI and the daemon.
-	SocketPath string `toml:"socketPath"`
+	SocketPath string `toml:"socketPath" yaml:"socketPath" json:"socketPath"`
 }
 
 var DefaultAIConfig = &AIConfig{

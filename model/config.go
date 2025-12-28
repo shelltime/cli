@@ -9,7 +9,75 @@ import (
 	"sync"
 
 	"github.com/pelletier/go-toml/v2"
+	"gopkg.in/yaml.v3"
 )
+
+// configFormat represents the format of a config file
+type configFormat string
+
+const (
+	formatTOML configFormat = "toml"
+	formatYAML configFormat = "yaml"
+)
+
+// detectFormat returns the format based on file extension
+func detectFormat(filename string) configFormat {
+	ext := strings.ToLower(filepath.Ext(filename))
+	switch ext {
+	case ".yaml", ".yml":
+		return formatYAML
+	default:
+		return formatTOML
+	}
+}
+
+// unmarshalConfig unmarshals config data based on format
+func unmarshalConfig(data []byte, format configFormat, config *ShellTimeConfig) error {
+	switch format {
+	case formatYAML:
+		return yaml.Unmarshal(data, config)
+	default:
+		return toml.Unmarshal(data, config)
+	}
+}
+
+// configFiles represents discovered config files
+type configFiles struct {
+	baseFile    string       // config.yaml, config.yml, or config.toml
+	localFile   string       // config.local.yaml, config.local.yml, or config.local.toml
+	baseFormat  configFormat
+	localFormat configFormat
+}
+
+// findConfigFiles discovers config files in priority order
+// Priority: config.local.yaml > config.local.yml > config.yaml > config.yml > config.local.toml > config.toml
+func findConfigFiles(configDir string) configFiles {
+	result := configFiles{}
+
+	// Check for base config files (YAML first, then TOML)
+	baseFiles := []string{"config.yaml", "config.yml", "config.toml"}
+	for _, name := range baseFiles {
+		path := filepath.Join(configDir, name)
+		if _, err := os.Stat(path); err == nil {
+			result.baseFile = path
+			result.baseFormat = detectFormat(name)
+			break
+		}
+	}
+
+	// Check for local config files (YAML first, then TOML)
+	localFiles := []string{"config.local.yaml", "config.local.yml", "config.local.toml"}
+	for _, name := range localFiles {
+		path := filepath.Join(configDir, name)
+		if _, err := os.Stat(path); err == nil {
+			result.localFile = path
+			result.localFormat = detectFormat(name)
+			break
+		}
+	}
+
+	return result
+}
 
 var UserShellTimeConfig ShellTimeConfig
 
@@ -33,14 +101,17 @@ func WithSkipCache() ReadConfigOption {
 }
 
 type configService struct {
-	configFilePath string
-	cachedConfig   *ShellTimeConfig
-	mu             sync.RWMutex
+	configDir    string
+	cachedConfig *ShellTimeConfig
+	mu           sync.RWMutex
 }
 
-func NewConfigService(configFilePath string) ConfigService {
+// NewConfigService creates a new ConfigService that reads config files from the given directory.
+// It supports both YAML (.yaml, .yml) and TOML (.toml) formats with priority:
+// config.local.yaml > config.local.yml > config.yaml > config.yml > config.local.toml > config.toml
+func NewConfigService(configDir string) ConfigService {
 	return &configService{
-		configFilePath: configFilePath,
+		configDir: configDir,
 	}
 }
 
@@ -121,32 +192,32 @@ func (cs *configService) ReadConfigFile(ctx context.Context, opts ...ReadConfigO
 		cs.mu.RUnlock()
 	}
 
-	configFile := cs.configFilePath
-	existingConfig, err := os.ReadFile(configFile)
+	// Discover config files with priority
+	files := findConfigFiles(cs.configDir)
+
+	// Read base config file
+	if files.baseFile == "" {
+		err = fmt.Errorf("no config file found in %s", cs.configDir)
+		return
+	}
+
+	existingConfig, err := os.ReadFile(files.baseFile)
 	if err != nil {
 		err = fmt.Errorf("failed to read config file: %w", err)
 		return
 	}
 
-	err = toml.Unmarshal(existingConfig, &config)
+	err = unmarshalConfig(existingConfig, files.baseFormat, &config)
 	if err != nil {
 		err = fmt.Errorf("failed to parse config file: %w", err)
 		return
 	}
 
-	// Check for local config file and merge if exists
-	// Extract the file extension and construct local config filename
-	ext := filepath.Ext(configFile)
-	if ext != "" {
-		// Get the base name without extension
-		baseName := strings.TrimSuffix(configFile, ext)
-		// Construct local config filename: baseName + ".local" + ext
-		localConfigFile := baseName + ".local" + ext
-		if localConfig, localErr := os.ReadFile(localConfigFile); localErr == nil {
-			// Parse local config and merge with base config
+	// Read and merge local config if exists
+	if files.localFile != "" {
+		if localConfig, localErr := os.ReadFile(files.localFile); localErr == nil {
 			var localSettings ShellTimeConfig
-			if unmarshalErr := toml.Unmarshal(localConfig, &localSettings); unmarshalErr == nil {
-				// Merge local settings into base config
+			if unmarshalErr := unmarshalConfig(localConfig, files.localFormat, &localSettings); unmarshalErr == nil {
 				mergeConfig(&config, &localSettings)
 			}
 		}

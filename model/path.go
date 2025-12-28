@@ -22,14 +22,34 @@ func GetStoragePath(subpaths ...string) string {
 	return filepath.Join(append([]string{GetBaseStoragePath()}, subpaths...)...)
 }
 
-// GetConfigFilePath returns the path to the main config file
+// GetConfigFilePath returns the path to the main config file (TOML)
 func GetConfigFilePath() string {
 	return GetStoragePath("config.toml")
 }
 
-// GetLocalConfigFilePath returns the path to the local config file
+// GetLocalConfigFilePath returns the path to the local config file (TOML)
 func GetLocalConfigFilePath() string {
 	return GetStoragePath("config.local.toml")
+}
+
+// GetYAMLConfigFilePath returns the path to the main config file (YAML)
+func GetYAMLConfigFilePath() string {
+	return GetStoragePath("config.yaml")
+}
+
+// GetYMLConfigFilePath returns the path to the main config file (YML)
+func GetYMLConfigFilePath() string {
+	return GetStoragePath("config.yml")
+}
+
+// GetLocalYAMLConfigFilePath returns the path to the local config file (YAML)
+func GetLocalYAMLConfigFilePath() string {
+	return GetStoragePath("config.local.yaml")
+}
+
+// GetLocalYMLConfigFilePath returns the path to the local config file (YML)
+func GetLocalYMLConfigFilePath() string {
+	return GetStoragePath("config.local.yml")
 }
 
 // GetLogFilePath returns the path to the log file
