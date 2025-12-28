@@ -45,7 +45,7 @@ func commandAuth(c *cli.Context) error {
 	SetupLogger(configDir)
 
 	// Generate JSON schema for IDE autocompletion
-	schemaFile := configDir + "/config.schema.json"
+	schemaFile := configDir + "/config-schema.json"
 	if err := generateSchemaFile(schemaFile); err != nil {
 		slog.Warn("Failed to generate schema file", slog.Any("err", err))
 	}
@@ -58,7 +58,7 @@ func commandAuth(c *cli.Context) error {
 			return fmt.Errorf("failed to marshal default config: %w", err)
 		}
 		// Prepend $schema for IDE autocompletion support
-		schemaHeader := "# yaml-language-server: $schema=" + schemaFile + "\n"
+		schemaHeader := "# yaml-language-server: $schema=./config-schema.json\n"
 		content = append([]byte(schemaHeader), content...)
 		err = os.WriteFile(configFile, content, 0644)
 		if err != nil {
