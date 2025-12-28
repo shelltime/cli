@@ -31,8 +31,8 @@ func main() {
 		Aliases: []string{"v"},
 		Usage:   "print the version",
 	}
-	configFile := os.ExpandEnv(fmt.Sprintf("%s/%s/%s", "$HOME", model.COMMAND_BASE_STORAGE_FOLDER, "config.toml"))
-	configService := model.NewConfigService(configFile)
+	configDir := os.ExpandEnv(fmt.Sprintf("%s/%s", "$HOME", model.COMMAND_BASE_STORAGE_FOLDER))
+	configService := model.NewConfigService(configDir)
 
 	uptraceOptions := []uptrace.Option{
 		uptrace.WithDSN(uptraceDsn),
@@ -107,6 +107,7 @@ func main() {
 		commands.DoctorCommand,
 		commands.QueryCommand,
 		commands.CCCommand,
+		commands.SchemaCommand,
 	}
 	err = app.Run(os.Args)
 	if err != nil {

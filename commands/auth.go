@@ -2,6 +2,7 @@ package commands
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"log/slog"
 	"os"
@@ -9,11 +10,12 @@ import (
 
 	"github.com/briandowns/spinner"
 	"github.com/gookit/color"
+	"github.com/invopop/jsonschema"
 	"github.com/malamtime/cli/model"
-	"github.com/pelletier/go-toml/v2"
 	"github.com/pkg/browser"
 	"github.com/urfave/cli/v2"
 	"go.opentelemetry.io/otel/trace"
+	"gopkg.in/yaml.v3"
 )
 
 var AuthCommand *cli.Command = &cli.Command{
@@ -42,13 +44,22 @@ func commandAuth(c *cli.Context) error {
 	}
 	SetupLogger(configDir)
 
+	// Generate JSON schema for IDE autocompletion
+	schemaFile := configDir + "/config.schema.json"
+	if err := generateSchemaFile(schemaFile); err != nil {
+		slog.Warn("Failed to generate schema file", slog.Any("err", err))
+	}
+
 	var config model.ShellTimeConfig
-	configFile := configDir + "/config.toml"
+	configFile := configDir + "/config.yaml"
 	if _, err := os.Stat(configFile); os.IsNotExist(err) {
-		content, err := toml.Marshal(model.DefaultConfig)
+		content, err := yaml.Marshal(model.DefaultConfig)
 		if err != nil {
 			return fmt.Errorf("failed to marshal default config: %w", err)
 		}
+		// Prepend $schema for IDE autocompletion support
+		schemaHeader := "# yaml-language-server: $schema=" + schemaFile + "\n"
+		content = append([]byte(schemaHeader), content...)
 		err = os.WriteFile(configFile, content, 0644)
 		if err != nil {
 			return fmt.Errorf("failed to create config file: %w", err)
@@ -73,7 +84,7 @@ func commandAuth(c *cli.Context) error {
 	}
 
 	config.Token = newToken
-	content, err := toml.Marshal(config)
+	content, err := yaml.Marshal(config)
 	if err != nil {
 		return fmt.Errorf("failed to marshal config: %w", err)
 	}
@@ -128,4 +139,26 @@ func ApplyTokenByHandshake(_ctx context.Context, config model.ShellTimeConfig) (
 
 		time.Sleep(2 * time.Second)
 	}
+}
+
+// generateSchemaFile generates the JSON schema file for config autocompletion
+func generateSchemaFile(path string) error {
+	reflector := &jsonschema.Reflector{
+		AllowAdditionalProperties: false,
+	}
+
+	schema := reflector.Reflect(&model.ShellTimeConfig{})
+	schema.Title = "ShellTime Configuration"
+	schema.Description = "Configuration schema for shelltime CLI. Supports both YAML (.yaml, .yml) and TOML (.toml) formats."
+
+	schemaJSON, err := json.MarshalIndent(schema, "", "  ")
+	if err != nil {
+		return fmt.Errorf("failed to marshal schema: %w", err)
+	}
+
+	if err := os.WriteFile(path, schemaJSON, 0644); err != nil {
+		return fmt.Errorf("failed to write schema file: %w", err)
+	}
+
+	return nil
 }

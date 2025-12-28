@@ -18,11 +18,11 @@ func TestReadConfigFileWithLocal(t *testing.T) {
 
 	// Create base config file
 	baseConfigPath := filepath.Join(tmpDir, "config.toml")
-	baseConfig := `Token = 'base-token'
-APIEndpoint = 'https://api.base.com'
-WebEndpoint = 'https://base.com'
-FlushCount = 5
-GCTime = 7
+	baseConfig := `token = 'base-token'
+apiEndpoint = 'https://api.base.com'
+webEndpoint = 'https://base.com'
+flushCount = 5
+gcTime = 7
 dataMasking = false
 enableMetrics = false
 encrypted = false`
@@ -31,15 +31,15 @@ encrypted = false`
 
 	// Create local config file that overrides some settings
 	localConfigPath := filepath.Join(tmpDir, "config.local.toml")
-	localConfig := `Token = 'local-token'
-APIEndpoint = 'https://api.local.com'
-FlushCount = 10
+	localConfig := `token = 'local-token'
+apiEndpoint = 'https://api.local.com'
+flushCount = 10
 dataMasking = true`
 	err = os.WriteFile(localConfigPath, []byte(localConfig), 0644)
 	require.NoError(t, err)
 
-	// Test reading config with local override
-	cs := NewConfigService(baseConfigPath)
+	// Test reading config with local override (now uses directory path)
+	cs := NewConfigService(tmpDir)
 	config, err := cs.ReadConfigFile(context.Background())
 	require.NoError(t, err)
 
@@ -64,16 +64,16 @@ func TestReadConfigFileWithoutLocal(t *testing.T) {
 
 	// Create only base config file (no local file)
 	baseConfigPath := filepath.Join(tmpDir, "config.toml")
-	baseConfig := `Token = 'base-token'
-APIEndpoint = 'https://api.base.com'
-WebEndpoint = 'https://base.com'
-FlushCount = 5
-GCTime = 7`
+	baseConfig := `token = 'base-token'
+apiEndpoint = 'https://api.base.com'
+webEndpoint = 'https://base.com'
+flushCount = 5
+gcTime = 7`
 	err = os.WriteFile(baseConfigPath, []byte(baseConfig), 0644)
 	require.NoError(t, err)
 
-	// Test reading config without local file
-	cs := NewConfigService(baseConfigPath)
+	// Test reading config without local file (now uses directory path)
+	cs := NewConfigService(tmpDir)
 	config, err := cs.ReadConfigFile(context.Background())
 	require.NoError(t, err)
 
@@ -85,62 +85,206 @@ GCTime = 7`
 	assert.Equal(t, 7, config.GCTime)
 }
 
-func TestReadConfigFileWithDifferentExtensions(t *testing.T) {
-	testCases := []struct {
-		name       string
-		configFile string
-		localFile  string
-	}{
-		{
-			name:       "TOML files",
-			configFile: "config.toml",
-			localFile:  "config.local.toml",
-		},
-		{
-			name:       "Custom config name",
-			configFile: "shelltime-config.toml",
-			localFile:  "shelltime-config.local.toml",
-		},
-		{
-			name:       "Different extension",
-			configFile: "settings.conf",
-			localFile:  "settings.local.conf",
-		},
-	}
+func TestReadYAMLConfig(t *testing.T) {
+	// Create a temporary directory for test configs
+	tmpDir, err := os.MkdirTemp("", "shelltime-test-*")
+	require.NoError(t, err)
+	defer os.RemoveAll(tmpDir)
 
-	for _, tc := range testCases {
-		t.Run(tc.name, func(t *testing.T) {
-			// Create a temporary directory for test configs
-			tmpDir, err := os.MkdirTemp("", "shelltime-test-*")
-			require.NoError(t, err)
-			defer os.RemoveAll(tmpDir)
+	// Create YAML config file
+	yamlConfigPath := filepath.Join(tmpDir, "config.yaml")
+	yamlConfig := `token: yaml-token
+apiEndpoint: https://api.yaml.com
+webEndpoint: https://yaml.com
+flushCount: 15
+gcTime: 21`
+	err = os.WriteFile(yamlConfigPath, []byte(yamlConfig), 0644)
+	require.NoError(t, err)
 
-			// Create base config file
-			baseConfigPath := filepath.Join(tmpDir, tc.configFile)
-			baseConfig := `Token = 'base-token'
-APIEndpoint = 'https://api.base.com'
-FlushCount = 5`
-			err = os.WriteFile(baseConfigPath, []byte(baseConfig), 0644)
-			require.NoError(t, err)
+	cs := NewConfigService(tmpDir)
+	config, err := cs.ReadConfigFile(context.Background())
+	require.NoError(t, err)
 
-			// Create local config file
-			localConfigPath := filepath.Join(tmpDir, tc.localFile)
-			localConfig := `Token = 'local-token'
-FlushCount = 10`
-			err = os.WriteFile(localConfigPath, []byte(localConfig), 0644)
-			require.NoError(t, err)
+	assert.Equal(t, "yaml-token", config.Token)
+	assert.Equal(t, "https://api.yaml.com", config.APIEndpoint)
+	assert.Equal(t, "https://yaml.com", config.WebEndpoint)
+	assert.Equal(t, 15, config.FlushCount)
+	assert.Equal(t, 21, config.GCTime)
+}
 
-			// Test reading config with local override
-			cs := NewConfigService(baseConfigPath)
-			config, err := cs.ReadConfigFile(context.Background())
-			require.NoError(t, err)
+func TestReadYMLConfig(t *testing.T) {
+	// Create a temporary directory for test configs
+	tmpDir, err := os.MkdirTemp("", "shelltime-test-*")
+	require.NoError(t, err)
+	defer os.RemoveAll(tmpDir)
 
-			// Verify local config overrides base config
-			assert.Equal(t, "local-token", config.Token, "Token should be overridden by local config for %s", tc.name)
-			assert.Equal(t, 10, config.FlushCount, "FlushCount should be overridden by local config for %s", tc.name)
-			assert.Equal(t, "https://api.base.com", config.APIEndpoint, "APIEndpoint should keep base value for %s", tc.name)
-		})
-	}
+	// Create YML config file
+	ymlConfigPath := filepath.Join(tmpDir, "config.yml")
+	ymlConfig := `token: yml-token
+apiEndpoint: https://api.yml.com
+flushCount: 12`
+	err = os.WriteFile(ymlConfigPath, []byte(ymlConfig), 0644)
+	require.NoError(t, err)
+
+	cs := NewConfigService(tmpDir)
+	config, err := cs.ReadConfigFile(context.Background())
+	require.NoError(t, err)
+
+	assert.Equal(t, "yml-token", config.Token)
+	assert.Equal(t, "https://api.yml.com", config.APIEndpoint)
+	assert.Equal(t, 12, config.FlushCount)
+}
+
+func TestYAMLConfigWithLocalOverride(t *testing.T) {
+	// Create a temporary directory for test configs
+	tmpDir, err := os.MkdirTemp("", "shelltime-test-*")
+	require.NoError(t, err)
+	defer os.RemoveAll(tmpDir)
+
+	// Create base YAML config file
+	yamlConfigPath := filepath.Join(tmpDir, "config.yaml")
+	yamlConfig := `token: base-yaml-token
+apiEndpoint: https://api.base.com
+flushCount: 5`
+	err = os.WriteFile(yamlConfigPath, []byte(yamlConfig), 0644)
+	require.NoError(t, err)
+
+	// Create local YAML config file
+	localYamlConfigPath := filepath.Join(tmpDir, "config.local.yaml")
+	localYamlConfig := `token: local-yaml-token
+flushCount: 20`
+	err = os.WriteFile(localYamlConfigPath, []byte(localYamlConfig), 0644)
+	require.NoError(t, err)
+
+	cs := NewConfigService(tmpDir)
+	config, err := cs.ReadConfigFile(context.Background())
+	require.NoError(t, err)
+
+	// Verify local config overrides base config
+	assert.Equal(t, "local-yaml-token", config.Token)
+	assert.Equal(t, 20, config.FlushCount)
+	// Base value should be kept
+	assert.Equal(t, "https://api.base.com", config.APIEndpoint)
+}
+
+func TestConfigPriority_YAMLOverTOML(t *testing.T) {
+	// Create a temporary directory for test configs
+	tmpDir, err := os.MkdirTemp("", "shelltime-test-*")
+	require.NoError(t, err)
+	defer os.RemoveAll(tmpDir)
+
+	// Create both TOML and YAML config files
+	tomlConfigPath := filepath.Join(tmpDir, "config.toml")
+	tomlConfig := `token = 'toml-token'
+apiEndpoint = 'https://api.toml.com'`
+	err = os.WriteFile(tomlConfigPath, []byte(tomlConfig), 0644)
+	require.NoError(t, err)
+
+	yamlConfigPath := filepath.Join(tmpDir, "config.yaml")
+	yamlConfig := `token: yaml-token
+apiEndpoint: https://api.yaml.com`
+	err = os.WriteFile(yamlConfigPath, []byte(yamlConfig), 0644)
+	require.NoError(t, err)
+
+	cs := NewConfigService(tmpDir)
+	config, err := cs.ReadConfigFile(context.Background())
+	require.NoError(t, err)
+
+	// YAML should take priority over TOML
+	assert.Equal(t, "yaml-token", config.Token)
+	assert.Equal(t, "https://api.yaml.com", config.APIEndpoint)
+}
+
+func TestConfigPriority_YAMLOverYML(t *testing.T) {
+	// Create a temporary directory for test configs
+	tmpDir, err := os.MkdirTemp("", "shelltime-test-*")
+	require.NoError(t, err)
+	defer os.RemoveAll(tmpDir)
+
+	// Create both .yaml and .yml config files
+	ymlConfigPath := filepath.Join(tmpDir, "config.yml")
+	ymlConfig := `token: yml-token`
+	err = os.WriteFile(ymlConfigPath, []byte(ymlConfig), 0644)
+	require.NoError(t, err)
+
+	yamlConfigPath := filepath.Join(tmpDir, "config.yaml")
+	yamlConfig := `token: yaml-token`
+	err = os.WriteFile(yamlConfigPath, []byte(yamlConfig), 0644)
+	require.NoError(t, err)
+
+	cs := NewConfigService(tmpDir)
+	config, err := cs.ReadConfigFile(context.Background())
+	require.NoError(t, err)
+
+	// .yaml should take priority over .yml
+	assert.Equal(t, "yaml-token", config.Token)
+}
+
+func TestConfigPriority_LocalYAMLOverLocalTOML(t *testing.T) {
+	// Create a temporary directory for test configs
+	tmpDir, err := os.MkdirTemp("", "shelltime-test-*")
+	require.NoError(t, err)
+	defer os.RemoveAll(tmpDir)
+
+	// Create base config
+	yamlConfigPath := filepath.Join(tmpDir, "config.yaml")
+	yamlConfig := `token: base-token
+flushCount: 5`
+	err = os.WriteFile(yamlConfigPath, []byte(yamlConfig), 0644)
+	require.NoError(t, err)
+
+	// Create both local TOML and local YAML
+	localTomlPath := filepath.Join(tmpDir, "config.local.toml")
+	localToml := `token = 'local-toml-token'
+flushCount = 10`
+	err = os.WriteFile(localTomlPath, []byte(localToml), 0644)
+	require.NoError(t, err)
+
+	localYamlPath := filepath.Join(tmpDir, "config.local.yaml")
+	localYaml := `token: local-yaml-token
+flushCount: 20`
+	err = os.WriteFile(localYamlPath, []byte(localYaml), 0644)
+	require.NoError(t, err)
+
+	cs := NewConfigService(tmpDir)
+	config, err := cs.ReadConfigFile(context.Background())
+	require.NoError(t, err)
+
+	// local.yaml should take priority over local.toml
+	assert.Equal(t, "local-yaml-token", config.Token)
+	assert.Equal(t, 20, config.FlushCount)
+}
+
+func TestCrossFormatConfig_YAMLBaseWithTOMLLocal(t *testing.T) {
+	// Create a temporary directory for test configs
+	tmpDir, err := os.MkdirTemp("", "shelltime-test-*")
+	require.NoError(t, err)
+	defer os.RemoveAll(tmpDir)
+
+	// Create YAML base config
+	yamlConfigPath := filepath.Join(tmpDir, "config.yaml")
+	yamlConfig := `token: yaml-base-token
+apiEndpoint: https://api.yaml.com
+flushCount: 5`
+	err = os.WriteFile(yamlConfigPath, []byte(yamlConfig), 0644)
+	require.NoError(t, err)
+
+	// Create TOML local config (no YAML local exists)
+	localTomlPath := filepath.Join(tmpDir, "config.local.toml")
+	localToml := `token = 'toml-local-token'
+flushCount = 15`
+	err = os.WriteFile(localTomlPath, []byte(localToml), 0644)
+	require.NoError(t, err)
+
+	cs := NewConfigService(tmpDir)
+	config, err := cs.ReadConfigFile(context.Background())
+	require.NoError(t, err)
+
+	// Local TOML should override YAML base
+	assert.Equal(t, "toml-local-token", config.Token)
+	assert.Equal(t, 15, config.FlushCount)
+	// Base value should be kept
+	assert.Equal(t, "https://api.yaml.com", config.APIEndpoint)
 }
 
 func TestLogCleanupDefaults(t *testing.T) {
@@ -151,12 +295,12 @@ func TestLogCleanupDefaults(t *testing.T) {
 
 	// Create config file without LogCleanup section
 	baseConfigPath := filepath.Join(tmpDir, "config.toml")
-	baseConfig := `Token = 'test-token'
-APIEndpoint = 'https://api.test.com'`
+	baseConfig := `token = 'test-token'
+apiEndpoint = 'https://api.test.com'`
 	err = os.WriteFile(baseConfigPath, []byte(baseConfig), 0644)
 	require.NoError(t, err)
 
-	cs := NewConfigService(baseConfigPath)
+	cs := NewConfigService(tmpDir)
 	config, err := cs.ReadConfigFile(context.Background())
 	require.NoError(t, err)
 
@@ -174,8 +318,8 @@ func TestLogCleanupCustomValues(t *testing.T) {
 
 	// Create config file with custom LogCleanup settings
 	baseConfigPath := filepath.Join(tmpDir, "config.toml")
-	baseConfig := `Token = 'test-token'
-APIEndpoint = 'https://api.test.com'
+	baseConfig := `token = 'test-token'
+apiEndpoint = 'https://api.test.com'
 
 [logCleanup]
 enabled = false
@@ -183,7 +327,7 @@ thresholdMB = 200`
 	err = os.WriteFile(baseConfigPath, []byte(baseConfig), 0644)
 	require.NoError(t, err)
 
-	cs := NewConfigService(baseConfigPath)
+	cs := NewConfigService(tmpDir)
 	config, err := cs.ReadConfigFile(context.Background())
 	require.NoError(t, err)
 
@@ -202,7 +346,7 @@ func TestLogCleanupPartialConfig(t *testing.T) {
 	}{
 		{
 			name: "Only enabled set to false",
-			config: `Token = 'test-token'
+			config: `token = 'test-token'
 [logCleanup]
 enabled = false`,
 			expectedEnabled:   false,
@@ -210,7 +354,7 @@ enabled = false`,
 		},
 		{
 			name: "Only threshold set",
-			config: `Token = 'test-token'
+			config: `token = 'test-token'
 [logCleanup]
 thresholdMB = 50`,
 			expectedEnabled:   true, // default
@@ -228,7 +372,7 @@ thresholdMB = 50`,
 			err = os.WriteFile(baseConfigPath, []byte(tc.config), 0644)
 			require.NoError(t, err)
 
-			cs := NewConfigService(baseConfigPath)
+			cs := NewConfigService(tmpDir)
 			config, err := cs.ReadConfigFile(context.Background())
 			require.NoError(t, err)
 
@@ -247,7 +391,7 @@ func TestLogCleanupMergeFromLocal(t *testing.T) {
 
 	// Create base config file with LogCleanup
 	baseConfigPath := filepath.Join(tmpDir, "config.toml")
-	baseConfig := `Token = 'base-token'
+	baseConfig := `token = 'base-token'
 [logCleanup]
 enabled = true
 thresholdMB = 100`
@@ -262,7 +406,7 @@ thresholdMB = 500`
 	err = os.WriteFile(localConfigPath, []byte(localConfig), 0644)
 	require.NoError(t, err)
 
-	cs := NewConfigService(baseConfigPath)
+	cs := NewConfigService(tmpDir)
 	config, err := cs.ReadConfigFile(context.Background())
 	require.NoError(t, err)
 
@@ -280,7 +424,7 @@ func TestCodeTrackingMergeFromLocal(t *testing.T) {
 
 	// Create base config file with CodeTracking disabled
 	baseConfigPath := filepath.Join(tmpDir, "config.toml")
-	baseConfig := `Token = 'base-token'
+	baseConfig := `token = 'base-token'
 [codeTracking]
 enabled = false`
 	err = os.WriteFile(baseConfigPath, []byte(baseConfig), 0644)
@@ -293,7 +437,7 @@ enabled = true`
 	err = os.WriteFile(localConfigPath, []byte(localConfig), 0644)
 	require.NoError(t, err)
 
-	cs := NewConfigService(baseConfigPath)
+	cs := NewConfigService(tmpDir)
 	config, err := cs.ReadConfigFile(context.Background())
 	require.NoError(t, err)
 
@@ -310,8 +454,8 @@ func TestCodeTrackingCustomEndpointAndToken(t *testing.T) {
 
 	// Create config file with custom CodeTracking endpoint and token
 	baseConfigPath := filepath.Join(tmpDir, "config.toml")
-	baseConfig := `Token = 'global-token'
-APIEndpoint = 'https://api.global.com'
+	baseConfig := `token = 'global-token'
+apiEndpoint = 'https://api.global.com'
 
 [codeTracking]
 enabled = true
@@ -320,7 +464,7 @@ token = 'custom-heartbeat-token'`
 	err = os.WriteFile(baseConfigPath, []byte(baseConfig), 0644)
 	require.NoError(t, err)
 
-	cs := NewConfigService(baseConfigPath)
+	cs := NewConfigService(tmpDir)
 	config, err := cs.ReadConfigFile(context.Background())
 	require.NoError(t, err)
 
@@ -344,8 +488,8 @@ func TestCodeTrackingPartialCustomConfig(t *testing.T) {
 	}{
 		{
 			name: "Only custom apiEndpoint",
-			config: `Token = 'global-token'
-APIEndpoint = 'https://api.global.com'
+			config: `token = 'global-token'
+apiEndpoint = 'https://api.global.com'
 
 [codeTracking]
 enabled = true
@@ -355,8 +499,8 @@ apiEndpoint = 'https://api.custom.com'`,
 		},
 		{
 			name: "Only custom token",
-			config: `Token = 'global-token'
-APIEndpoint = 'https://api.global.com'
+			config: `token = 'global-token'
+apiEndpoint = 'https://api.global.com'
 
 [codeTracking]
 enabled = true
@@ -366,8 +510,8 @@ token = 'custom-token'`,
 		},
 		{
 			name: "No custom endpoint or token",
-			config: `Token = 'global-token'
-APIEndpoint = 'https://api.global.com'
+			config: `token = 'global-token'
+apiEndpoint = 'https://api.global.com'
 
 [codeTracking]
 enabled = true`,
@@ -386,7 +530,7 @@ enabled = true`,
 			err = os.WriteFile(baseConfigPath, []byte(tc.config), 0644)
 			require.NoError(t, err)
 
-			cs := NewConfigService(baseConfigPath)
+			cs := NewConfigService(tmpDir)
 			config, err := cs.ReadConfigFile(context.Background())
 			require.NoError(t, err)
 
@@ -405,8 +549,8 @@ func TestCodeTrackingMergeEndpointFromLocal(t *testing.T) {
 
 	// Create base config file with CodeTracking
 	baseConfigPath := filepath.Join(tmpDir, "config.toml")
-	baseConfig := `Token = 'base-token'
-APIEndpoint = 'https://api.base.com'
+	baseConfig := `token = 'base-token'
+apiEndpoint = 'https://api.base.com'
 
 [codeTracking]
 enabled = true
@@ -424,7 +568,7 @@ token = 'local-heartbeat-token'`
 	err = os.WriteFile(localConfigPath, []byte(localConfig), 0644)
 	require.NoError(t, err)
 
-	cs := NewConfigService(baseConfigPath)
+	cs := NewConfigService(tmpDir)
 	config, err := cs.ReadConfigFile(context.Background())
 	require.NoError(t, err)
 
