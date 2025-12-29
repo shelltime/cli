@@ -32,26 +32,29 @@ shelltime daemon install    # Optional: background sync for <8ms latency
 
 ## Configuration
 
-Config file: `~/.shelltime/config.toml`
+Config file: `~/.shelltime/config.yaml`
 
-```toml
-token = "your-token"
-flushCount = 10           # Commands before sync
-gcTime = 14               # Days to retain data
-dataMasking = true        # Mask sensitive data
-encrypted = false         # E2E encryption (requires daemon)
+```yaml
+token: "your-token"
+flushCount: 10           # Commands before sync
+gcTime: 14               # Days to retain data
+dataMasking: true        # Mask sensitive data
+encrypted: false         # E2E encryption (requires daemon)
 
 # Exclude patterns (regex)
-exclude = [".*password.*", "^export .*"]
+exclude:
+  - ".*password.*"
+  - "^export .*"
 
 # AI permissions
-[ai.agent]
-view = false              # Read-only commands
-edit = false              # File modifications
-delete = false            # Destructive commands
+ai:
+  agent:
+    view: false          # Read-only commands
+    edit: false          # File modifications
+    delete: false        # Destructive commands
 ```
 
-Local overrides: `~/.shelltime/config.local.toml`
+Local overrides: `~/.shelltime/config.local.yaml`
 
 **[Full Configuration Guide](docs/CONFIG.md)** - Detailed documentation for all options
 
