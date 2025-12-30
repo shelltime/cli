@@ -154,6 +154,10 @@ func mergeConfig(base, local *ShellTimeConfig) {
 	if local.CCUsage != nil {
 		base.CCUsage = local.CCUsage
 	}
+	// Migrate deprecated ccotel from local config
+	if local.CCOtel != nil && local.AICodeOtel == nil {
+		local.AICodeOtel = local.CCOtel
+	}
 	if local.AICodeOtel != nil {
 		base.AICodeOtel = local.AICodeOtel
 	}
@@ -211,6 +215,12 @@ func (cs *configService) ReadConfigFile(ctx context.Context, opts ...ReadConfigO
 	if err != nil {
 		err = fmt.Errorf("failed to parse config file: %w", err)
 		return
+	}
+
+	// Migrate deprecated ccotel field to AICodeOtel (silent migration)
+	if config.CCOtel != nil && config.AICodeOtel == nil {
+		config.AICodeOtel = config.CCOtel
+		config.CCOtel = nil
 	}
 
 	// Read and merge local config if exists
