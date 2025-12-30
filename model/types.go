@@ -81,6 +81,10 @@ type ShellTimeConfig struct {
 	// CCUsage configuration for Claude Code usage tracking (v1 - ccusage CLI based)
 	CCUsage *CCUsage `toml:"ccusage" yaml:"ccusage" json:"ccusage"`
 
+	// CCOtel is deprecated, use AICodeOtel instead
+	// Deprecated: This field will be removed in a future version
+	CCOtel *AICodeOtel `toml:"ccotel" yaml:"ccotel" json:"ccotel"`
+
 	// AICodeOtel configuration for OTEL-based AI CLI tracking (Claude Code, Codex, etc.)
 	AICodeOtel *AICodeOtel `toml:"aiCodeOtel" yaml:"aiCodeOtel" json:"aiCodeOtel"`
 
@@ -118,6 +122,7 @@ var DefaultConfig = ShellTimeConfig{
 	AI:            DefaultAIConfig,
 	Exclude:       []string{},
 	CCUsage:       nil,
+	CCOtel:        nil, // deprecated
 	AICodeOtel:    nil,
 	CodeTracking:  nil,
 	LogCleanup:    nil,
