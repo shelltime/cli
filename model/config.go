@@ -154,8 +154,8 @@ func mergeConfig(base, local *ShellTimeConfig) {
 	if local.CCUsage != nil {
 		base.CCUsage = local.CCUsage
 	}
-	if local.CCOtel != nil {
-		base.CCOtel = local.CCOtel
+	if local.AICodeOtel != nil {
+		base.AICodeOtel = local.AICodeOtel
 	}
 	if local.LogCleanup != nil {
 		base.LogCleanup = local.LogCleanup
@@ -249,13 +249,13 @@ func (cs *configService) ReadConfigFile(ctx context.Context, opts ...ReadConfigO
 		config.AI = DefaultAIConfig
 	}
 
-	// Initialize CCOtel config with default port if enabled but port not set
-	if config.CCOtel != nil && config.CCOtel.GRPCPort == 0 {
-		config.CCOtel.GRPCPort = 54027 // default OTEL gRPC port
+	// Initialize AICodeOtel config with default port if enabled but port not set
+	if config.AICodeOtel != nil && config.AICodeOtel.GRPCPort == 0 {
+		config.AICodeOtel.GRPCPort = 54027 // default OTEL gRPC port
 	}
 
-	if config.CCOtel != nil && config.CCOtel.Debug != nil && *config.CCOtel.Debug {
-		config.CCOtel.Debug = &truthy
+	if config.AICodeOtel != nil && config.AICodeOtel.Debug != nil && *config.AICodeOtel.Debug {
+		config.AICodeOtel.Debug = &truthy
 	}
 	if config.SocketPath == "" {
 		config.SocketPath = DefaultSocketPath

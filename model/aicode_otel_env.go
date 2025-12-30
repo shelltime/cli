@@ -10,13 +10,13 @@ import (
 )
 
 const (
-	ccOtelMarkerStart = "# >>> shelltime cc otel >>>"
-	ccOtelMarkerEnd   = "# <<< shelltime cc otel <<<"
-	ccOtelEndpoint    = "http://localhost:54027"
+	aiCodeOtelMarkerStart = "# >>> shelltime cc otel >>>"
+	aiCodeOtelMarkerEnd   = "# <<< shelltime cc otel <<<"
+	aiCodeOtelEndpoint    = "http://localhost:54027"
 )
 
-// CCOtelEnvService interface for shell-specific env var setup
-type CCOtelEnvService interface {
+// AICodeOtelEnvService interface for shell-specific env var setup
+type AICodeOtelEnvService interface {
 	Match(shellName string) bool
 	Install() error
 	Check() error
@@ -24,10 +24,10 @@ type CCOtelEnvService interface {
 	ShellName() string
 }
 
-// baseCCOtelEnvService provides common functionality
-type baseCCOtelEnvService struct{}
+// baseAICodeOtelEnvService provides common functionality
+type baseAICodeOtelEnvService struct{}
 
-func (b *baseCCOtelEnvService) addEnvLines(filePath string, envLines []string) error {
+func (b *baseAICodeOtelEnvService) addEnvLines(filePath string, envLines []string) error {
 	file, err := os.Open(filePath)
 	if err != nil {
 		return fmt.Errorf("failed to open file: %w", err)
@@ -51,7 +51,7 @@ func (b *baseCCOtelEnvService) addEnvLines(filePath string, envLines []string) e
 	return nil
 }
 
-func (b *baseCCOtelEnvService) removeEnvLines(filePath string) error {
+func (b *baseAICodeOtelEnvService) removeEnvLines(filePath string) error {
 	file, err := os.Open(filePath)
 	if err != nil {
 		return fmt.Errorf("failed to open file: %w", err)
@@ -64,11 +64,11 @@ func (b *baseCCOtelEnvService) removeEnvLines(filePath string) error {
 
 	for scanner.Scan() {
 		line := scanner.Text()
-		if strings.Contains(line, ccOtelMarkerStart) {
+		if strings.Contains(line, aiCodeOtelMarkerStart) {
 			inBlock = true
 			continue
 		}
-		if strings.Contains(line, ccOtelMarkerEnd) {
+		if strings.Contains(line, aiCodeOtelMarkerEnd) {
 			inBlock = false
 			continue
 		}
@@ -85,36 +85,36 @@ func (b *baseCCOtelEnvService) removeEnvLines(filePath string) error {
 	return nil
 }
 
-func (b *baseCCOtelEnvService) checkEnvLines(filePath string) (bool, error) {
+func (b *baseAICodeOtelEnvService) checkEnvLines(filePath string) (bool, error) {
 	content, err := os.ReadFile(filePath)
 	if err != nil {
 		return false, fmt.Errorf("failed to read file: %w", err)
 	}
 
-	return strings.Contains(string(content), ccOtelMarkerStart), nil
+	return strings.Contains(string(content), aiCodeOtelMarkerStart), nil
 }
 
 // =============================================================================
 // Bash Implementation
 // =============================================================================
 
-type BashCCOtelEnvService struct {
-	baseCCOtelEnvService
+type BashAICodeOtelEnvService struct {
+	baseAICodeOtelEnvService
 	shellName  string
 	configPath string
 	envLines   []string
 }
 
-func NewBashCCOtelEnvService() CCOtelEnvService {
+func NewBashAICodeOtelEnvService() AICodeOtelEnvService {
 	configPath := os.ExpandEnv("$HOME/.bashrc")
 	envLines := []string{
 		"",
-		ccOtelMarkerStart,
+		aiCodeOtelMarkerStart,
 		"export CLAUDE_CODE_ENABLE_TELEMETRY=1",
 		"export OTEL_METRICS_EXPORTER=otlp",
 		"export OTEL_LOGS_EXPORTER=otlp",
 		"export OTEL_EXPORTER_OTLP_PROTOCOL=grpc",
-		"export OTEL_EXPORTER_OTLP_ENDPOINT=" + ccOtelEndpoint,
+		"export OTEL_EXPORTER_OTLP_ENDPOINT=" + aiCodeOtelEndpoint,
 		"export OTEL_METRIC_EXPORT_INTERVAL=10000",
 		"export OTEL_LOGS_EXPORT_INTERVAL=5000",
 		"export OTEL_LOG_USER_PROMPTS=1",
@@ -122,25 +122,25 @@ func NewBashCCOtelEnvService() CCOtelEnvService {
 		"export OTEL_METRICS_INCLUDE_VERSION=true",
 		"export OTEL_METRICS_INCLUDE_ACCOUNT_UUID=true",
 		"export OTEL_RESOURCE_ATTRIBUTES=\"user.name=$(whoami),machine.name=$(hostname),team.id=shelltime,pwd=$(pwd)\"",
-		ccOtelMarkerEnd,
+		aiCodeOtelMarkerEnd,
 	}
 
-	return &BashCCOtelEnvService{
+	return &BashAICodeOtelEnvService{
 		shellName:  "bash",
 		configPath: configPath,
 		envLines:   envLines,
 	}
 }
 
-func (s *BashCCOtelEnvService) Match(shellName string) bool {
+func (s *BashAICodeOtelEnvService) Match(shellName string) bool {
 	return strings.Contains(strings.ToLower(shellName), strings.ToLower(s.shellName))
 }
 
-func (s *BashCCOtelEnvService) ShellName() string {
+func (s *BashAICodeOtelEnvService) ShellName() string {
 	return s.shellName
 }
 
-func (s *BashCCOtelEnvService) Install() error {
+func (s *BashAICodeOtelEnvService) Install() error {
 	// Create config file if it doesn't exist
 	if _, err := os.Stat(s.configPath); os.IsNotExist(err) {
 		if err := os.WriteFile(s.configPath, []byte(""), 0644); err != nil {
@@ -162,7 +162,7 @@ func (s *BashCCOtelEnvService) Install() error {
 	return nil
 }
 
-func (s *BashCCOtelEnvService) Uninstall() error {
+func (s *BashAICodeOtelEnvService) Uninstall() error {
 	if _, err := os.Stat(s.configPath); os.IsNotExist(err) {
 		return nil
 	}
@@ -170,7 +170,7 @@ func (s *BashCCOtelEnvService) Uninstall() error {
 	return s.removeEnvLines(s.configPath)
 }
 
-func (s *BashCCOtelEnvService) Check() error {
+func (s *BashAICodeOtelEnvService) Check() error {
 	if _, err := os.Stat(s.configPath); os.IsNotExist(err) {
 		return fmt.Errorf("bash config file not found at %s", s.configPath)
 	}
@@ -190,23 +190,23 @@ func (s *BashCCOtelEnvService) Check() error {
 // Zsh Implementation
 // =============================================================================
 
-type ZshCCOtelEnvService struct {
-	baseCCOtelEnvService
+type ZshAICodeOtelEnvService struct {
+	baseAICodeOtelEnvService
 	shellName  string
 	configPath string
 	envLines   []string
 }
 
-func NewZshCCOtelEnvService() CCOtelEnvService {
+func NewZshAICodeOtelEnvService() AICodeOtelEnvService {
 	configPath := os.ExpandEnv("$HOME/.zshrc")
 	envLines := []string{
 		"",
-		ccOtelMarkerStart,
+		aiCodeOtelMarkerStart,
 		"export CLAUDE_CODE_ENABLE_TELEMETRY=1",
 		"export OTEL_METRICS_EXPORTER=otlp",
 		"export OTEL_LOGS_EXPORTER=otlp",
 		"export OTEL_EXPORTER_OTLP_PROTOCOL=grpc",
-		"export OTEL_EXPORTER_OTLP_ENDPOINT=" + ccOtelEndpoint,
+		"export OTEL_EXPORTER_OTLP_ENDPOINT=" + aiCodeOtelEndpoint,
 		"export OTEL_METRIC_EXPORT_INTERVAL=10000",
 		"export OTEL_LOGS_EXPORT_INTERVAL=5000",
 		"export OTEL_LOG_USER_PROMPTS=1",
@@ -214,25 +214,25 @@ func NewZshCCOtelEnvService() CCOtelEnvService {
 		"export OTEL_METRICS_INCLUDE_VERSION=true",
 		"export OTEL_METRICS_INCLUDE_ACCOUNT_UUID=true",
 		"export OTEL_RESOURCE_ATTRIBUTES=\"user.name=$(whoami),machine.name=$(hostname),team.id=shelltime,pwd=$(pwd)\"",
-		ccOtelMarkerEnd,
+		aiCodeOtelMarkerEnd,
 	}
 
-	return &ZshCCOtelEnvService{
+	return &ZshAICodeOtelEnvService{
 		shellName:  "zsh",
 		configPath: configPath,
 		envLines:   envLines,
 	}
 }
 
-func (s *ZshCCOtelEnvService) Match(shellName string) bool {
+func (s *ZshAICodeOtelEnvService) Match(shellName string) bool {
 	return strings.Contains(strings.ToLower(shellName), strings.ToLower(s.shellName))
 }
 
-func (s *ZshCCOtelEnvService) ShellName() string {
+func (s *ZshAICodeOtelEnvService) ShellName() string {
 	return s.shellName
 }
 
-func (s *ZshCCOtelEnvService) Install() error {
+func (s *ZshAICodeOtelEnvService) Install() error {
 	if _, err := os.Stat(s.configPath); os.IsNotExist(err) {
 		return fmt.Errorf("zsh config file not found at %s", s.configPath)
 	}
@@ -251,7 +251,7 @@ func (s *ZshCCOtelEnvService) Install() error {
 	return nil
 }
 
-func (s *ZshCCOtelEnvService) Uninstall() error {
+func (s *ZshAICodeOtelEnvService) Uninstall() error {
 	if _, err := os.Stat(s.configPath); os.IsNotExist(err) {
 		return nil
 	}
@@ -259,7 +259,7 @@ func (s *ZshCCOtelEnvService) Uninstall() error {
 	return s.removeEnvLines(s.configPath)
 }
 
-func (s *ZshCCOtelEnvService) Check() error {
+func (s *ZshAICodeOtelEnvService) Check() error {
 	if _, err := os.Stat(s.configPath); os.IsNotExist(err) {
 		return fmt.Errorf("zsh config file not found at %s", s.configPath)
 	}
@@ -279,23 +279,23 @@ func (s *ZshCCOtelEnvService) Check() error {
 // Fish Implementation
 // =============================================================================
 
-type FishCCOtelEnvService struct {
-	baseCCOtelEnvService
+type FishAICodeOtelEnvService struct {
+	baseAICodeOtelEnvService
 	shellName  string
 	configPath string
 	envLines   []string
 }
 
-func NewFishCCOtelEnvService() CCOtelEnvService {
+func NewFishAICodeOtelEnvService() AICodeOtelEnvService {
 	configPath := os.ExpandEnv("$HOME/.config/fish/config.fish")
 	envLines := []string{
 		"",
-		ccOtelMarkerStart,
+		aiCodeOtelMarkerStart,
 		"set -gx CLAUDE_CODE_ENABLE_TELEMETRY 1",
 		"set -gx OTEL_METRICS_EXPORTER otlp",
 		"set -gx OTEL_LOGS_EXPORTER otlp",
 		"set -gx OTEL_EXPORTER_OTLP_PROTOCOL grpc",
-		"set -gx OTEL_EXPORTER_OTLP_ENDPOINT " + ccOtelEndpoint,
+		"set -gx OTEL_EXPORTER_OTLP_ENDPOINT " + aiCodeOtelEndpoint,
 		"set -gx OTEL_METRIC_EXPORT_INTERVAL 10000",
 		"set -gx OTEL_LOGS_EXPORT_INTERVAL 5000",
 		"set -gx OTEL_LOG_USER_PROMPTS 1",
@@ -303,25 +303,25 @@ func NewFishCCOtelEnvService() CCOtelEnvService {
 		"set -gx OTEL_METRICS_INCLUDE_VERSION true",
 		"set -gx OTEL_METRICS_INCLUDE_ACCOUNT_UUID true",
 		"set -gx OTEL_RESOURCE_ATTRIBUTES \"user.name=$(whoami),machine.name=$(hostname),team.id=shelltime,pwd=$(pwd)\"",
-		ccOtelMarkerEnd,
+		aiCodeOtelMarkerEnd,
 	}
 
-	return &FishCCOtelEnvService{
+	return &FishAICodeOtelEnvService{
 		shellName:  "fish",
 		configPath: configPath,
 		envLines:   envLines,
 	}
 }
 
-func (s *FishCCOtelEnvService) Match(shellName string) bool {
+func (s *FishAICodeOtelEnvService) Match(shellName string) bool {
 	return strings.Contains(strings.ToLower(shellName), strings.ToLower(s.shellName))
 }
 
-func (s *FishCCOtelEnvService) ShellName() string {
+func (s *FishAICodeOtelEnvService) ShellName() string {
 	return s.shellName
 }
 
-func (s *FishCCOtelEnvService) Install() error {
+func (s *FishAICodeOtelEnvService) Install() error {
 	if _, err := os.Stat(s.configPath); os.IsNotExist(err) {
 		return fmt.Errorf("fish config file not found at %s", s.configPath)
 	}
@@ -340,7 +340,7 @@ func (s *FishCCOtelEnvService) Install() error {
 	return nil
 }
 
-func (s *FishCCOtelEnvService) Uninstall() error {
+func (s *FishAICodeOtelEnvService) Uninstall() error {
 	if _, err := os.Stat(s.configPath); os.IsNotExist(err) {
 		return nil
 	}
@@ -348,7 +348,7 @@ func (s *FishCCOtelEnvService) Uninstall() error {
 	return s.removeEnvLines(s.configPath)
 }
 
-func (s *FishCCOtelEnvService) Check() error {
+func (s *FishAICodeOtelEnvService) Check() error {
 	if _, err := os.Stat(s.configPath); os.IsNotExist(err) {
 		return fmt.Errorf("fish config file not found at %s", s.configPath)
 	}

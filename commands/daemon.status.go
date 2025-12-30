@@ -75,14 +75,14 @@ func commandDaemonStatus(c *cli.Context) error {
 	printSectionHeader("Configuration")
 	fmt.Printf("  Socket Path: %s\n", socketPath)
 
-	if cfg.CCOtel != nil && cfg.CCOtel.Enabled != nil && *cfg.CCOtel.Enabled {
+	if cfg.AICodeOtel != nil && cfg.AICodeOtel.Enabled != nil && *cfg.AICodeOtel.Enabled {
 		debugStatus := "off"
-		if cfg.CCOtel.Debug != nil && *cfg.CCOtel.Debug {
+		if cfg.AICodeOtel.Debug != nil && *cfg.AICodeOtel.Debug {
 			debugStatus = "on"
 		}
-		fmt.Printf("  CCOtel: enabled (port %d, debug %s)\n", cfg.CCOtel.GRPCPort, debugStatus)
+		fmt.Printf("  AICodeOtel: enabled (port %d, debug %s)\n", cfg.AICodeOtel.GRPCPort, debugStatus)
 	} else {
-		fmt.Println("  CCOtel: disabled")
+		fmt.Println("  AICodeOtel: disabled")
 	}
 
 	if cfg.CodeTracking != nil && cfg.CodeTracking.Enabled != nil && *cfg.CodeTracking.Enabled {
