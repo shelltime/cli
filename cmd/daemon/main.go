@@ -125,7 +125,7 @@ func main() {
 		}
 	}
 
-	// Start CCOtel service if enabled (v2 - OTEL gRPC passthrough)
+	// Start CCOtel service if enabled (OTEL gRPC passthrough for Claude Code, Codex, etc.)
 	var ccOtelServer *daemon.CCOtelServer
 	if cfg.CCOtel != nil && cfg.CCOtel.Enabled != nil && *cfg.CCOtel.Enabled {
 		ccOtelProcessor := daemon.NewCCOtelProcessor(cfg)

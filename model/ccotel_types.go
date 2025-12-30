@@ -5,6 +5,7 @@ package model
 type CCOtelRequest struct {
 	Host    string         `json:"host"`
 	Project string         `json:"project"`
+	Source  string         `json:"source,omitempty"` // "claude-code" or "codex" - identifies the CLI source
 	Events  []CCOtelEvent  `json:"events,omitempty"`
 	Metrics []CCOtelMetric `json:"metrics,omitempty"`
 }
@@ -35,7 +36,7 @@ type CCOtelResourceAttributes struct {
 	Pwd         string // from pwd
 }
 
-// CCOtelEvent represents an event from Claude Code (api_request, tool_result, etc.)
+// CCOtelEvent represents an event from Claude Code or Codex (api_request, tool_result, etc.)
 // with embedded resource attributes for a flat, session-less structure
 type CCOtelEvent struct {
 	EventID             string                 `json:"eventId"`
@@ -49,6 +50,7 @@ type CCOtelEvent struct {
 	OutputTokens        int                    `json:"outputTokens,omitempty"`
 	CacheReadTokens     int                    `json:"cacheReadTokens,omitempty"`
 	CacheCreationTokens int                    `json:"cacheCreationTokens,omitempty"`
+	ReasoningTokens     int                    `json:"reasoningTokens,omitempty"` // Codex: o1 model reasoning tokens
 	ToolName            string                 `json:"toolName,omitempty"`
 	Success             bool                   `json:"success,omitempty"`
 	Decision            string                 `json:"decision,omitempty"`
@@ -60,6 +62,7 @@ type CCOtelEvent struct {
 	StatusCode          int                    `json:"statusCode,omitempty"`
 	Attempt             int                    `json:"attempt,omitempty"`
 	Language            string                 `json:"language,omitempty"`
+	Provider            string                 `json:"provider,omitempty"` // Codex: provider (e.g., "openai")
 
 	// Embedded resource attributes (previously in session)
 	SessionID       string `json:"sessionId,omitempty"`
@@ -125,7 +128,13 @@ type CCOtelResponse struct {
 	Message          string `json:"message,omitempty"`
 }
 
-// Claude Code OTEL metric types
+// OTEL source identifiers
+const (
+	CCOtelSourceClaudeCode = "claude-code"
+	CCOtelSourceCodex      = "codex"
+)
+
+// Claude Code / Codex OTEL metric types (shared)
 const (
 	CCMetricSessionCount         = "session_count"
 	CCMetricLinesOfCodeCount     = "lines_of_code_count"
@@ -137,13 +146,14 @@ const (
 	CCMetricActiveTimeTotal      = "active_time_total"
 )
 
-// Claude Code OTEL event types
+// Claude Code / Codex OTEL event types (shared)
 const (
 	CCEventUserPrompt   = "user_prompt"
 	CCEventToolResult   = "tool_result"
 	CCEventApiRequest   = "api_request"
 	CCEventApiError     = "api_error"
 	CCEventToolDecision = "tool_decision"
+	CCEventExecCommand  = "exec_command" // Codex: shell command execution
 )
 
 // Token types for CCMetricTokenUsage

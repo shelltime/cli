@@ -88,21 +88,22 @@ func (p *CCOtelProcessor) ProcessMetrics(ctx context.Context, req *collmetricsv1
 	for _, rm := range req.GetResourceMetrics() {
 		resource := rm.GetResource()
 
-		// Check if this is from Claude Code
-		if !isClaudeCodeResource(resource) {
-			slog.Debug("CCOtel: Skipping non-Claude Code resource")
+		// Check if this is from Claude Code or Codex
+		source := detectOtelSource(resource)
+		if source == "" {
+			slog.Debug("CCOtel: Skipping unknown resource")
 			continue
 		}
 
 		// Extract resource attributes once for all metrics in this resource
 		resourceAttrs := extractResourceAttributes(resource)
-		project := p.detectProject(resource)
+		project := p.detectProject(resource, source)
 
 		var metrics []model.CCOtelMetric
 
 		for _, sm := range rm.GetScopeMetrics() {
 			for _, m := range sm.GetMetrics() {
-				parsedMetrics := p.parseMetric(m, resourceAttrs)
+				parsedMetrics := p.parseMetric(m, resourceAttrs, source)
 				metrics = append(metrics, parsedMetrics...)
 			}
 		}
@@ -115,6 +116,7 @@ func (p *CCOtelProcessor) ProcessMetrics(ctx context.Context, req *collmetricsv1
 		ccReq := &model.CCOtelRequest{
 			Host:    p.hostname,
 			Project: project,
+			Source:  source,
 			Metrics: metrics,
 		}
 
@@ -141,21 +143,22 @@ func (p *CCOtelProcessor) ProcessLogs(ctx context.Context, req *collogsv1.Export
 	for _, rl := range req.GetResourceLogs() {
 		resource := rl.GetResource()
 
-		// Check if this is from Claude Code
-		if !isClaudeCodeResource(resource) {
-			slog.Debug("CCOtel: Skipping non-Claude Code resource")
+		// Check if this is from Claude Code or Codex
+		source := detectOtelSource(resource)
+		if source == "" {
+			slog.Debug("CCOtel: Skipping unknown resource")
 			continue
 		}
 
 		// Extract resource attributes once for all events in this resource
 		resourceAttrs := extractResourceAttributes(resource)
-		project := p.detectProject(resource)
+		project := p.detectProject(resource, source)
 
 		var events []model.CCOtelEvent
 
 		for _, sl := range rl.GetScopeLogs() {
 			for _, lr := range sl.GetLogRecords() {
-				event := p.parseLogRecord(lr, resourceAttrs)
+				event := p.parseLogRecord(lr, resourceAttrs, source)
 				if event != nil {
 					events = append(events, *event)
 				}
@@ -170,6 +173,7 @@ func (p *CCOtelProcessor) ProcessLogs(ctx context.Context, req *collogsv1.Export
 		ccReq := &model.CCOtelRequest{
 			Host:    p.hostname,
 			Project: project,
+			Source:  source,
 			Events:  events,
 		}
 
@@ -185,18 +189,24 @@ func (p *CCOtelProcessor) ProcessLogs(ctx context.Context, req *collogsv1.Export
 	return &collogsv1.ExportLogsServiceResponse{}, nil
 }
 
-// isClaudeCodeResource checks if the resource is from Claude Code
-func isClaudeCodeResource(resource *resourcev1.Resource) bool {
+// detectOtelSource checks the resource and returns the source type (claude-code, codex, or empty if unknown)
+func detectOtelSource(resource *resourcev1.Resource) string {
 	if resource == nil {
-		return false
+		return ""
 	}
 
 	for _, attr := range resource.GetAttributes() {
 		if attr.GetKey() == "service.name" {
-			return attr.GetValue().GetStringValue() == "claude-code"
+			serviceName := attr.GetValue().GetStringValue()
+			switch serviceName {
+			case "claude-code":
+				return model.CCOtelSourceClaudeCode
+			case "codex", "codex-cli", "openai-codex":
+				return model.CCOtelSourceCodex
+			}
 		}
 	}
-	return false
+	return ""
 }
 
 // extractResourceAttributes extracts resource-level attributes from OTEL resource
@@ -301,7 +311,7 @@ func applyResourceAttributesToEvent(event *model.CCOtelEvent, attrs *model.CCOte
 }
 
 // detectProject extracts project from resource attributes or environment
-func (p *CCOtelProcessor) detectProject(resource *resourcev1.Resource) string {
+func (p *CCOtelProcessor) detectProject(resource *resourcev1.Resource, source string) string {
 	// First check resource attributes
 	if resource != nil {
 		for _, attr := range resource.GetAttributes() {
@@ -311,10 +321,17 @@ func (p *CCOtelProcessor) detectProject(resource *resourcev1.Resource) string {
 		}
 	}
 
-	// Fall back to environment variables
-	if project := os.Getenv("CLAUDE_CODE_PROJECT"); project != "" {
-		return project
+	// Fall back to environment variables based on source
+	if source == model.CCOtelSourceClaudeCode {
+		if project := os.Getenv("CLAUDE_CODE_PROJECT"); project != "" {
+			return project
+		}
+	} else if source == model.CCOtelSourceCodex {
+		if project := os.Getenv("CODEX_PROJECT"); project != "" {
+			return project
+		}
 	}
+
 	if pwd := os.Getenv("PWD"); pwd != "" {
 		return pwd
 	}
@@ -323,11 +340,11 @@ func (p *CCOtelProcessor) detectProject(resource *resourcev1.Resource) string {
 }
 
 // parseMetric parses an OTEL metric into CCOtelMetric(s)
-func (p *CCOtelProcessor) parseMetric(m *metricsv1.Metric, resourceAttrs *model.CCOtelResourceAttributes) []model.CCOtelMetric {
+func (p *CCOtelProcessor) parseMetric(m *metricsv1.Metric, resourceAttrs *model.CCOtelResourceAttributes, source string) []model.CCOtelMetric {
 	var metrics []model.CCOtelMetric
 
 	name := m.GetName()
-	metricType := mapMetricName(name)
+	metricType := mapMetricName(name, source)
 	if metricType == "" {
 		return metrics // Unknown metric, skip
 	}
@@ -372,7 +389,7 @@ func (p *CCOtelProcessor) parseMetric(m *metricsv1.Metric, resourceAttrs *model.
 }
 
 // parseLogRecord parses an OTEL log record into a CCOtelEvent
-func (p *CCOtelProcessor) parseLogRecord(lr *logsv1.LogRecord, resourceAttrs *model.CCOtelResourceAttributes) *model.CCOtelEvent {
+func (p *CCOtelProcessor) parseLogRecord(lr *logsv1.LogRecord, resourceAttrs *model.CCOtelResourceAttributes, source string) *model.CCOtelEvent {
 	event := &model.CCOtelEvent{
 		EventID:   uuid.New().String(),
 		Timestamp: int64(lr.GetTimeUnixNano() / 1e9), // Convert to seconds
@@ -388,7 +405,7 @@ func (p *CCOtelProcessor) parseLogRecord(lr *logsv1.LogRecord, resourceAttrs *mo
 
 		switch key {
 		case "event.name":
-			event.EventType = mapEventName(value.GetStringValue())
+			event.EventType = mapEventName(value.GetStringValue(), source)
 		case "event.timestamp":
 			event.EventTimestamp = value.GetStringValue()
 		case "model":
@@ -441,6 +458,11 @@ func (p *CCOtelProcessor) parseLogRecord(lr *logsv1.LogRecord, resourceAttrs *mo
 			event.Attempt = getIntFromValue(value)
 		case "language":
 			event.Language = value.GetStringValue()
+		// Codex-specific fields
+		case "reasoning_tokens":
+			event.ReasoningTokens = getIntFromValue(value)
+		case "provider":
+			event.Provider = value.GetStringValue()
 		// Log record level attributes that override resource attrs
 		case "user.id":
 			event.UserID = value.GetStringValue()
@@ -468,8 +490,10 @@ func (p *CCOtelProcessor) parseLogRecord(lr *logsv1.LogRecord, resourceAttrs *mo
 }
 
 // mapMetricName maps OTEL metric names to our internal types
-func mapMetricName(name string) string {
+// Supports both Claude Code (claude_code.*) and Codex (codex.*) prefixes
+func mapMetricName(name string, source string) string {
 	switch name {
+	// Claude Code metrics
 	case "claude_code.session.count":
 		return model.CCMetricSessionCount
 	case "claude_code.token.usage":
@@ -486,14 +510,31 @@ func mapMetricName(name string) string {
 		return model.CCMetricActiveTimeTotal
 	case "claude_code.code_edit_tool.decision":
 		return model.CCMetricCodeEditToolDecision
+	// Codex metrics (same internal types, different prefix)
+	case "codex.session.count":
+		return model.CCMetricSessionCount
+	case "codex.token.usage":
+		return model.CCMetricTokenUsage
+	case "codex.cost.usage":
+		return model.CCMetricCostUsage
+	case "codex.lines_of_code.count":
+		return model.CCMetricLinesOfCodeCount
+	case "codex.commit.count":
+		return model.CCMetricCommitCount
+	case "codex.pull_request.count":
+		return model.CCMetricPullRequestCount
+	case "codex.active_time.total":
+		return model.CCMetricActiveTimeTotal
 	default:
 		return ""
 	}
 }
 
 // mapEventName maps OTEL event names to our internal types
-func mapEventName(name string) string {
+// Supports both Claude Code (claude_code.*) and Codex (codex.*) prefixes
+func mapEventName(name string, source string) string {
 	switch name {
+	// Claude Code events
 	case "claude_code.user_prompt":
 		return model.CCEventUserPrompt
 	case "claude_code.tool_result":
@@ -504,6 +545,17 @@ func mapEventName(name string) string {
 		return model.CCEventApiError
 	case "claude_code.tool_decision":
 		return model.CCEventToolDecision
+	// Codex events (same internal types, different prefix)
+	case "codex.user_prompt":
+		return model.CCEventUserPrompt
+	case "codex.tool_result":
+		return model.CCEventToolResult
+	case "codex.api_request":
+		return model.CCEventApiRequest
+	case "codex.api_error":
+		return model.CCEventApiError
+	case "codex.exec_command":
+		return model.CCEventExecCommand
 	default:
 		return name // Return as-is if not in our map
 	}

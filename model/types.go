@@ -25,7 +25,8 @@ type CCUsage struct {
 	Enabled *bool `toml:"enabled" yaml:"enabled" json:"enabled"`
 }
 
-// CCOtel configuration for OTEL-based Claude Code tracking (v2)
+// CCOtel configuration for OTEL-based AI CLI tracking (Claude Code, Codex, etc.)
+// The processor auto-detects the source from service.name attribute
 type CCOtel struct {
 	Enabled  *bool `toml:"enabled" yaml:"enabled" json:"enabled"`
 	GRPCPort int   `toml:"grpcPort,omitempty" yaml:"grpcPort,omitempty" json:"grpcPort,omitempty"` // default: 54027
@@ -80,7 +81,7 @@ type ShellTimeConfig struct {
 	// CCUsage configuration for Claude Code usage tracking (v1 - ccusage CLI based)
 	CCUsage *CCUsage `toml:"ccusage" yaml:"ccusage" json:"ccusage"`
 
-	// CCOtel configuration for OTEL-based Claude Code tracking (v2 - gRPC passthrough)
+	// CCOtel configuration for OTEL-based AI CLI tracking (Claude Code, Codex, etc.)
 	CCOtel *CCOtel `toml:"ccotel" yaml:"ccotel" json:"ccotel"`
 
 	// CodeTracking configuration for coding activity heartbeat tracking
