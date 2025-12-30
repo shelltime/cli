@@ -11,24 +11,24 @@ import (
 	"google.golang.org/grpc"
 )
 
-// CCOtelServer is the gRPC server for receiving OTEL data from Claude Code
-type CCOtelServer struct {
+// AICodeOtelServer is the gRPC server for receiving OTEL data from AI coding CLIs (Claude Code, Codex, etc.)
+type AICodeOtelServer struct {
 	port       int
-	processor  *CCOtelProcessor
+	processor  *AICodeOtelProcessor
 	grpcServer *grpc.Server
 	listener   net.Listener
 }
 
-// NewCCOtelServer creates a new CCOtel gRPC server
-func NewCCOtelServer(port int, processor *CCOtelProcessor) *CCOtelServer {
-	return &CCOtelServer{
+// NewAICodeOtelServer creates a new AICodeOtel gRPC server
+func NewAICodeOtelServer(port int, processor *AICodeOtelProcessor) *AICodeOtelServer {
+	return &AICodeOtelServer{
 		port:      port,
 		processor: processor,
 	}
 }
 
 // Start starts the gRPC server
-func (s *CCOtelServer) Start() error {
+func (s *AICodeOtelServer) Start() error {
 	addr := fmt.Sprintf(":%d", s.port)
 	listener, err := net.Listen("tcp", addr)
 	if err != nil {
@@ -42,12 +42,12 @@ func (s *CCOtelServer) Start() error {
 	collmetricsv1.RegisterMetricsServiceServer(s.grpcServer, &metricsServiceServer{processor: s.processor})
 	collogsv1.RegisterLogsServiceServer(s.grpcServer, &logsServiceServer{processor: s.processor})
 
-	slog.Info("CCOtel gRPC server starting", "port", s.port)
+	slog.Info("AICodeOtel gRPC server starting", "port", s.port)
 
 	// Start serving in a goroutine
 	go func() {
 		if err := s.grpcServer.Serve(listener); err != nil {
-			slog.Error("CCOtel gRPC server error", "error", err)
+			slog.Error("AICodeOtel gRPC server error", "error", err)
 		}
 	}()
 
@@ -55,9 +55,9 @@ func (s *CCOtelServer) Start() error {
 }
 
 // Stop gracefully stops the gRPC server
-func (s *CCOtelServer) Stop() {
+func (s *AICodeOtelServer) Stop() {
 	if s.grpcServer != nil {
-		slog.Info("CCOtel gRPC server stopping")
+		slog.Info("AICodeOtel gRPC server stopping")
 		s.grpcServer.GracefulStop()
 	}
 }
@@ -65,7 +65,7 @@ func (s *CCOtelServer) Stop() {
 // metricsServiceServer implements the OTEL MetricsService
 type metricsServiceServer struct {
 	collmetricsv1.UnimplementedMetricsServiceServer
-	processor *CCOtelProcessor
+	processor *AICodeOtelProcessor
 }
 
 // Export handles incoming metrics export requests
@@ -76,7 +76,7 @@ func (s *metricsServiceServer) Export(ctx context.Context, req *collmetricsv1.Ex
 // logsServiceServer implements the OTEL LogsService
 type logsServiceServer struct {
 	collogsv1.UnimplementedLogsServiceServer
-	processor *CCOtelProcessor
+	processor *AICodeOtelProcessor
 }
 
 // Export handles incoming logs export requests

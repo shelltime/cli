@@ -20,24 +20,24 @@ import (
 	resourcev1 "go.opentelemetry.io/proto/otlp/resource/v1"
 )
 
-// CCOtelProcessor handles OTEL data parsing and forwarding to the backend
-type CCOtelProcessor struct {
+// AICodeOtelProcessor handles OTEL data parsing and forwarding to the backend
+type AICodeOtelProcessor struct {
 	config   model.ShellTimeConfig
 	endpoint model.Endpoint
 	hostname string
 	debug    bool
 }
 
-// NewCCOtelProcessor creates a new CCOtel processor
-func NewCCOtelProcessor(config model.ShellTimeConfig) *CCOtelProcessor {
+// NewAICodeOtelProcessor creates a new AICodeOtel processor
+func NewAICodeOtelProcessor(config model.ShellTimeConfig) *AICodeOtelProcessor {
 	hostname, _ := os.Hostname()
 	if hostname == "" {
 		hostname = "unknown"
 	}
 
-	debug := config.CCOtel != nil && config.CCOtel.Debug != nil && *config.CCOtel.Debug
+	debug := config.AICodeOtel != nil && config.AICodeOtel.Debug != nil && *config.AICodeOtel.Debug
 
-	return &CCOtelProcessor{
+	return &AICodeOtelProcessor{
 		config: config,
 		endpoint: model.Endpoint{
 			Token:       config.Token,
@@ -49,40 +49,40 @@ func NewCCOtelProcessor(config model.ShellTimeConfig) *CCOtelProcessor {
 }
 
 // writeDebugFile appends JSON-formatted data to a debug file
-func (p *CCOtelProcessor) writeDebugFile(filename string, data interface{}) {
+func (p *AICodeOtelProcessor) writeDebugFile(filename string, data interface{}) {
 	debugDir := filepath.Join(os.TempDir(), "shelltime")
 	if err := os.MkdirAll(debugDir, 0755); err != nil {
-		slog.Error("CCOtel: Failed to create debug directory", "error", err)
+		slog.Error("AICodeOtel: Failed to create debug directory", "error", err)
 		return
 	}
 
 	filePath := filepath.Join(debugDir, filename)
 	f, err := os.OpenFile(filePath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
 	if err != nil {
-		slog.Error("CCOtel: Failed to open debug file", "error", err, "path", filePath)
+		slog.Error("AICodeOtel: Failed to open debug file", "error", err, "path", filePath)
 		return
 	}
 	defer f.Close()
 
 	jsonData, err := json.MarshalIndent(data, "", "  ")
 	if err != nil {
-		slog.Error("CCOtel: Failed to marshal debug data", "error", err)
+		slog.Error("AICodeOtel: Failed to marshal debug data", "error", err)
 		return
 	}
 
 	timestamp := time.Now().Format(time.RFC3339)
 	if _, err := f.WriteString(fmt.Sprintf("\n--- %s ---\n%s\n", timestamp, jsonData)); err != nil {
-		slog.Error("CCOtel: Failed to write debug data", "error", err)
+		slog.Error("AICodeOtel: Failed to write debug data", "error", err)
 	}
-	slog.Debug("CCOtel: Wrote debug data", "path", filePath)
+	slog.Debug("AICodeOtel: Wrote debug data", "path", filePath)
 }
 
 // ProcessMetrics receives OTEL metrics and forwards to backend immediately
-func (p *CCOtelProcessor) ProcessMetrics(ctx context.Context, req *collmetricsv1.ExportMetricsServiceRequest) (*collmetricsv1.ExportMetricsServiceResponse, error) {
-	slog.Debug("CCOtel: Processing metrics request", "resourceMetricsCount", len(req.GetResourceMetrics()))
+func (p *AICodeOtelProcessor) ProcessMetrics(ctx context.Context, req *collmetricsv1.ExportMetricsServiceRequest) (*collmetricsv1.ExportMetricsServiceResponse, error) {
+	slog.Debug("AICodeOtel: Processing metrics request", "resourceMetricsCount", len(req.GetResourceMetrics()))
 
 	if p.debug {
-		p.writeDebugFile("ccotel-debug-metrics.txt", req)
+		p.writeDebugFile("aicode-otel-debug-metrics.txt", req)
 	}
 
 	for _, rm := range req.GetResourceMetrics() {
@@ -91,7 +91,7 @@ func (p *CCOtelProcessor) ProcessMetrics(ctx context.Context, req *collmetricsv1
 		// Check if this is from Claude Code or Codex
 		source := detectOtelSource(resource)
 		if source == "" {
-			slog.Debug("CCOtel: Skipping unknown resource")
+			slog.Debug("AICodeOtel: Skipping unknown resource")
 			continue
 		}
 
@@ -99,7 +99,7 @@ func (p *CCOtelProcessor) ProcessMetrics(ctx context.Context, req *collmetricsv1
 		resourceAttrs := extractResourceAttributes(resource)
 		project := p.detectProject(resource, source)
 
-		var metrics []model.CCOtelMetric
+		var metrics []model.AICodeOtelMetric
 
 		for _, sm := range rm.GetScopeMetrics() {
 			for _, m := range sm.GetMetrics() {
@@ -113,19 +113,19 @@ func (p *CCOtelProcessor) ProcessMetrics(ctx context.Context, req *collmetricsv1
 		}
 
 		// Build and send request immediately - flat structure without session
-		ccReq := &model.CCOtelRequest{
+		aiCodeReq := &model.AICodeOtelRequest{
 			Host:    p.hostname,
 			Project: project,
 			Source:  source,
 			Metrics: metrics,
 		}
 
-		resp, err := model.SendCCOtelData(ctx, ccReq, p.endpoint)
+		resp, err := model.SendAICodeOtelData(ctx, aiCodeReq, p.endpoint)
 		if err != nil {
-			slog.Error("CCOtel: Failed to send metrics to backend", "error", err)
+			slog.Error("AICodeOtel: Failed to send metrics to backend", "error", err)
 			// Continue processing - passthrough mode, we don't retry
 		} else {
-			slog.Debug("CCOtel: Metrics sent to backend", "metricsProcessed", resp.MetricsProcessed)
+			slog.Debug("AICodeOtel: Metrics sent to backend", "metricsProcessed", resp.MetricsProcessed)
 		}
 	}
 
@@ -133,11 +133,11 @@ func (p *CCOtelProcessor) ProcessMetrics(ctx context.Context, req *collmetricsv1
 }
 
 // ProcessLogs receives OTEL logs/events and forwards to backend immediately
-func (p *CCOtelProcessor) ProcessLogs(ctx context.Context, req *collogsv1.ExportLogsServiceRequest) (*collogsv1.ExportLogsServiceResponse, error) {
-	slog.Debug("CCOtel: Processing logs request", "resourceLogsCount", len(req.GetResourceLogs()), slog.Bool("debug", p.debug))
+func (p *AICodeOtelProcessor) ProcessLogs(ctx context.Context, req *collogsv1.ExportLogsServiceRequest) (*collogsv1.ExportLogsServiceResponse, error) {
+	slog.Debug("AICodeOtel: Processing logs request", "resourceLogsCount", len(req.GetResourceLogs()), slog.Bool("debug", p.debug))
 
 	if p.debug {
-		p.writeDebugFile("ccotel-debug-logs.txt", req)
+		p.writeDebugFile("aicode-otel-debug-logs.txt", req)
 	}
 
 	for _, rl := range req.GetResourceLogs() {
@@ -146,7 +146,7 @@ func (p *CCOtelProcessor) ProcessLogs(ctx context.Context, req *collogsv1.Export
 		// Check if this is from Claude Code or Codex
 		source := detectOtelSource(resource)
 		if source == "" {
-			slog.Debug("CCOtel: Skipping unknown resource")
+			slog.Debug("AICodeOtel: Skipping unknown resource")
 			continue
 		}
 
@@ -154,7 +154,7 @@ func (p *CCOtelProcessor) ProcessLogs(ctx context.Context, req *collogsv1.Export
 		resourceAttrs := extractResourceAttributes(resource)
 		project := p.detectProject(resource, source)
 
-		var events []model.CCOtelEvent
+		var events []model.AICodeOtelEvent
 
 		for _, sl := range rl.GetScopeLogs() {
 			for _, lr := range sl.GetLogRecords() {
@@ -170,19 +170,19 @@ func (p *CCOtelProcessor) ProcessLogs(ctx context.Context, req *collogsv1.Export
 		}
 
 		// Build and send request immediately - flat structure without session
-		ccReq := &model.CCOtelRequest{
+		aiCodeReq := &model.AICodeOtelRequest{
 			Host:    p.hostname,
 			Project: project,
 			Source:  source,
 			Events:  events,
 		}
 
-		resp, err := model.SendCCOtelData(ctx, ccReq, p.endpoint)
+		resp, err := model.SendAICodeOtelData(ctx, aiCodeReq, p.endpoint)
 		if err != nil {
-			slog.Error("CCOtel: Failed to send events to backend", "error", err)
+			slog.Error("AICodeOtel: Failed to send events to backend", "error", err)
 			// Continue processing - passthrough mode, we don't retry
 		} else {
-			slog.Debug("CCOtel: Events sent to backend", "eventsProcessed", resp.EventsProcessed)
+			slog.Debug("AICodeOtel: Events sent to backend", "eventsProcessed", resp.EventsProcessed)
 		}
 	}
 
@@ -200,9 +200,9 @@ func detectOtelSource(resource *resourcev1.Resource) string {
 			serviceName := attr.GetValue().GetStringValue()
 			switch serviceName {
 			case "claude-code":
-				return model.CCOtelSourceClaudeCode
+				return model.AICodeOtelSourceClaudeCode
 			case "codex", "codex-cli", "openai-codex":
-				return model.CCOtelSourceCodex
+				return model.AICodeOtelSourceCodex
 			}
 		}
 	}
@@ -211,8 +211,8 @@ func detectOtelSource(resource *resourcev1.Resource) string {
 
 // extractResourceAttributes extracts resource-level attributes from OTEL resource
 // Returns a struct that can be used to populate metrics and events
-func extractResourceAttributes(resource *resourcev1.Resource) *model.CCOtelResourceAttributes {
-	attrs := &model.CCOtelResourceAttributes{}
+func extractResourceAttributes(resource *resourcev1.Resource) *model.AICodeOtelResourceAttributes {
+	attrs := &model.AICodeOtelResourceAttributes{}
 
 	if resource == nil {
 		return attrs
@@ -265,7 +265,7 @@ func extractResourceAttributes(resource *resourcev1.Resource) *model.CCOtelResou
 }
 
 // applyResourceAttributesToMetric copies resource attributes into a metric
-func applyResourceAttributesToMetric(metric *model.CCOtelMetric, attrs *model.CCOtelResourceAttributes) {
+func applyResourceAttributesToMetric(metric *model.AICodeOtelMetric, attrs *model.AICodeOtelResourceAttributes) {
 	// Standard resource attributes
 	metric.SessionID = attrs.SessionID
 	metric.UserAccountUUID = attrs.UserAccountUUID
@@ -288,7 +288,7 @@ func applyResourceAttributesToMetric(metric *model.CCOtelMetric, attrs *model.CC
 }
 
 // applyResourceAttributesToEvent copies resource attributes into an event
-func applyResourceAttributesToEvent(event *model.CCOtelEvent, attrs *model.CCOtelResourceAttributes) {
+func applyResourceAttributesToEvent(event *model.AICodeOtelEvent, attrs *model.AICodeOtelResourceAttributes) {
 	// Standard resource attributes
 	event.SessionID = attrs.SessionID
 	event.UserAccountUUID = attrs.UserAccountUUID
@@ -311,7 +311,7 @@ func applyResourceAttributesToEvent(event *model.CCOtelEvent, attrs *model.CCOte
 }
 
 // detectProject extracts project from resource attributes or environment
-func (p *CCOtelProcessor) detectProject(resource *resourcev1.Resource, source string) string {
+func (p *AICodeOtelProcessor) detectProject(resource *resourcev1.Resource, source string) string {
 	// First check resource attributes
 	if resource != nil {
 		for _, attr := range resource.GetAttributes() {
@@ -322,11 +322,11 @@ func (p *CCOtelProcessor) detectProject(resource *resourcev1.Resource, source st
 	}
 
 	// Fall back to environment variables based on source
-	if source == model.CCOtelSourceClaudeCode {
+	if source == model.AICodeOtelSourceClaudeCode {
 		if project := os.Getenv("CLAUDE_CODE_PROJECT"); project != "" {
 			return project
 		}
-	} else if source == model.CCOtelSourceCodex {
+	} else if source == model.AICodeOtelSourceCodex {
 		if project := os.Getenv("CODEX_PROJECT"); project != "" {
 			return project
 		}
@@ -339,9 +339,9 @@ func (p *CCOtelProcessor) detectProject(resource *resourcev1.Resource, source st
 	return "unknown"
 }
 
-// parseMetric parses an OTEL metric into CCOtelMetric(s)
-func (p *CCOtelProcessor) parseMetric(m *metricsv1.Metric, resourceAttrs *model.CCOtelResourceAttributes, source string) []model.CCOtelMetric {
-	var metrics []model.CCOtelMetric
+// parseMetric parses an OTEL metric into AICodeOtelMetric(s)
+func (p *AICodeOtelProcessor) parseMetric(m *metricsv1.Metric, resourceAttrs *model.AICodeOtelResourceAttributes, source string) []model.AICodeOtelMetric {
+	var metrics []model.AICodeOtelMetric
 
 	name := m.GetName()
 	metricType := mapMetricName(name, source)
@@ -353,7 +353,7 @@ func (p *CCOtelProcessor) parseMetric(m *metricsv1.Metric, resourceAttrs *model.
 	switch data := m.GetData().(type) {
 	case *metricsv1.Metric_Sum:
 		for _, dp := range data.Sum.GetDataPoints() {
-			metric := model.CCOtelMetric{
+			metric := model.AICodeOtelMetric{
 				MetricID:   uuid.New().String(),
 				MetricType: metricType,
 				Timestamp:  int64(dp.GetTimeUnixNano() / 1e9), // Convert to seconds
@@ -369,7 +369,7 @@ func (p *CCOtelProcessor) parseMetric(m *metricsv1.Metric, resourceAttrs *model.
 		}
 	case *metricsv1.Metric_Gauge:
 		for _, dp := range data.Gauge.GetDataPoints() {
-			metric := model.CCOtelMetric{
+			metric := model.AICodeOtelMetric{
 				MetricID:   uuid.New().String(),
 				MetricType: metricType,
 				Timestamp:  int64(dp.GetTimeUnixNano() / 1e9),
@@ -388,9 +388,9 @@ func (p *CCOtelProcessor) parseMetric(m *metricsv1.Metric, resourceAttrs *model.
 	return metrics
 }
 
-// parseLogRecord parses an OTEL log record into a CCOtelEvent
-func (p *CCOtelProcessor) parseLogRecord(lr *logsv1.LogRecord, resourceAttrs *model.CCOtelResourceAttributes, source string) *model.CCOtelEvent {
-	event := &model.CCOtelEvent{
+// parseLogRecord parses an OTEL log record into a AICodeOtelEvent
+func (p *AICodeOtelProcessor) parseLogRecord(lr *logsv1.LogRecord, resourceAttrs *model.AICodeOtelResourceAttributes, source string) *model.AICodeOtelEvent {
+	event := &model.AICodeOtelEvent{
 		EventID:   uuid.New().String(),
 		Timestamp: int64(lr.GetTimeUnixNano() / 1e9), // Convert to seconds
 	}
@@ -428,12 +428,6 @@ func (p *CCOtelProcessor) parseLogRecord(lr *logsv1.LogRecord, resourceAttrs *mo
 			event.Success = getBoolFromValue(value)
 		case "decision":
 			event.Decision = value.GetStringValue()
-		// case "decision_source":
-		// 	event.DecisionSource = value.GetStringValue()
-		// case "decision_type":
-		// 	event.DecisionType = value.GetStringValue()
-		// case "tool_result_size_bytes":
-		// 	event.ToolResultSizeBytes = getIntFromValue(value)
 		case "source":
 			event.Source = value.GetStringValue()
 		case "error":
@@ -449,7 +443,7 @@ func (p *CCOtelProcessor) parseLogRecord(lr *logsv1.LogRecord, resourceAttrs *mo
 				if err := json.Unmarshal([]byte(jsonStr), &params); err == nil {
 					event.ToolParameters = params
 				} else {
-					slog.Debug("CCOtel: Failed to parse tool_parameters", "error", err)
+					slog.Debug("AICodeOtel: Failed to parse tool_parameters", "error", err)
 				}
 			}
 		case "status_code":
@@ -495,36 +489,36 @@ func mapMetricName(name string, source string) string {
 	switch name {
 	// Claude Code metrics
 	case "claude_code.session.count":
-		return model.CCMetricSessionCount
+		return model.AICodeMetricSessionCount
 	case "claude_code.token.usage":
-		return model.CCMetricTokenUsage
+		return model.AICodeMetricTokenUsage
 	case "claude_code.cost.usage":
-		return model.CCMetricCostUsage
+		return model.AICodeMetricCostUsage
 	case "claude_code.lines_of_code.count":
-		return model.CCMetricLinesOfCodeCount
+		return model.AICodeMetricLinesOfCodeCount
 	case "claude_code.commit.count":
-		return model.CCMetricCommitCount
+		return model.AICodeMetricCommitCount
 	case "claude_code.pull_request.count":
-		return model.CCMetricPullRequestCount
+		return model.AICodeMetricPullRequestCount
 	case "claude_code.active_time.total":
-		return model.CCMetricActiveTimeTotal
+		return model.AICodeMetricActiveTimeTotal
 	case "claude_code.code_edit_tool.decision":
-		return model.CCMetricCodeEditToolDecision
+		return model.AICodeMetricCodeEditToolDecision
 	// Codex metrics (same internal types, different prefix)
 	case "codex.session.count":
-		return model.CCMetricSessionCount
+		return model.AICodeMetricSessionCount
 	case "codex.token.usage":
-		return model.CCMetricTokenUsage
+		return model.AICodeMetricTokenUsage
 	case "codex.cost.usage":
-		return model.CCMetricCostUsage
+		return model.AICodeMetricCostUsage
 	case "codex.lines_of_code.count":
-		return model.CCMetricLinesOfCodeCount
+		return model.AICodeMetricLinesOfCodeCount
 	case "codex.commit.count":
-		return model.CCMetricCommitCount
+		return model.AICodeMetricCommitCount
 	case "codex.pull_request.count":
-		return model.CCMetricPullRequestCount
+		return model.AICodeMetricPullRequestCount
 	case "codex.active_time.total":
-		return model.CCMetricActiveTimeTotal
+		return model.AICodeMetricActiveTimeTotal
 	default:
 		return ""
 	}
@@ -536,26 +530,26 @@ func mapEventName(name string, source string) string {
 	switch name {
 	// Claude Code events
 	case "claude_code.user_prompt":
-		return model.CCEventUserPrompt
+		return model.AICodeEventUserPrompt
 	case "claude_code.tool_result":
-		return model.CCEventToolResult
+		return model.AICodeEventToolResult
 	case "claude_code.api_request":
-		return model.CCEventApiRequest
+		return model.AICodeEventApiRequest
 	case "claude_code.api_error":
-		return model.CCEventApiError
+		return model.AICodeEventApiError
 	case "claude_code.tool_decision":
-		return model.CCEventToolDecision
+		return model.AICodeEventToolDecision
 	// Codex events (same internal types, different prefix)
 	case "codex.user_prompt":
-		return model.CCEventUserPrompt
+		return model.AICodeEventUserPrompt
 	case "codex.tool_result":
-		return model.CCEventToolResult
+		return model.AICodeEventToolResult
 	case "codex.api_request":
-		return model.CCEventApiRequest
+		return model.AICodeEventApiRequest
 	case "codex.api_error":
-		return model.CCEventApiError
+		return model.AICodeEventApiError
 	case "codex.exec_command":
-		return model.CCEventExecCommand
+		return model.AICodeEventExecCommand
 	default:
 		return name // Return as-is if not in our map
 	}
@@ -618,13 +612,13 @@ func getFloatFromValue(value *commonv1.AnyValue) float64 {
 }
 
 // applyMetricAttribute applies an attribute to a metric
-func applyMetricAttribute(metric *model.CCOtelMetric, attr *commonv1.KeyValue, metricType string) {
+func applyMetricAttribute(metric *model.AICodeOtelMetric, attr *commonv1.KeyValue, metricType string) {
 	key := attr.GetKey()
 	value := attr.GetValue()
 
 	switch key {
 	case "type":
-		if metricType == model.CCMetricLinesOfCodeCount {
+		if metricType == model.AICodeMetricLinesOfCodeCount {
 			metric.LinesType = value.GetStringValue()
 		} else {
 			metric.TokenType = value.GetStringValue()

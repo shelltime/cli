@@ -52,9 +52,9 @@ go fmt ./...
 
 ### Package Structure
 - **cmd/cli/**: CLI entry point - registers all commands, initializes services via dependency injection
-- **cmd/daemon/**: Daemon entry point - sets up pub/sub, socket handler, and optional CCOtel gRPC server
+- **cmd/daemon/**: Daemon entry point - sets up pub/sub, socket handler, and optional AICodeOtel gRPC server
 - **commands/**: CLI command implementations - each command in its own file, `base.go` holds injected services
-- **daemon/**: Daemon internals - socket handler, Watermill pub/sub channel, CCOtel gRPC server/processor
+- **daemon/**: Daemon internals - socket handler, Watermill pub/sub channel, AICodeOtel gRPC server/processor
 - **model/**: Business logic - API clients, config, crypto, shell hooks, service installers, dotfile handlers
 
 ### Service Interfaces (model package)
@@ -69,7 +69,7 @@ Injection happens in `cmd/*/main.go` via `commands.InjectVar()` and `commands.In
 1. **SocketHandler**: Unix domain socket server accepting JSON messages from CLI
 2. **GoChannel**: Watermill pub/sub for decoupled message processing
 3. **SocketTopicProcessor**: Consumes messages and routes to appropriate handlers
-4. **CCOtelServer** (optional): gRPC server implementing OTEL collector for Claude Code metrics/logs passthrough
+4. **AICodeOtelServer** (optional): gRPC server implementing OTEL collector for AI coding CLI metrics/logs passthrough (Claude Code, Codex, etc.)
 
 ### Data Flow
 1. Shell hooks capture commands → CLI stores locally (file-based buffer)
@@ -81,7 +81,7 @@ Injection happens in `cmd/*/main.go` via `commands.InjectVar()` and `commands.In
 - Main config: `$HOME/.shelltime/config.toml`
 - Local overrides: `$HOME/.shelltime/config.local.toml` (merged, gitignored)
 - Daemon socket: `/tmp/shelltime.sock` (configurable via `socketPath`)
-- CCOtel gRPC port: configurable via `ccotel.grpcPort` (default: 4317)
+- AICodeOtel gRPC port: configurable via `aiCodeOtel.grpcPort` (default: 54027)
 
 ## Commit Rules
 
@@ -92,4 +92,4 @@ Follow Conventional Commits with scope: `fix(daemon): ...`, `feat(cli): ...`, `r
 - Daemon is optional but recommended (<8ms latency vs ~100ms+ direct)
 - Encryption requires daemon mode and a token with encryption capability
 - Shell hooks are platform-specific (bash, zsh, fish) - test on target shells
-- CCOtel feature enables Claude Code metrics/logs passthrough via gRPC (port 4317)
+- AICodeOtel feature enables AI coding CLI metrics/logs passthrough via gRPC (port 54027) - supports Claude Code, Codex, and other OTEL-compatible CLIs

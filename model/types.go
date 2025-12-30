@@ -25,9 +25,9 @@ type CCUsage struct {
 	Enabled *bool `toml:"enabled" yaml:"enabled" json:"enabled"`
 }
 
-// CCOtel configuration for OTEL-based AI CLI tracking (Claude Code, Codex, etc.)
+// AICodeOtel configuration for OTEL-based AI CLI tracking (Claude Code, Codex, etc.)
 // The processor auto-detects the source from service.name attribute
-type CCOtel struct {
+type AICodeOtel struct {
 	Enabled  *bool `toml:"enabled" yaml:"enabled" json:"enabled"`
 	GRPCPort int   `toml:"grpcPort,omitempty" yaml:"grpcPort,omitempty" json:"grpcPort,omitempty"` // default: 54027
 	Debug    *bool `toml:"debug" yaml:"debug" json:"debug"`                                        // write raw JSON to debug files
@@ -81,8 +81,8 @@ type ShellTimeConfig struct {
 	// CCUsage configuration for Claude Code usage tracking (v1 - ccusage CLI based)
 	CCUsage *CCUsage `toml:"ccusage" yaml:"ccusage" json:"ccusage"`
 
-	// CCOtel configuration for OTEL-based AI CLI tracking (Claude Code, Codex, etc.)
-	CCOtel *CCOtel `toml:"ccotel" yaml:"ccotel" json:"ccotel"`
+	// AICodeOtel configuration for OTEL-based AI CLI tracking (Claude Code, Codex, etc.)
+	AICodeOtel *AICodeOtel `toml:"aiCodeOtel" yaml:"aiCodeOtel" json:"aiCodeOtel"`
 
 	// CodeTracking configuration for coding activity heartbeat tracking
 	CodeTracking *CodeTracking `toml:"codeTracking" yaml:"codeTracking" json:"codeTracking"`
@@ -118,7 +118,7 @@ var DefaultConfig = ShellTimeConfig{
 	AI:            DefaultAIConfig,
 	Exclude:       []string{},
 	CCUsage:       nil,
-	CCOtel:        nil,
+	AICodeOtel:    nil,
 	CodeTracking:  nil,
 	LogCleanup:    nil,
 

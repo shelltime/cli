@@ -33,9 +33,9 @@ func commandCCInstall(c *cli.Context) error {
 	color.Yellow.Println("Installing Claude Code OTEL configuration...")
 
 	// Create shell services
-	zshService := model.NewZshCCOtelEnvService()
-	fishService := model.NewFishCCOtelEnvService()
-	bashService := model.NewBashCCOtelEnvService()
+	zshService := model.NewZshAICodeOtelEnvService()
+	fishService := model.NewFishAICodeOtelEnvService()
+	bashService := model.NewBashAICodeOtelEnvService()
 
 	// Install for all shells (non-blocking failures)
 	if err := zshService.Install(); err != nil {
@@ -60,9 +60,9 @@ func commandCCUninstall(c *cli.Context) error {
 	color.Yellow.Println("Removing Claude Code OTEL configuration...")
 
 	// Create shell services
-	zshService := model.NewZshCCOtelEnvService()
-	fishService := model.NewFishCCOtelEnvService()
-	bashService := model.NewBashCCOtelEnvService()
+	zshService := model.NewZshAICodeOtelEnvService()
+	fishService := model.NewFishAICodeOtelEnvService()
+	bashService := model.NewBashAICodeOtelEnvService()
 
 	// Uninstall from all shells
 	if err := zshService.Uninstall(); err != nil {

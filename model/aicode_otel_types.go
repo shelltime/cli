@@ -1,18 +1,18 @@
 package model
 
-// CCOtelRequest is the main request to POST /api/v1/cc/otel
+// AICodeOtelRequest is the main request to POST /api/v1/cc/otel
 // Flat structure without session - resource attributes are embedded in each metric/event
-type CCOtelRequest struct {
-	Host    string         `json:"host"`
-	Project string         `json:"project"`
-	Source  string         `json:"source,omitempty"` // "claude-code" or "codex" - identifies the CLI source
-	Events  []CCOtelEvent  `json:"events,omitempty"`
-	Metrics []CCOtelMetric `json:"metrics,omitempty"`
+type AICodeOtelRequest struct {
+	Host    string              `json:"host"`
+	Project string              `json:"project"`
+	Source  string              `json:"source,omitempty"` // "claude-code" or "codex" - identifies the CLI source
+	Events  []AICodeOtelEvent   `json:"events,omitempty"`
+	Metrics []AICodeOtelMetric  `json:"metrics,omitempty"`
 }
 
-// CCOtelResourceAttributes contains common resource-level attributes
+// AICodeOtelResourceAttributes contains common resource-level attributes
 // extracted from OTEL resources and embedded into each metric/event
-type CCOtelResourceAttributes struct {
+type AICodeOtelResourceAttributes struct {
 	// Standard resource attributes
 	SessionID       string
 	UserAccountUUID string
@@ -36,9 +36,9 @@ type CCOtelResourceAttributes struct {
 	Pwd         string // from pwd
 }
 
-// CCOtelEvent represents an event from Claude Code or Codex (api_request, tool_result, etc.)
+// AICodeOtelEvent represents an event from Claude Code or Codex (api_request, tool_result, etc.)
 // with embedded resource attributes for a flat, session-less structure
-type CCOtelEvent struct {
+type AICodeOtelEvent struct {
 	EventID             string                 `json:"eventId"`
 	EventType           string                 `json:"eventType"`
 	Timestamp           int64                  `json:"timestamp"`
@@ -85,9 +85,9 @@ type CCOtelEvent struct {
 	Pwd         string `json:"pwd,omitempty"`
 }
 
-// CCOtelMetric represents a metric data point from Claude Code
+// AICodeOtelMetric represents a metric data point from Claude Code or Codex
 // with embedded resource attributes for a flat, session-less structure
-type CCOtelMetric struct {
+type AICodeOtelMetric struct {
 	MetricID   string  `json:"metricId"`
 	MetricType string  `json:"metricType"`
 	Timestamp  int64   `json:"timestamp"`
@@ -120,8 +120,8 @@ type CCOtelMetric struct {
 	Pwd         string `json:"pwd,omitempty"`
 }
 
-// CCOtelResponse is the response from POST /api/v1/cc/otel
-type CCOtelResponse struct {
+// AICodeOtelResponse is the response from POST /api/v1/cc/otel
+type AICodeOtelResponse struct {
 	Success          bool   `json:"success"`
 	EventsProcessed  int    `json:"eventsProcessed"`
 	MetricsProcessed int    `json:"metricsProcessed"`
@@ -130,42 +130,42 @@ type CCOtelResponse struct {
 
 // OTEL source identifiers
 const (
-	CCOtelSourceClaudeCode = "claude-code"
-	CCOtelSourceCodex      = "codex"
+	AICodeOtelSourceClaudeCode = "claude-code"
+	AICodeOtelSourceCodex      = "codex"
 )
 
-// Claude Code / Codex OTEL metric types (shared)
+// AI Code OTEL metric types (shared between Claude Code and Codex)
 const (
-	CCMetricSessionCount         = "session_count"
-	CCMetricLinesOfCodeCount     = "lines_of_code_count"
-	CCMetricPullRequestCount     = "pull_request_count"
-	CCMetricCommitCount          = "commit_count"
-	CCMetricCostUsage            = "cost_usage"
-	CCMetricTokenUsage           = "token_usage"
-	CCMetricCodeEditToolDecision = "code_edit_tool_decision"
-	CCMetricActiveTimeTotal      = "active_time_total"
+	AICodeMetricSessionCount         = "session_count"
+	AICodeMetricLinesOfCodeCount     = "lines_of_code_count"
+	AICodeMetricPullRequestCount     = "pull_request_count"
+	AICodeMetricCommitCount          = "commit_count"
+	AICodeMetricCostUsage            = "cost_usage"
+	AICodeMetricTokenUsage           = "token_usage"
+	AICodeMetricCodeEditToolDecision = "code_edit_tool_decision"
+	AICodeMetricActiveTimeTotal      = "active_time_total"
 )
 
-// Claude Code / Codex OTEL event types (shared)
+// AI Code OTEL event types (shared between Claude Code and Codex)
 const (
-	CCEventUserPrompt   = "user_prompt"
-	CCEventToolResult   = "tool_result"
-	CCEventApiRequest   = "api_request"
-	CCEventApiError     = "api_error"
-	CCEventToolDecision = "tool_decision"
-	CCEventExecCommand  = "exec_command" // Codex: shell command execution
+	AICodeEventUserPrompt   = "user_prompt"
+	AICodeEventToolResult   = "tool_result"
+	AICodeEventApiRequest   = "api_request"
+	AICodeEventApiError     = "api_error"
+	AICodeEventToolDecision = "tool_decision"
+	AICodeEventExecCommand  = "exec_command" // Codex: shell command execution
 )
 
-// Token types for CCMetricTokenUsage
+// Token types for AICodeMetricTokenUsage
 const (
-	CCTokenTypeInput         = "input"
-	CCTokenTypeOutput        = "output"
-	CCTokenTypeCacheRead     = "cacheRead"
-	CCTokenTypeCacheCreation = "cacheCreation"
+	AICodeTokenTypeInput         = "input"
+	AICodeTokenTypeOutput        = "output"
+	AICodeTokenTypeCacheRead     = "cacheRead"
+	AICodeTokenTypeCacheCreation = "cacheCreation"
 )
 
-// Lines types for CCMetricLinesOfCodeCount
+// Lines types for AICodeMetricLinesOfCodeCount
 const (
-	CCLinesTypeAdded   = "added"
-	CCLinesTypeRemoved = "removed"
+	AICodeLinesTypeAdded   = "added"
+	AICodeLinesTypeRemoved = "removed"
 )

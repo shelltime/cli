@@ -247,18 +247,18 @@ ai:
 
 ShellTime can track and forward Claude Code metrics for analysis.
 
-### CCOtel (Recommended)
+### AICodeOtel (Recommended)
 
-The modern approach using OpenTelemetry gRPC passthrough:
+The modern approach using OpenTelemetry gRPC passthrough for AI coding CLIs (Claude Code, Codex, etc.):
 
 | Option | Type | Default | Description |
 |--------|------|---------|-------------|
-| `ccotel.enabled` | boolean | `false` | Enable OTEL collection |
-| `ccotel.grpcPort` | integer | `54027` | gRPC server port |
-| `ccotel.debug` | boolean | `false` | Write debug files |
+| `aiCodeOtel.enabled` | boolean | `false` | Enable OTEL collection |
+| `aiCodeOtel.grpcPort` | integer | `54027` | gRPC server port |
+| `aiCodeOtel.debug` | boolean | `false` | Write debug files |
 
 ```yaml
-ccotel:
+aiCodeOtel:
   enabled: true
   grpcPort: 54027   # Default ShellTime OTEL port
   debug: false      # Set true to debug issues
@@ -266,8 +266,9 @@ ccotel:
 
 **How it works:**
 1. Daemon starts gRPC server on configured port
-2. Claude Code sends OTEL metrics/logs to this port
-3. ShellTime forwards data to shelltime.xyz for analysis
+2. AI coding CLIs (Claude Code, Codex) send OTEL metrics/logs to this port
+3. ShellTime auto-detects the source from service.name attribute
+4. Data is forwarded to shelltime.xyz for analysis
 
 ### CCUsage (Legacy)
 
@@ -399,8 +400,8 @@ ai:
     edit: false
     delete: false
 
-# --- Claude Code Integration ---
-ccotel:
+# --- AI Code Integration (Claude Code, Codex, etc.) ---
+aiCodeOtel:
   enabled: false
   grpcPort: 54027
   debug: false
@@ -469,13 +470,14 @@ Or unset your token:
 token: ""
 ```
 
-### What's the difference between CCOtel and CCUsage?
+### What's the difference between AICodeOtel and CCUsage?
 
-| Feature | CCOtel | CCUsage |
-|---------|--------|---------|
+| Feature | AICodeOtel | CCUsage |
+|---------|------------|---------|
 | Method | gRPC passthrough | CLI parsing |
 | Performance | Better | More overhead |
 | Data richness | Full OTEL data | Basic metrics |
+| Sources | Claude Code, Codex, etc. | Claude Code only |
 | Recommended | Yes | Legacy |
 
 ### How do I test my exclude patterns?

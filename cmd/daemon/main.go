@@ -125,16 +125,16 @@ func main() {
 		}
 	}
 
-	// Start CCOtel service if enabled (OTEL gRPC passthrough for Claude Code, Codex, etc.)
-	var ccOtelServer *daemon.CCOtelServer
-	if cfg.CCOtel != nil && cfg.CCOtel.Enabled != nil && *cfg.CCOtel.Enabled {
-		ccOtelProcessor := daemon.NewCCOtelProcessor(cfg)
-		ccOtelServer = daemon.NewCCOtelServer(cfg.CCOtel.GRPCPort, ccOtelProcessor)
-		if err := ccOtelServer.Start(); err != nil {
-			slog.Error("Failed to start CCOtel gRPC server", slog.Any("err", err))
+	// Start AICodeOtel service if enabled (OTEL gRPC passthrough for Claude Code, Codex, etc.)
+	var aiCodeOtelServer *daemon.AICodeOtelServer
+	if cfg.AICodeOtel != nil && cfg.AICodeOtel.Enabled != nil && *cfg.AICodeOtel.Enabled {
+		aiCodeOtelProcessor := daemon.NewAICodeOtelProcessor(cfg)
+		aiCodeOtelServer = daemon.NewAICodeOtelServer(cfg.AICodeOtel.GRPCPort, aiCodeOtelProcessor)
+		if err := aiCodeOtelServer.Start(); err != nil {
+			slog.Error("Failed to start AICodeOtel gRPC server", slog.Any("err", err))
 		} else {
-			slog.Info("CCOtel gRPC server started", slog.Int("port", cfg.CCOtel.GRPCPort))
-			defer ccOtelServer.Stop()
+			slog.Info("AICodeOtel gRPC server started", slog.Int("port", cfg.AICodeOtel.GRPCPort))
+			defer aiCodeOtelServer.Stop()
 		}
 	}
 
