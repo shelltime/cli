@@ -74,14 +74,18 @@ type AICodeOtelEvent struct {
 	ToolTokens int    `json:"toolTokens,omitempty"`
 
 	// Codex-specific fields for conversation_starts
-	AuthMode         string   `json:"authMode,omitempty"`
-	Slug             string   `json:"slug,omitempty"`
-	ContextWindow    int      `json:"contextWindow,omitempty"`
-	ApprovalPolicy   string   `json:"approvalPolicy,omitempty"`
-	SandboxPolicy    string   `json:"sandboxPolicy,omitempty"`
-	MCPServers       []string `json:"mcpServers,omitempty"`
-	Profile          string   `json:"profile,omitempty"`
-	ReasoningEnabled bool     `json:"reasoningEnabled,omitempty"`
+	AuthMode              string   `json:"authMode,omitempty"`
+	Slug                  string   `json:"slug,omitempty"`
+	ContextWindow         int      `json:"contextWindow,omitempty"`
+	ApprovalPolicy        string   `json:"approvalPolicy,omitempty"`
+	SandboxPolicy         string   `json:"sandboxPolicy,omitempty"`
+	MCPServers            []string `json:"mcpServers,omitempty"`
+	Profile               string   `json:"profile,omitempty"`
+	ReasoningEnabled      bool     `json:"reasoningEnabled,omitempty"`
+	ReasoningEffort       string   `json:"reasoningEffort,omitempty"`
+	ReasoningSummary      string   `json:"reasoningSummary,omitempty"`
+	MaxOutputTokens       int      `json:"maxOutputTokens,omitempty"`
+	AutoCompactTokenLimit int      `json:"autoCompactTokenLimit,omitempty"`
 
 	// Codex-specific fields for tool_result
 	ToolArguments map[string]interface{} `json:"toolArguments,omitempty"`

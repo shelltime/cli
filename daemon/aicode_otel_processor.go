@@ -427,11 +427,11 @@ func (p *AICodeOtelProcessor) parseLogRecord(lr *logsv1.LogRecord, resourceAttrs
 			event.CostUSD = getFloatFromValue(value)
 		case "duration_ms":
 			event.DurationMs = getIntFromValue(value)
-		case "input_tokens":
+		case "input_tokens", "input_token_count":
 			event.InputTokens = getIntFromValue(value)
-		case "output_tokens":
+		case "output_tokens", "output_token_count":
 			event.OutputTokens = getIntFromValue(value)
-		case "cache_read_tokens":
+		case "cache_read_tokens", "cache_token_count", "cached_token_count", "cachedTokenCount":
 			event.CacheReadTokens = getIntFromValue(value)
 		case "cache_creation_tokens":
 			event.CacheCreationTokens = getIntFromValue(value)
@@ -468,9 +468,9 @@ func (p *AICodeOtelProcessor) parseLogRecord(lr *logsv1.LogRecord, resourceAttrs
 		case "language":
 			event.Language = value.GetStringValue()
 		// Codex-specific fields
-		case "reasoning_tokens":
+		case "reasoning_tokens", "reasoning_token_count", "reasoningTokenCount":
 			event.ReasoningTokens = getIntFromValue(value)
-		case "provider":
+		case "provider", "provider_name", "providerName":
 			event.Provider = value.GetStringValue()
 		// Codex-specific fields for tool_decision
 		case "call_id", "callId":
@@ -478,7 +478,7 @@ func (p *AICodeOtelProcessor) parseLogRecord(lr *logsv1.LogRecord, resourceAttrs
 		// Codex-specific fields for sse_event
 		case "event_kind", "eventKind":
 			event.EventKind = value.GetStringValue()
-		case "tool_tokens", "toolTokens":
+		case "tool_tokens", "toolTokens", "tool_token_count", "toolTokenCount":
 			event.ToolTokens = getIntFromValue(value)
 		// Codex-specific fields for conversation_starts
 		case "auth_mode", "authMode":
@@ -493,12 +493,20 @@ func (p *AICodeOtelProcessor) parseLogRecord(lr *logsv1.LogRecord, resourceAttrs
 			event.SandboxPolicy = value.GetStringValue()
 		case "mcp_servers", "mcpServers":
 			event.MCPServers = getStringArrayFromValue(value)
-		case "profile":
+		case "profile", "active_profile", "activeProfile":
 			event.Profile = value.GetStringValue()
 		case "reasoning_enabled", "reasoningEnabled":
 			event.ReasoningEnabled = getBoolFromValue(value)
+		case "reasoning_effort", "reasoningEffort":
+			event.ReasoningEffort = value.GetStringValue()
+		case "reasoning_summary", "reasoningSummary":
+			event.ReasoningSummary = value.GetStringValue()
+		case "max_output_tokens", "maxOutputTokens":
+			event.MaxOutputTokens = getIntFromValue(value)
+		case "auto_compact_token_limit", "autoCompactTokenLimit":
+			event.AutoCompactTokenLimit = getIntFromValue(value)
 		// Codex-specific fields for tool_result
-		case "tool_arguments", "toolArguments":
+		case "tool_arguments", "toolArguments", "arguments":
 			if jsonStr := value.GetStringValue(); jsonStr != "" {
 				var args map[string]interface{}
 				if err := json.Unmarshal([]byte(jsonStr), &args); err == nil {
@@ -535,6 +543,10 @@ func (p *AICodeOtelProcessor) parseLogRecord(lr *logsv1.LogRecord, resourceAttrs
 	// Skip if no event type was extracted
 	if event.EventType == "" {
 		return nil
+	}
+
+	if event.SessionID == "" && event.ConversationID != "" {
+		event.SessionID = event.ConversationID
 	}
 
 	return event
