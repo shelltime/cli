@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -198,10 +199,10 @@ func detectOtelSource(resource *resourcev1.Resource) string {
 	for _, attr := range resource.GetAttributes() {
 		if attr.GetKey() == "service.name" {
 			serviceName := attr.GetValue().GetStringValue()
-			switch serviceName {
-			case "claude-code":
+			if strings.Contains(serviceName, "claude") {
 				return model.AICodeOtelSourceClaudeCode
-			case "codex", "codex-cli", "openai-codex":
+			}
+			if strings.Contains(serviceName, "codex") {
 				return model.AICodeOtelSourceCodex
 			}
 		}
@@ -358,6 +359,7 @@ func (p *AICodeOtelProcessor) parseMetric(m *metricsv1.Metric, resourceAttrs *mo
 				MetricType: metricType,
 				Timestamp:  int64(dp.GetTimeUnixNano() / 1e9), // Convert to seconds
 				Value:      getDataPointValue(dp),
+				ClientType: source,
 			}
 			// Apply resource attributes first
 			applyResourceAttributesToMetric(&metric, resourceAttrs)
@@ -374,6 +376,7 @@ func (p *AICodeOtelProcessor) parseMetric(m *metricsv1.Metric, resourceAttrs *mo
 				MetricType: metricType,
 				Timestamp:  int64(dp.GetTimeUnixNano() / 1e9),
 				Value:      getDataPointValue(dp),
+				ClientType: source,
 			}
 			// Apply resource attributes first
 			applyResourceAttributesToMetric(&metric, resourceAttrs)
@@ -393,6 +396,12 @@ func (p *AICodeOtelProcessor) parseLogRecord(lr *logsv1.LogRecord, resourceAttrs
 	event := &model.AICodeOtelEvent{
 		EventID:   uuid.New().String(),
 		Timestamp: int64(lr.GetTimeUnixNano() / 1e9), // Convert to seconds
+
+		ClientType: source,
+	}
+
+	if event.Timestamp == 0 {
+		event.Timestamp = int64(lr.GetObservedTimeUnixNano() / 1e9) // Convert to seconds
 	}
 
 	// Apply resource attributes first

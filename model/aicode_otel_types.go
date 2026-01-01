@@ -3,11 +3,11 @@ package model
 // AICodeOtelRequest is the main request to POST /api/v1/cc/otel
 // Flat structure without session - resource attributes are embedded in each metric/event
 type AICodeOtelRequest struct {
-	Host    string              `json:"host"`
-	Project string              `json:"project"`
-	Source  string              `json:"source,omitempty"` // "claude-code" or "codex" - identifies the CLI source
-	Events  []AICodeOtelEvent   `json:"events,omitempty"`
-	Metrics []AICodeOtelMetric  `json:"metrics,omitempty"`
+	Host    string             `json:"host"`
+	Project string             `json:"project"`
+	Source  string             `json:"source,omitempty"` // "claude-code" or "codex" - identifies the CLI source
+	Events  []AICodeOtelEvent  `json:"events,omitempty"`
+	Metrics []AICodeOtelMetric `json:"metrics,omitempty"`
 }
 
 // AICodeOtelResourceAttributes contains common resource-level attributes
@@ -83,6 +83,9 @@ type AICodeOtelEvent struct {
 	MachineName string `json:"machineName,omitempty"`
 	TeamID      string `json:"teamId,omitempty"`
 	Pwd         string `json:"pwd,omitempty"`
+
+	ClientType string `json:"clientType"` // claude_code, codex (defaults to claude_code)
+
 }
 
 // AICodeOtelMetric represents a metric data point from Claude Code or Codex
@@ -118,6 +121,8 @@ type AICodeOtelMetric struct {
 	MachineName string `json:"machineName,omitempty"`
 	TeamID      string `json:"teamId,omitempty"`
 	Pwd         string `json:"pwd,omitempty"`
+
+	ClientType string `json:"clientType"` // claude_code, codex (defaults to claude_code)
 }
 
 // AICodeOtelResponse is the response from POST /api/v1/cc/otel

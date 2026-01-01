@@ -53,6 +53,8 @@ func main() {
 		return
 	}
 
+	slog.DebugContext(ctx, "daemon.config", slog.Any("config", cfg))
+
 	uptraceOptions := []uptrace.Option{
 		uptrace.WithDSN(uptraceDsn),
 		uptrace.WithServiceName("cli-daemon"),

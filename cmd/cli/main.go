@@ -107,6 +107,7 @@ func main() {
 		commands.DoctorCommand,
 		commands.QueryCommand,
 		commands.CCCommand,
+		commands.CodexCommand,
 		commands.SchemaCommand,
 	}
 	err = app.Run(os.Args)
