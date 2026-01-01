@@ -3,6 +3,7 @@ package model
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"strings"
@@ -43,8 +44,8 @@ func unmarshalConfig(data []byte, format configFormat, config *ShellTimeConfig) 
 
 // configFiles represents discovered config files
 type configFiles struct {
-	baseFile    string       // config.yaml, config.yml, or config.toml
-	localFile   string       // config.local.yaml, config.local.yml, or config.local.toml
+	baseFile    string // config.yaml, config.yml, or config.toml
+	localFile   string // config.local.yaml, config.local.yml, or config.local.toml
 	baseFormat  configFormat
 	localFormat configFormat
 }
@@ -199,6 +200,15 @@ func (cs *configService) ReadConfigFile(ctx context.Context, opts ...ReadConfigO
 	// Discover config files with priority
 	files := findConfigFiles(cs.configDir)
 
+	slog.InfoContext(
+		ctx,
+		"config.ReadConfigFile discovered config files",
+		slog.String("base", files.baseFile),
+		slog.String("local", files.localFile),
+		slog.String("base_format", string(files.baseFormat)),
+		slog.String("local_format", string(files.localFormat)),
+	)
+
 	// Read base config file
 	if files.baseFile == "" {
 		err = fmt.Errorf("no config file found in %s", cs.configDir)
@@ -227,9 +237,19 @@ func (cs *configService) ReadConfigFile(ctx context.Context, opts ...ReadConfigO
 	if files.localFile != "" {
 		if localConfig, localErr := os.ReadFile(files.localFile); localErr == nil {
 			var localSettings ShellTimeConfig
-			if unmarshalErr := unmarshalConfig(localConfig, files.localFormat, &localSettings); unmarshalErr == nil {
+			unmarshalErr := unmarshalConfig(localConfig, files.localFormat, &localSettings)
+			if unmarshalErr != nil {
+				slog.WarnContext(
+					ctx,
+					"failed to parse local config file",
+					slog.String("file", files.localFile),
+					slog.Any("err", unmarshalErr),
+				)
+			}
+			if unmarshalErr == nil {
 				mergeConfig(&config, &localSettings)
 			}
+
 		}
 	}
 

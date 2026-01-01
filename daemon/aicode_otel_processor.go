@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -198,10 +199,10 @@ func detectOtelSource(resource *resourcev1.Resource) string {
 	for _, attr := range resource.GetAttributes() {
 		if attr.GetKey() == "service.name" {
 			serviceName := attr.GetValue().GetStringValue()
-			switch serviceName {
-			case "claude-code":
+			if strings.Contains(serviceName, "claude") {
 				return model.AICodeOtelSourceClaudeCode
-			case "codex", "codex-cli", "openai-codex":
+			}
+			if strings.Contains(serviceName, "codex") {
 				return model.AICodeOtelSourceCodex
 			}
 		}
@@ -226,11 +227,13 @@ func extractResourceAttributes(resource *resourcev1.Resource) *model.AICodeOtelR
 		// Standard resource attributes
 		case "session.id":
 			attrs.SessionID = value.GetStringValue()
+		case "conversation.id":
+			attrs.ConversationID = value.GetStringValue()
 		case "app.version":
 			attrs.AppVersion = value.GetStringValue()
 		case "organization.id":
 			attrs.OrganizationID = value.GetStringValue()
-		case "user.account_uuid":
+		case "user.account_uuid", "user.account_id":
 			attrs.UserAccountUUID = value.GetStringValue()
 		case "terminal.type":
 			attrs.TerminalType = value.GetStringValue()
@@ -268,6 +271,7 @@ func extractResourceAttributes(resource *resourcev1.Resource) *model.AICodeOtelR
 func applyResourceAttributesToMetric(metric *model.AICodeOtelMetric, attrs *model.AICodeOtelResourceAttributes) {
 	// Standard resource attributes
 	metric.SessionID = attrs.SessionID
+	metric.ConversationID = attrs.ConversationID
 	metric.UserAccountUUID = attrs.UserAccountUUID
 	metric.OrganizationID = attrs.OrganizationID
 	metric.TerminalType = attrs.TerminalType
@@ -291,6 +295,7 @@ func applyResourceAttributesToMetric(metric *model.AICodeOtelMetric, attrs *mode
 func applyResourceAttributesToEvent(event *model.AICodeOtelEvent, attrs *model.AICodeOtelResourceAttributes) {
 	// Standard resource attributes
 	event.SessionID = attrs.SessionID
+	event.ConversationID = attrs.ConversationID
 	event.UserAccountUUID = attrs.UserAccountUUID
 	event.OrganizationID = attrs.OrganizationID
 	event.TerminalType = attrs.TerminalType
@@ -358,6 +363,7 @@ func (p *AICodeOtelProcessor) parseMetric(m *metricsv1.Metric, resourceAttrs *mo
 				MetricType: metricType,
 				Timestamp:  int64(dp.GetTimeUnixNano() / 1e9), // Convert to seconds
 				Value:      getDataPointValue(dp),
+				ClientType: source,
 			}
 			// Apply resource attributes first
 			applyResourceAttributesToMetric(&metric, resourceAttrs)
@@ -374,6 +380,7 @@ func (p *AICodeOtelProcessor) parseMetric(m *metricsv1.Metric, resourceAttrs *mo
 				MetricType: metricType,
 				Timestamp:  int64(dp.GetTimeUnixNano() / 1e9),
 				Value:      getDataPointValue(dp),
+				ClientType: source,
 			}
 			// Apply resource attributes first
 			applyResourceAttributesToMetric(&metric, resourceAttrs)
@@ -393,6 +400,12 @@ func (p *AICodeOtelProcessor) parseLogRecord(lr *logsv1.LogRecord, resourceAttrs
 	event := &model.AICodeOtelEvent{
 		EventID:   uuid.New().String(),
 		Timestamp: int64(lr.GetTimeUnixNano() / 1e9), // Convert to seconds
+
+		ClientType: source,
+	}
+
+	if event.Timestamp == 0 {
+		event.Timestamp = int64(lr.GetObservedTimeUnixNano() / 1e9) // Convert to seconds
 	}
 
 	// Apply resource attributes first
@@ -446,10 +459,12 @@ func (p *AICodeOtelProcessor) parseLogRecord(lr *logsv1.LogRecord, resourceAttrs
 					slog.Debug("AICodeOtel: Failed to parse tool_parameters", "error", err)
 				}
 			}
-		case "status_code":
+		case "status_code", "http.response.status_code":
 			event.StatusCode = getIntFromValue(value)
 		case "attempt":
 			event.Attempt = getIntFromValue(value)
+		case "error.message":
+			event.Error = value.GetStringValue()
 		case "language":
 			event.Language = value.GetStringValue()
 		// Codex-specific fields
@@ -457,6 +472,48 @@ func (p *AICodeOtelProcessor) parseLogRecord(lr *logsv1.LogRecord, resourceAttrs
 			event.ReasoningTokens = getIntFromValue(value)
 		case "provider":
 			event.Provider = value.GetStringValue()
+		// Codex-specific fields for tool_decision
+		case "call_id", "callId":
+			event.CallID = value.GetStringValue()
+		// Codex-specific fields for sse_event
+		case "event_kind", "eventKind":
+			event.EventKind = value.GetStringValue()
+		case "tool_tokens", "toolTokens":
+			event.ToolTokens = getIntFromValue(value)
+		// Codex-specific fields for conversation_starts
+		case "auth_mode", "authMode":
+			event.AuthMode = value.GetStringValue()
+		case "slug":
+			event.Slug = value.GetStringValue()
+		case "context_window", "contextWindow":
+			event.ContextWindow = getIntFromValue(value)
+		case "approval_policy", "approvalPolicy":
+			event.ApprovalPolicy = value.GetStringValue()
+		case "sandbox_policy", "sandboxPolicy":
+			event.SandboxPolicy = value.GetStringValue()
+		case "mcp_servers", "mcpServers":
+			event.MCPServers = getStringArrayFromValue(value)
+		case "profile":
+			event.Profile = value.GetStringValue()
+		case "reasoning_enabled", "reasoningEnabled":
+			event.ReasoningEnabled = getBoolFromValue(value)
+		// Codex-specific fields for tool_result
+		case "tool_arguments", "toolArguments":
+			if jsonStr := value.GetStringValue(); jsonStr != "" {
+				var args map[string]interface{}
+				if err := json.Unmarshal([]byte(jsonStr), &args); err == nil {
+					event.ToolArguments = args
+				} else {
+					slog.Debug("AICodeOtel: Failed to parse tool_arguments", "error", err)
+				}
+			}
+		case "tool_output", "toolOutput":
+			event.ToolOutput = value.GetStringValue()
+		case "prompt_encrypted", "promptEncrypted":
+			event.PromptEncrypted = getBoolFromValue(value)
+		// Codex uses conversation.id instead of session.id
+		case "conversation.id", "conversationId":
+			event.ConversationID = value.GetStringValue()
 		// Log record level attributes that override resource attrs
 		case "user.id":
 			event.UserID = value.GetStringValue()
@@ -468,7 +525,7 @@ func (p *AICodeOtelProcessor) parseLogRecord(lr *logsv1.LogRecord, resourceAttrs
 			event.AppVersion = value.GetStringValue()
 		case "organization.id":
 			event.OrganizationID = value.GetStringValue()
-		case "user.account_uuid":
+		case "user.account_uuid", "user.account_id":
 			event.UserAccountUUID = value.GetStringValue()
 		case "terminal.type":
 			event.TerminalType = value.GetStringValue()
@@ -550,6 +607,10 @@ func mapEventName(name string, source string) string {
 		return model.AICodeEventApiError
 	case "codex.exec_command":
 		return model.AICodeEventExecCommand
+	case "codex.conversation_starts":
+		return model.AICodeEventConversationStarts
+	case "codex.sse_event":
+		return model.AICodeEventSSEEvent
 	default:
 		return name // Return as-is if not in our map
 	}
@@ -609,6 +670,20 @@ func getFloatFromValue(value *commonv1.AnyValue) float64 {
 		}
 	}
 	return 0
+}
+
+// getStringArrayFromValue extracts a string array from an OTEL value
+func getStringArrayFromValue(value *commonv1.AnyValue) []string {
+	if arr := value.GetArrayValue(); arr != nil {
+		var result []string
+		for _, v := range arr.GetValues() {
+			if s := v.GetStringValue(); s != "" {
+				result = append(result, s)
+			}
+		}
+		return result
+	}
+	return nil
 }
 
 // applyMetricAttribute applies an attribute to a metric

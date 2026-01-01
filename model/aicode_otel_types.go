@@ -3,11 +3,11 @@ package model
 // AICodeOtelRequest is the main request to POST /api/v1/cc/otel
 // Flat structure without session - resource attributes are embedded in each metric/event
 type AICodeOtelRequest struct {
-	Host    string              `json:"host"`
-	Project string              `json:"project"`
-	Source  string              `json:"source,omitempty"` // "claude-code" or "codex" - identifies the CLI source
-	Events  []AICodeOtelEvent   `json:"events,omitempty"`
-	Metrics []AICodeOtelMetric  `json:"metrics,omitempty"`
+	Host    string             `json:"host"`
+	Project string             `json:"project"`
+	Source  string             `json:"source,omitempty"` // "claude-code" or "codex" - identifies the CLI source
+	Events  []AICodeOtelEvent  `json:"events,omitempty"`
+	Metrics []AICodeOtelMetric `json:"metrics,omitempty"`
 }
 
 // AICodeOtelResourceAttributes contains common resource-level attributes
@@ -15,6 +15,7 @@ type AICodeOtelRequest struct {
 type AICodeOtelResourceAttributes struct {
 	// Standard resource attributes
 	SessionID       string
+	ConversationID  string // Codex uses conversation.id instead of session.id
 	UserAccountUUID string
 	OrganizationID  string
 	TerminalType    string
@@ -58,14 +59,37 @@ type AICodeOtelEvent struct {
 	Error               string                 `json:"error,omitempty"`
 	PromptLength        int                    `json:"promptLength,omitempty"`
 	Prompt              string                 `json:"prompt,omitempty"`
+	PromptEncrypted     bool                   `json:"promptEncrypted,omitempty"` // Whether prompt is encrypted
 	ToolParameters      map[string]interface{} `json:"toolParameters,omitempty"`
 	StatusCode          int                    `json:"statusCode,omitempty"`
 	Attempt             int                    `json:"attempt,omitempty"`
 	Language            string                 `json:"language,omitempty"`
 	Provider            string                 `json:"provider,omitempty"` // Codex: provider (e.g., "openai")
 
+	// Codex-specific fields for tool_decision
+	CallID string `json:"callId,omitempty"`
+
+	// Codex-specific fields for sse_event
+	EventKind  string `json:"eventKind,omitempty"`
+	ToolTokens int    `json:"toolTokens,omitempty"`
+
+	// Codex-specific fields for conversation_starts
+	AuthMode         string   `json:"authMode,omitempty"`
+	Slug             string   `json:"slug,omitempty"`
+	ContextWindow    int      `json:"contextWindow,omitempty"`
+	ApprovalPolicy   string   `json:"approvalPolicy,omitempty"`
+	SandboxPolicy    string   `json:"sandboxPolicy,omitempty"`
+	MCPServers       []string `json:"mcpServers,omitempty"`
+	Profile          string   `json:"profile,omitempty"`
+	ReasoningEnabled bool     `json:"reasoningEnabled,omitempty"`
+
+	// Codex-specific fields for tool_result
+	ToolArguments map[string]interface{} `json:"toolArguments,omitempty"`
+	ToolOutput    string                 `json:"toolOutput,omitempty"`
+
 	// Embedded resource attributes (previously in session)
 	SessionID       string `json:"sessionId,omitempty"`
+	ConversationID  string `json:"conversationId,omitempty"` // Codex uses conversationId instead of sessionId
 	UserAccountUUID string `json:"userAccountUuid,omitempty"`
 	OrganizationID  string `json:"organizationId,omitempty"`
 	TerminalType    string `json:"terminalType,omitempty"`
@@ -83,6 +107,8 @@ type AICodeOtelEvent struct {
 	MachineName string `json:"machineName,omitempty"`
 	TeamID      string `json:"teamId,omitempty"`
 	Pwd         string `json:"pwd,omitempty"`
+
+	ClientType string `json:"clientType"` // claude_code, codex (defaults to claude_code)
 }
 
 // AICodeOtelMetric represents a metric data point from Claude Code or Codex
@@ -101,6 +127,7 @@ type AICodeOtelMetric struct {
 
 	// Embedded resource attributes (previously in session)
 	SessionID       string `json:"sessionId,omitempty"`
+	ConversationID  string `json:"conversationId,omitempty"` // Codex uses conversationId instead of sessionId
 	UserAccountUUID string `json:"userAccountUuid,omitempty"`
 	OrganizationID  string `json:"organizationId,omitempty"`
 	TerminalType    string `json:"terminalType,omitempty"`
@@ -118,6 +145,8 @@ type AICodeOtelMetric struct {
 	MachineName string `json:"machineName,omitempty"`
 	TeamID      string `json:"teamId,omitempty"`
 	Pwd         string `json:"pwd,omitempty"`
+
+	ClientType string `json:"clientType"` // claude_code, codex (defaults to claude_code)
 }
 
 // AICodeOtelResponse is the response from POST /api/v1/cc/otel
@@ -148,12 +177,14 @@ const (
 
 // AI Code OTEL event types (shared between Claude Code and Codex)
 const (
-	AICodeEventUserPrompt   = "user_prompt"
-	AICodeEventToolResult   = "tool_result"
-	AICodeEventApiRequest   = "api_request"
-	AICodeEventApiError     = "api_error"
-	AICodeEventToolDecision = "tool_decision"
-	AICodeEventExecCommand  = "exec_command" // Codex: shell command execution
+	AICodeEventUserPrompt         = "user_prompt"
+	AICodeEventToolResult         = "tool_result"
+	AICodeEventApiRequest         = "api_request"
+	AICodeEventApiError           = "api_error"
+	AICodeEventToolDecision       = "tool_decision"
+	AICodeEventExecCommand        = "exec_command"        // Codex: shell command execution
+	AICodeEventConversationStarts = "conversation_starts" // Codex: conversation/session start
+	AICodeEventSSEEvent           = "sse_event"           // Codex: SSE streaming event
 )
 
 // Token types for AICodeMetricTokenUsage
