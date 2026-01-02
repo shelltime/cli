@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.1.51](https://github.com/shelltime/cli/compare/v0.1.50...v0.1.51) (2026-01-02)
+
+
+### Code Refactoring
+
+* **model:** remove config discovery log statement ([b516a06](https://github.com/shelltime/cli/commit/b516a06e387d13c1c2e36a86c2b89ff2e3a4777e))
+* **model:** remove config discovery log statement ([9437ebe](https://github.com/shelltime/cli/commit/9437ebef3062280422ca5f89e1244dd411ef9b6c)), closes [#184](https://github.com/shelltime/cli/issues/184)
+
 ## [0.1.50](https://github.com/shelltime/cli/compare/v0.1.49...v0.1.50) (2026-01-01)
 
 
