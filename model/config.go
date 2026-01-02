@@ -200,15 +200,6 @@ func (cs *configService) ReadConfigFile(ctx context.Context, opts ...ReadConfigO
 	// Discover config files with priority
 	files := findConfigFiles(cs.configDir)
 
-	slog.InfoContext(
-		ctx,
-		"config.ReadConfigFile discovered config files",
-		slog.String("base", files.baseFile),
-		slog.String("local", files.localFile),
-		slog.String("base_format", string(files.baseFormat)),
-		slog.String("local_format", string(files.localFormat)),
-	)
-
 	// Read base config file
 	if files.baseFile == "" {
 		err = fmt.Errorf("no config file found in %s", cs.configDir)
