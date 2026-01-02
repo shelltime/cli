@@ -1,5 +1,38 @@
 # Changelog
 
+## [0.1.50](https://github.com/shelltime/cli/compare/v0.1.49...v0.1.50) (2026-01-01)
+
+
+### Features
+
+* **cli:** add OpenAI Codex OTEL integration support ([7ea24ba](https://github.com/shelltime/cli/commit/7ea24bad334312a66cabd4b8cff4e431b20be32c))
+* **cli:** add OpenAI Codex OTEL integration support ([c6ec301](https://github.com/shelltime/cli/commit/c6ec30132b23553263c73a9fcc88c1b7d15a4b97))
+* **daemon:** add complete Codex OTEL field support ([f464cb7](https://github.com/shelltime/cli/commit/f464cb78356616daa27c500feb53d413d7f0b755))
+* **daemon:** add missing Codex OTEL fields and aliases ([f7615c5](https://github.com/shelltime/cli/commit/f7615c589e45bee65ce153d7194c46f4cfa032fd))
+* **daemon:** add OTEL support for OpenAI Codex CLI ([22564ae](https://github.com/shelltime/cli/commit/22564ae2c57b28d65e485302a288407f2702e476))
+
+
+### Bug Fixes
+
+* **model:** add backward compatibility for deprecated ccotel config key ([e95bd0b](https://github.com/shelltime/cli/commit/e95bd0b5e3f38ed89a6c321adc839fb3a4cd7f71))
+* **model:** add backward compatibility for deprecated ccotel config key ([19e98c0](https://github.com/shelltime/cli/commit/19e98c06d0dd3b6a19a2dc83eea3e327ea44e5ca))
+
+
+### Code Refactoring
+
+* **daemon:** rename CCOtel to AICodeOtel for improved clarity ([d763a94](https://github.com/shelltime/cli/commit/d763a94769352a0a369a1f6f60dfcf8402f13bdd))
+
+
+### Documentation
+
+* **config:** convert all configuration examples from TOML to YAML ([b3846cf](https://github.com/shelltime/cli/commit/b3846cf73e98c3055684d0c56faa81e5080beeda))
+* **config:** convert all configuration examples from TOML to YAML ([46db14c](https://github.com/shelltime/cli/commit/46db14c50fec0984eacd19139abebbc0b105003c))
+
+
+### Miscellaneous Chores
+
+* release 0.1.50 ([0a810ff](https://github.com/shelltime/cli/commit/0a810ffbca414d94c7a1fe695797fc632575731c))
+
 ## [0.1.49](https://github.com/shelltime/cli/compare/v0.1.48...v0.1.49) (2025-12-28)
 
 
