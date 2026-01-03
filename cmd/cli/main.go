@@ -109,6 +109,7 @@ func main() {
 		commands.CCCommand,
 		commands.CodexCommand,
 		commands.SchemaCommand,
+		commands.RgCommand,
 	}
 	err = app.Run(os.Args)
 	if err != nil {
