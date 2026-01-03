@@ -24,6 +24,7 @@ shelltime daemon install    # Optional: background sync for <8ms latency
 | Command | Description |
 |---------|-------------|
 | `shelltime sync` | Sync pending commands to server |
+| `shelltime rg "pattern"` | Search synced commands (alias: `grep`) |
 | `shelltime q "prompt"` | AI-powered command suggestions |
 | `shelltime doctor` | Diagnose installation issues |
 | `shelltime web` | Open dashboard in browser |
