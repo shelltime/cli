@@ -8,7 +8,7 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/briandowns/spinner"
+	"github.com/malamtime/cli/stloader"
 	"github.com/gookit/color"
 	"github.com/malamtime/cli/model"
 	"github.com/olekukonko/tablewriter"
@@ -136,13 +136,16 @@ func commandGrep(c *cli.Context) error {
 		slog.Int("lastId", pagination.LastID))
 
 	// Show loading spinner
-	s := spinner.New(spinner.CharSets[35], 200*time.Millisecond)
-	s.Suffix = " Searching commands..."
-	s.Start()
+	l := stloader.NewLoader(stloader.LoaderConfig{
+		Text:          "Searching commands...",
+		EnableShining: true,
+		BaseColor:     stloader.RGB{R: 100, G: 180, B: 255},
+	})
+	l.Start()
 
 	// Fetch commands from server
 	result, err := model.FetchCommandsFromServer(ctx, endpoint, filter, pagination)
-	s.Stop()
+	l.Stop()
 	if err != nil {
 		if format == "json" {
 			errOutput := struct {
