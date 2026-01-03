@@ -14,34 +14,7 @@ import (
 	"go.opentelemetry.io/otel/trace"
 )
 
-// CommandEdge represents a single command from the server
-type CommandEdge struct {
-	ID              int     `json:"id"`
-	Shell           string  `json:"shell"`
-	SessionID       float64 `json:"sessionId"`
-	Command         string  `json:"command"`
-	MainCommand     string  `json:"mainCommand"`
-	Hostname        string  `json:"hostname"`
-	Username        string  `json:"username"`
-	Time            float64 `json:"time"`
-	EndTime         float64 `json:"endTime"`
-	Result          int     `json:"result"`
-	IsEncrypted     bool    `json:"isEncrypted"`
-	OriginalCommand string  `json:"originalCommand"`
-}
-
-// FetchCommandsData wraps the GraphQL data response
-type FetchCommandsData struct {
-	FetchCommands struct {
-		Count int           `json:"count"`
-		Edges []CommandEdge `json:"edges"`
-	} `json:"fetchCommands"`
-}
-
-// FetchCommandsResponse is the complete GraphQL response
-type FetchCommandsResponse = model.GraphQLResponse[FetchCommandsData]
-
-var RgCommand *cli.Command = &cli.Command{
+var GrepCommand *cli.Command = &cli.Command{
 	Name:      "rg",
 	Aliases:   []string{"grep"},
 	Usage:     "Search server-synced commands",
@@ -91,29 +64,24 @@ var RgCommand *cli.Command = &cli.Command{
 			Aliases: []string{"m"},
 			Usage:   "filter by main command (e.g., git, npm)",
 		},
-		&cli.Int64Flag{
-			Name:  "session",
-			Value: -1,
-			Usage: "filter by session ID (-1 means any)",
-		},
 		&cli.StringFlag{
 			Name:  "since",
-			Usage: "filter commands since time (RFC3339 format)",
+			Usage: "filter commands since date (2024, 2024-01, or 2024-01-15)",
 		},
 		&cli.StringFlag{
 			Name:  "until",
-			Usage: "filter commands until time (RFC3339 format)",
+			Usage: "filter commands until date (2024, 2024-01, or 2024-01-15)",
 		},
 	},
-	Action: commandRg,
+	Action: commandGrep,
 	OnUsageError: func(cCtx *cli.Context, err error, isSubcommand bool) error {
 		color.Red.Println(err.Error())
 		return nil
 	},
 }
 
-func commandRg(c *cli.Context) error {
-	ctx, span := commandTracer.Start(c.Context, "rg", trace.WithSpanKind(trace.SpanKindClient))
+func commandGrep(c *cli.Context) error {
+	ctx, span := commandTracer.Start(c.Context, "grep", trace.WithSpanKind(trace.SpanKindClient))
 	defer span.End()
 
 	SetupLogger(os.ExpandEnv("$HOME/" + model.COMMAND_BASE_STORAGE_FOLDER))
@@ -127,7 +95,7 @@ func commandRg(c *cli.Context) error {
 	// Get search text from args
 	searchText := c.Args().First()
 	if searchText == "" {
-		return fmt.Errorf("search text is required. Usage: shelltime rg <search-text>")
+		return fmt.Errorf("search text is required. Usage: shelltime grep <search-text>")
 	}
 
 	// Read config to get endpoint and token
@@ -146,132 +114,127 @@ func commandRg(c *cli.Context) error {
 	}
 
 	// Build filter
-	filter := buildCommandFilter(c, searchText)
+	filter, err := buildGrepFilter(c, searchText)
+	if err != nil {
+		return err
+	}
 
 	// Build pagination
-	pagination := map[string]interface{}{
-		"limit":  c.Int("limit"),
-		"offset": c.Int("offset"),
+	pagination := &model.SearchCommandsPagination{
+		Limit:  c.Int("limit"),
+		Offset: c.Int("offset"),
 	}
 
-	// Build variables
-	variables := map[string]interface{}{
-		"pagination": pagination,
-		"filter":     filter,
-	}
-
-	// GraphQL query
-	query := `query fetchCommands($pagination: InputPagination!, $filter: CommandFilter!) {
-		fetchCommands(pagination: $pagination, filter: $filter) {
-			count
-			edges {
-				id
-				shell
-				sessionId
-				command
-				mainCommand
-				hostname
-				username
-				time
-				endTime
-				result
-				isEncrypted
-				originalCommand
-			}
-		}
-	}`
-
-	var result FetchCommandsResponse
-	err = model.SendGraphQLRequest(model.GraphQLRequestOptions[FetchCommandsResponse]{
-		Context:   ctx,
-		Endpoint:  endpoint,
-		Query:     query,
-		Variables: variables,
-		Response:  &result,
-		Timeout:   time.Second * 30,
-	})
+	// Fetch commands from server
+	result, err := model.FetchCommandsFromServer(ctx, endpoint, filter, pagination)
 	if err != nil {
 		return fmt.Errorf("failed to fetch commands: %w", err)
 	}
 
-	commands := result.Data.FetchCommands.Edges
-	totalCount := result.Data.FetchCommands.Count
-
-	if len(commands) == 0 {
+	if len(result.Edges) == 0 {
 		color.Yellow.Println("No commands found matching your search")
 		return nil
 	}
 
 	// Output based on format
 	if format == "json" {
-		return outputRgJSON(commands, totalCount)
+		return outputGrepJSON(result.Edges, result.Count)
 	}
-	return outputRgTable(commands, totalCount, c.Int("limit"), c.Int("offset"))
+	return outputGrepTable(result.Edges, result.Count, c.Int("limit"), c.Int("offset"))
 }
 
-func buildCommandFilter(c *cli.Context, searchText string) map[string]interface{} {
-	filter := map[string]interface{}{
-		"shell":       []string{},
-		"sessionId":   []float64{},
-		"mainCommand": []string{},
-		"hostname":    []string{},
-		"username":    []string{},
-		"ip":          []string{},
-		"result":      []int{},
-		"time":        []float64{},
-		"command":     searchText,
+func buildGrepFilter(c *cli.Context, searchText string) (*model.SearchCommandsFilter, error) {
+	filter := &model.SearchCommandsFilter{
+		Shell:       []string{},
+		MainCommand: []string{},
+		Hostname:    []string{},
+		Username:    []string{},
+		IP:          []string{},
+		Result:      []int{},
+		Time:        []float64{},
+		SessionID:   []float64{},
+		Command:     searchText,
 	}
 
 	// Add optional filters if provided
 	if shell := c.String("shell"); shell != "" {
-		filter["shell"] = []string{shell}
+		filter.Shell = []string{shell}
 	}
 
 	if hostname := c.String("hostname"); hostname != "" {
-		filter["hostname"] = []string{hostname}
+		filter.Hostname = []string{hostname}
 	}
 
 	if username := c.String("username"); username != "" {
-		filter["username"] = []string{username}
+		filter.Username = []string{username}
 	}
 
 	if result := c.Int("result"); result >= 0 {
-		filter["result"] = []int{result}
+		filter.Result = []int{result}
 	}
 
 	if mainCmd := c.String("main-command"); mainCmd != "" {
-		filter["mainCommand"] = []string{mainCmd}
+		filter.MainCommand = []string{mainCmd}
 	}
 
-	if session := c.Int64("session"); session >= 0 {
-		filter["sessionId"] = []float64{float64(session)}
-	}
-
-	// Handle time filters
+	// Handle time filters with flexible date parsing
 	var timeFilters []float64
 	if since := c.String("since"); since != "" {
-		t, err := time.Parse(time.RFC3339, since)
-		if err == nil {
-			timeFilters = append(timeFilters, float64(t.UnixMilli()))
+		t, err := parseFlexibleDate(since, false)
+		if err != nil {
+			return nil, fmt.Errorf("invalid --since date: %w", err)
 		}
+		timeFilters = append(timeFilters, float64(t.UnixMilli()))
 	}
 	if until := c.String("until"); until != "" {
-		t, err := time.Parse(time.RFC3339, until)
-		if err == nil {
-			timeFilters = append(timeFilters, float64(t.UnixMilli()))
+		t, err := parseFlexibleDate(until, true)
+		if err != nil {
+			return nil, fmt.Errorf("invalid --until date: %w", err)
 		}
+		timeFilters = append(timeFilters, float64(t.UnixMilli()))
 	}
 	if len(timeFilters) > 0 {
-		filter["time"] = timeFilters
+		filter.Time = timeFilters
 	}
 
-	return filter
+	return filter, nil
 }
 
-func outputRgJSON(commands []CommandEdge, totalCount int) error {
+// parseFlexibleDate parses dates in formats: 2024, 2024-01, 2024-01-15
+// If isEndOfPeriod is true, returns end of the period (for --until)
+func parseFlexibleDate(s string, isEndOfPeriod bool) (time.Time, error) {
+	// Try year only: 2024
+	if t, err := time.Parse("2006", s); err == nil {
+		if isEndOfPeriod {
+			return time.Date(t.Year(), 12, 31, 23, 59, 59, 0, time.UTC), nil
+		}
+		return time.Date(t.Year(), 1, 1, 0, 0, 0, 0, time.UTC), nil
+	}
+
+	// Try year-month: 2024-01
+	if t, err := time.Parse("2006-01", s); err == nil {
+		if isEndOfPeriod {
+			// End of month: go to next month, then subtract 1 second
+			return t.AddDate(0, 1, 0).Add(-time.Second), nil
+		}
+		return time.Date(t.Year(), t.Month(), 1, 0, 0, 0, 0, time.UTC), nil
+	}
+
+	// Try year-month-day: 2024-01-15
+	if t, err := time.Parse("2006-01-02", s); err == nil {
+		if isEndOfPeriod {
+			return time.Date(t.Year(), t.Month(), t.Day(), 23, 59, 59, 0, time.UTC), nil
+		}
+		return time.Date(t.Year(), t.Month(), t.Day(), 0, 0, 0, 0, time.UTC), nil
+	}
+
+	return time.Time{}, fmt.Errorf("use format: 2024, 2024-01, or 2024-01-15")
+}
+
+func outputGrepJSON(commands []model.SearchCommandEdge, totalCount int) error {
 	output := struct {
-		TotalCount int           `json:"totalCount"`
-		Commands   []CommandEdge `json:"commands"`
+		TotalCount int                       `json:"totalCount"`
+		Commands   []model.SearchCommandEdge `json:"commands"`
 	}{
 		TotalCount: totalCount,
 		Commands:   commands,
@@ -285,7 +248,7 @@ func outputRgJSON(commands []CommandEdge, totalCount int) error {
 	return nil
 }
 
-func outputRgTable(commands []CommandEdge, totalCount, limit, offset int) error {
+func outputGrepTable(commands []model.SearchCommandEdge, totalCount, limit, offset int) error {
 	w := tablewriter.NewWriter(os.Stdout)
 	w.Header([]string{"COMMAND", "SHELL", "TIME", "END TIME", "DURATION(ms)", "STATUS", "USER", "HOST"})
 
