@@ -8,9 +8,8 @@ import (
 	"os/exec"
 	"runtime"
 	"strings"
-	"time"
 
-	"github.com/briandowns/spinner"
+	"github.com/malamtime/cli/stloader"
 	"github.com/gookit/color"
 	"github.com/malamtime/cli/model"
 	"github.com/urfave/cli/v2"
@@ -54,9 +53,13 @@ func commandQuery(c *cli.Context) error {
 		slog.Warn("Failed to get system context", slog.Any("err", err))
 	}
 
-	s := spinner.New(spinner.CharSets[35], 200*time.Millisecond)
-	s.Start()
-	defer s.Stop()
+	l := stloader.NewLoader(stloader.LoaderConfig{
+		Text:          "Querying AI...",
+		EnableShining: true,
+		BaseColor:     stloader.RGB{R: 100, G: 180, B: 255},
+	})
+	l.Start()
+	defer l.Stop()
 
 	// skip userId for now
 	userId := ""
@@ -64,12 +67,12 @@ func commandQuery(c *cli.Context) error {
 	// Query the AI
 	newCommand, err := aiService.QueryCommand(ctx, systemContext, userId)
 	if err != nil {
-		s.Stop()
+		l.Stop()
 		color.Red.Printf("❌ Failed to query AI: %v\n", err)
 		return err
 	}
 
-	s.Stop()
+	l.Stop()
 
 	// Trim the command
 	newCommand = strings.TrimSpace(newCommand)

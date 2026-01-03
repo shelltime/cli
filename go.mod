@@ -5,7 +5,6 @@ go 1.25
 require (
 	github.com/PromptPal/go-sdk v0.4.2
 	github.com/ThreeDotsLabs/watermill v1.5.1
-	github.com/briandowns/spinner v1.23.2
 	github.com/go-git/go-git/v5 v5.16.4
 	github.com/google/uuid v1.6.0
 	github.com/gookit/color v1.6.0

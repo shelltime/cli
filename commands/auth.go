@@ -8,7 +8,7 @@ import (
 	"os"
 	"time"
 
-	"github.com/briandowns/spinner"
+	"github.com/malamtime/cli/stloader"
 	"github.com/gookit/color"
 	"github.com/invopop/jsonschema"
 	"github.com/malamtime/cli/model"
@@ -118,22 +118,27 @@ func ApplyTokenByHandshake(_ctx context.Context, config model.ShellTimeConfig) (
 
 	color.Green.Println(fmt.Sprintf("Open %s to continue", feLink))
 
-	s := spinner.New(spinner.CharSets[35], 200*time.Millisecond)
-	s.Start()
+	l := stloader.NewLoader(stloader.LoaderConfig{
+		Text:          "Waiting for authentication...",
+		EnableShining: true,
+		BaseColor:     stloader.RGB{R: 100, G: 180, B: 255},
+	})
+	l.Start()
 	for {
 		if time.Since(startedAt) > 10*time.Minute {
+			l.Stop()
 			color.Red.Println(" ❌ Failed to authenticate. Please retry with `shelltime init` or contact shelltime team (annatar.he+shelltime.xyz@gmail.com)")
-			s.Stop()
 			return "", fmt.Errorf("authentication timeout")
 		}
 
 		token, err := hs.Check(ctx, hid)
 		if err != nil {
+			l.Stop()
 			return "", err
 		}
 		if token != "" {
+			l.Stop()
 			color.Green.Println(" ✅ You are ready to go!")
-			s.Stop()
 			return token, nil
 		}
 
