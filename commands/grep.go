@@ -144,7 +144,16 @@ func commandGrep(c *cli.Context) error {
 	result, err := model.FetchCommandsFromServer(ctx, endpoint, filter, pagination)
 	s.Stop()
 	if err != nil {
-		return fmt.Errorf("failed to fetch commands: %w", err)
+		if format == "json" {
+			errOutput := struct {
+				Error string `json:"error"`
+			}{Error: err.Error()}
+			jsonData, _ := json.MarshalIndent(errOutput, "", "  ")
+			fmt.Println(string(jsonData))
+		} else {
+			color.Red.Printf("Error: %s\n", err.Error())
+		}
+		return nil
 	}
 
 	slog.Debug("grep result",
