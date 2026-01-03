@@ -33,10 +33,10 @@ type SearchCommandsFilter struct {
 	Command     string    `json:"command,omitempty"`
 }
 
-// SearchCommandsPagination for pagination
+// SearchCommandsPagination for pagination (cursor-based)
 type SearchCommandsPagination struct {
+	LastID int `json:"lastId"`
 	Limit  int `json:"limit"`
-	Offset int `json:"offset"`
 }
 
 // SearchCommandsResult wraps the response

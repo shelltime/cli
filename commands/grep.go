@@ -3,6 +3,7 @@ package commands
 import (
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"os"
 	"strconv"
 	"time"
@@ -34,10 +35,9 @@ var GrepCommand *cli.Command = &cli.Command{
 			Usage:   "maximum number of results",
 		},
 		&cli.IntFlag{
-			Name:    "offset",
-			Aliases: []string{"o"},
-			Value:   0,
-			Usage:   "skip this many results (pagination)",
+			Name:  "last-id",
+			Value: 0,
+			Usage: "start after this command ID (for pagination)",
 		},
 		&cli.StringFlag{
 			Name:    "shell",
@@ -95,6 +95,10 @@ func commandGrep(c *cli.Context) error {
 
 	// Get search text from args
 	searchText := c.Args().First()
+	slog.Debug("grep command args",
+		slog.String("first", searchText),
+		slog.Int("nArgs", c.NArg()),
+		slog.Any("allArgs", c.Args().Slice()))
 	if searchText == "" {
 		return fmt.Errorf("search text is required. Usage: shelltime grep <search-text>")
 	}
@@ -122,9 +126,14 @@ func commandGrep(c *cli.Context) error {
 
 	// Build pagination
 	pagination := &model.SearchCommandsPagination{
+		LastID: c.Int("last-id"),
 		Limit:  c.Int("limit"),
-		Offset: c.Int("offset"),
 	}
+
+	slog.Debug("grep filter",
+		slog.String("command", filter.Command),
+		slog.Int("limit", pagination.Limit),
+		slog.Int("lastId", pagination.LastID))
 
 	// Show loading spinner
 	s := spinner.New(spinner.CharSets[35], 200*time.Millisecond)
@@ -138,6 +147,10 @@ func commandGrep(c *cli.Context) error {
 		return fmt.Errorf("failed to fetch commands: %w", err)
 	}
 
+	slog.Debug("grep result",
+		slog.Int("count", result.Count),
+		slog.Int("edges", len(result.Edges)))
+
 	if len(result.Edges) == 0 {
 		color.Yellow.Println("No commands found matching your search")
 		return nil
@@ -147,7 +160,7 @@ func commandGrep(c *cli.Context) error {
 	if format == "json" {
 		return outputGrepJSON(result.Edges, result.Count)
 	}
-	return outputGrepTable(result.Edges, result.Count, c.Int("limit"), c.Int("offset"))
+	return outputGrepTable(result.Edges, result.Count, c.Int("limit"))
 }
 
 func buildGrepFilter(c *cli.Context, searchText string) (*model.SearchCommandsFilter, error) {
@@ -255,10 +268,11 @@ func outputGrepJSON(commands []model.SearchCommandEdge, totalCount int) error {
 	return nil
 }
 
-func outputGrepTable(commands []model.SearchCommandEdge, totalCount, limit, offset int) error {
+func outputGrepTable(commands []model.SearchCommandEdge, totalCount, limit int) error {
 	w := tablewriter.NewWriter(os.Stdout)
-	w.Header([]string{"COMMAND", "SHELL", "TIME", "END TIME", "DURATION(ms)", "STATUS", "USER", "HOST"})
+	w.Header([]string{"ID", "COMMAND", "SHELL", "TIME", "DURATION(ms)", "STATUS", "USER", "HOST"})
 
+	var lastID int
 	for _, cmd := range commands {
 		// Use originalCommand if encrypted and available
 		displayCommand := cmd.Command
@@ -268,14 +282,14 @@ func outputGrepTable(commands []model.SearchCommandEdge, totalCount, limit, offs
 
 		// Convert milliseconds to time
 		startTime := time.UnixMilli(int64(cmd.Time))
-		endTime := time.UnixMilli(int64(cmd.EndTime))
 		duration := int64(cmd.EndTime - cmd.Time)
+		lastID = cmd.ID
 
 		w.Append([]string{
+			strconv.Itoa(cmd.ID),
 			displayCommand,
 			cmd.Shell,
 			startTime.Format(time.RFC3339),
-			endTime.Format(time.RFC3339),
 			strconv.FormatInt(duration, 10),
 			strconv.Itoa(cmd.Result),
 			cmd.Username,
@@ -288,10 +302,8 @@ func outputGrepTable(commands []model.SearchCommandEdge, totalCount, limit, offs
 	// Show result count summary
 	showing := len(commands)
 	if totalCount > showing {
-		color.Gray.Printf("\nShowing %d of %d total results (offset: %d)\n", showing, totalCount, offset)
-		if offset+limit < totalCount {
-			color.Gray.Printf("Use --offset %d to see more results\n", offset+limit)
-		}
+		color.Gray.Printf("\nShowing %d of %d total results\n", showing, totalCount)
+		color.Gray.Printf("Use --last-id %d to see more results\n", lastID)
 	}
 
 	return nil
