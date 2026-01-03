@@ -37,12 +37,11 @@ type LoaderConfig struct {
 	ShineInterval time.Duration
 	// BaseColor is the base text color (user-defined)
 	BaseColor RGB
-	// DarkTheme indicates if the terminal is in dark theme (highlighted char is 20% lighter)
-	DarkTheme bool
 	// Writer is the output writer (default: os.Stdout)
 	Writer io.Writer
 	// HideCursor hides the cursor while loading (default: true)
-	HideCursor bool
+	// Use pointer to distinguish between unset (nil, defaults to true) and explicitly false
+	HideCursor *bool
 }
 
 // Loader represents a terminal spinner with optional shining text effect
@@ -71,10 +70,11 @@ func NewLoader(cfg LoaderConfig) *Loader {
 	if cfg.Writer == nil {
 		cfg.Writer = os.Stdout
 	}
-	// HideCursor defaults to true (we check if explicitly set to false)
-	// Since bool zero value is false, we need a different approach
-	// For simplicity, we'll always hide cursor by default
-	cfg.HideCursor = true
+	// HideCursor defaults to true if not explicitly set
+	if cfg.HideCursor == nil {
+		hideCursor := true
+		cfg.HideCursor = &hideCursor
+	}
 
 	return &Loader{
 		config: cfg,
@@ -102,7 +102,7 @@ func (l *Loader) Start() {
 	l.highlightIndex = 0
 	l.mu.Unlock()
 
-	if l.config.HideCursor {
+	if *l.config.HideCursor {
 		fmt.Fprint(l.config.Writer, "\033[?25l") // Hide cursor
 	}
 
@@ -125,7 +125,7 @@ func (l *Loader) Stop() {
 	// Clear the line
 	fmt.Fprint(l.config.Writer, "\r\033[K")
 
-	if l.config.HideCursor {
+	if *l.config.HideCursor {
 		fmt.Fprint(l.config.Writer, "\033[?25h") // Show cursor
 	}
 }
@@ -167,38 +167,36 @@ func (l *Loader) animate() {
 		case <-l.stopChan:
 			return
 		case <-ticker.C:
-			l.render()
+			// Consolidate all shared state access within a single mutex lock
+			l.mu.Lock()
+			symbol := l.config.Symbols[l.symbolIdx]
+			text := l.config.Text
+			highlightIdx := l.highlightIndex
 
 			// Update highlight index for shining effect
 			if l.config.EnableShining {
-				l.mu.Lock()
-				textLen := len([]rune(l.config.Text))
+				textLen := len([]rune(text))
 				if textLen > 0 {
 					l.highlightIndex = (l.highlightIndex + 1) % textLen
 				}
-				l.mu.Unlock()
 			}
 
 			// Update spinner symbol at appropriate interval
 			spinCounter++
 			if spinCounter >= spinThreshold {
-				l.mu.Lock()
 				l.symbolIdx = (l.symbolIdx + 1) % len(l.config.Symbols)
-				l.mu.Unlock()
 				spinCounter = 0
 			}
+			l.mu.Unlock()
+
+			// Render outside the lock since it only reads local copies
+			l.renderWithValues(symbol, text, highlightIdx)
 		}
 	}
 }
 
-// render draws the current state to the terminal
-func (l *Loader) render() {
-	l.mu.Lock()
-	symbol := l.config.Symbols[l.symbolIdx]
-	text := l.config.Text
-	highlightIdx := l.highlightIndex
-	l.mu.Unlock()
-
+// renderWithValues draws the current state to the terminal with pre-fetched values
+func (l *Loader) renderWithValues(symbol, text string, highlightIdx int) {
 	var output strings.Builder
 	output.WriteString("\r\033[K") // Clear line first
 	output.WriteString(symbol)
@@ -206,7 +204,7 @@ func (l *Loader) render() {
 	if text != "" {
 		output.WriteString(" ")
 		if l.config.EnableShining {
-			output.WriteString(l.renderShiningText(text, highlightIdx))
+			l.renderShiningText(&output, text, highlightIdx)
 		} else {
 			output.WriteString(text)
 		}
@@ -215,33 +213,30 @@ func (l *Loader) render() {
 	fmt.Fprint(l.config.Writer, output.String())
 }
 
-// renderShiningText renders text with the shining effect
-func (l *Loader) renderShiningText(text string, highlightIdx int) string {
+// renderShiningText renders text with the shining effect directly to the builder
+func (l *Loader) renderShiningText(w *strings.Builder, text string, highlightIdx int) {
 	runes := []rune(text)
 	if len(runes) == 0 {
-		return ""
+		return
 	}
 
 	baseColor := l.config.BaseColor
 	highlightColor := lightenColor(baseColor)
 
-	var result strings.Builder
 	for i, r := range runes {
 		if r == ' ' {
-			result.WriteRune(r)
+			w.WriteRune(r)
 			continue
 		}
 
 		if i == highlightIdx {
-			result.WriteString(colorize(string(r), highlightColor))
+			fmt.Fprintf(w, "\033[38;2;%d;%d;%dm%c", highlightColor.R, highlightColor.G, highlightColor.B, r)
 		} else {
-			result.WriteString(colorize(string(r), baseColor))
+			fmt.Fprintf(w, "\033[38;2;%d;%d;%dm%c", baseColor.R, baseColor.G, baseColor.B, r)
 		}
 	}
 	// Reset color at the end
-	result.WriteString("\033[0m")
-
-	return result.String()
+	w.WriteString("\033[0m")
 }
 
 // lightenColor returns a color 20% lighter

@@ -27,8 +27,22 @@ func TestNewLoader(t *testing.T) {
 	if l.config.Writer == nil {
 		t.Error("Expected Writer to be set")
 	}
-	if !l.config.HideCursor {
+	if l.config.HideCursor == nil || !*l.config.HideCursor {
 		t.Error("Expected HideCursor to be true by default")
+	}
+}
+
+func TestNewLoaderWithHideCursorFalse(t *testing.T) {
+	hideCursor := false
+	l := NewLoader(LoaderConfig{
+		HideCursor: &hideCursor,
+	})
+
+	if l.config.HideCursor == nil {
+		t.Fatal("Expected HideCursor to be set")
+	}
+	if *l.config.HideCursor != false {
+		t.Error("Expected HideCursor to be false when explicitly set")
 	}
 }
 
