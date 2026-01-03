@@ -7,6 +7,7 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/briandowns/spinner"
 	"github.com/gookit/color"
 	"github.com/malamtime/cli/model"
 	"github.com/olekukonko/tablewriter"
@@ -125,8 +126,14 @@ func commandGrep(c *cli.Context) error {
 		Offset: c.Int("offset"),
 	}
 
+	// Show loading spinner
+	s := spinner.New(spinner.CharSets[35], 200*time.Millisecond)
+	s.Suffix = " Searching commands..."
+	s.Start()
+
 	// Fetch commands from server
 	result, err := model.FetchCommandsFromServer(ctx, endpoint, filter, pagination)
+	s.Stop()
 	if err != nil {
 		return fmt.Errorf("failed to fetch commands: %w", err)
 	}
