@@ -40,7 +40,8 @@ type CCStatuslineDailyCostResponse struct {
 	FetchUser struct {
 		AICodeOtel struct {
 			Analytics struct {
-				TotalCostUsd float64 `json:"totalCostUsd"`
+				TotalCostUsd        float64 `json:"totalCostUsd"`
+				TotalSessionSeconds int     `json:"totalSessionSeconds"`
 			} `json:"analytics"`
 		} `json:"aiCodeOtel"`
 	} `json:"fetchUser"`
@@ -52,6 +53,7 @@ const CCStatuslineDailyCostQuery = `query fetchAICodeOtelAnalytics($filter: AICo
 		aiCodeOtel {
 			analytics(filter: $filter) {
 				totalCostUsd
+				totalSessionSeconds
 			}
 		}
 	}

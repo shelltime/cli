@@ -16,8 +16,9 @@ var (
 
 // CCInfoCache holds the cached cost data for a time range
 type CCInfoCache struct {
-	TotalCostUSD float64
-	FetchedAt    time.Time
+	TotalCostUSD        float64
+	TotalSessionSeconds int
+	FetchedAt           time.Time
 }
 
 // CCInfoTimerService manages lazy-fetching of CC info data
@@ -174,9 +175,9 @@ func (s *CCInfoTimerService) fetchActiveRanges(ctx context.Context) {
 
 	// Fetch each active range
 	for _, timeRange := range ranges {
-		cost, err := s.fetchCost(ctx, timeRange)
+		info, err := s.fetchCCInfo(ctx, timeRange)
 		if err != nil {
-			slog.Warn("Failed to fetch CC info cost",
+			slog.Warn("Failed to fetch CC info",
 				slog.String("timeRange", string(timeRange)),
 				slog.Any("err", err))
 			continue
@@ -184,19 +185,27 @@ func (s *CCInfoTimerService) fetchActiveRanges(ctx context.Context) {
 
 		s.mu.Lock()
 		s.cache[timeRange] = CCInfoCache{
-			TotalCostUSD: cost,
-			FetchedAt:    time.Now(),
+			TotalCostUSD:        info.TotalCostUSD,
+			TotalSessionSeconds: info.TotalSessionSeconds,
+			FetchedAt:           time.Now(),
 		}
 		s.mu.Unlock()
 
-		slog.Debug("CC info cost updated",
+		slog.Debug("CC info updated",
 			slog.String("timeRange", string(timeRange)),
-			slog.Float64("cost", cost))
+			slog.Float64("cost", info.TotalCostUSD),
+			slog.Int("sessionSeconds", info.TotalSessionSeconds))
 	}
 }
 
-// fetchCost fetches the cost for a specific time range
-func (s *CCInfoTimerService) fetchCost(ctx context.Context, timeRange CCInfoTimeRange) (float64, error) {
+// ccInfoFetchResult holds the fetched CC info data
+type ccInfoFetchResult struct {
+	TotalCostUSD        float64
+	TotalSessionSeconds int
+}
+
+// fetchCCInfo fetches the CC info for a specific time range
+func (s *CCInfoTimerService) fetchCCInfo(ctx context.Context, timeRange CCInfoTimeRange) (ccInfoFetchResult, error) {
 	now := time.Now()
 	var since time.Time
 
@@ -244,8 +253,12 @@ func (s *CCInfoTimerService) fetchCost(ctx context.Context, timeRange CCInfoTime
 	})
 
 	if err != nil {
-		return 0, err
+		return ccInfoFetchResult{}, err
 	}
 
-	return result.Data.FetchUser.AICodeOtel.Analytics.TotalCostUsd, nil
+	analytics := result.Data.FetchUser.AICodeOtel.Analytics
+	return ccInfoFetchResult{
+		TotalCostUSD:        analytics.TotalCostUsd,
+		TotalSessionSeconds: analytics.TotalSessionSeconds,
+	}, nil
 }

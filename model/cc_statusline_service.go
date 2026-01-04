@@ -5,24 +5,24 @@ import (
 	"time"
 )
 
-// FetchDailyCostCached returns today's cost from cache or fetches from API
+// FetchDailyStatsCached returns today's stats from cache or fetches from API
 // This function is non-blocking - if cache is invalid, it returns cached/zero value
 // and triggers a background fetch
-func FetchDailyCostCached(ctx context.Context, config ShellTimeConfig) float64 {
+func FetchDailyStatsCached(ctx context.Context, config ShellTimeConfig) CCStatuslineDailyStats {
 	// Try cache first
-	if cost, valid := CCStatuslineCacheGet(); valid {
-		return cost
+	if stats, valid := CCStatuslineCacheGet(); valid {
+		return stats
 	}
 
 	// Try to start background fetch
-	go fetchDailyCostAsync(context.Background(), config)
+	go fetchDailyStatsAsync(context.Background(), config)
 
-	// Return last known value or 0
+	// Return last known value or zero
 	return CCStatuslineCacheGetLastValue()
 }
 
-// fetchDailyCostAsync fetches daily cost from API in the background
-func fetchDailyCostAsync(ctx context.Context, config ShellTimeConfig) {
+// fetchDailyStatsAsync fetches daily stats from API in the background
+func fetchDailyStatsAsync(ctx context.Context, config ShellTimeConfig) {
 	// Check if already fetching
 	if !CCStatuslineCacheStartFetch() {
 		return
@@ -37,18 +37,18 @@ func fetchDailyCostAsync(ctx context.Context, config ShellTimeConfig) {
 	}
 
 	// Fetch from API
-	cost, err := FetchDailyCost(ctx, config)
+	stats, err := FetchDailyStats(ctx, config)
 	if err != nil {
 		return
 	}
 
 	// Update cache
-	CCStatuslineCacheSet(cost)
+	CCStatuslineCacheSet(stats)
 }
 
-// FetchDailyCost fetches today's cost from the GraphQL API
-func FetchDailyCost(ctx context.Context, config ShellTimeConfig) (float64, error) {
-	ctx, span := modelTracer.Start(ctx, "statusline.fetchDailyCost")
+// FetchDailyStats fetches today's stats from the GraphQL API
+func FetchDailyStats(ctx context.Context, config ShellTimeConfig) (CCStatuslineDailyStats, error) {
+	ctx, span := modelTracer.Start(ctx, "statusline.fetchDailyStats")
 	defer span.End()
 
 	// Prepare time filter for today
@@ -82,8 +82,12 @@ func FetchDailyCost(ctx context.Context, config ShellTimeConfig) (float64, error
 	})
 
 	if err != nil {
-		return 0, err
+		return CCStatuslineDailyStats{}, err
 	}
 
-	return result.Data.FetchUser.AICodeOtel.Analytics.TotalCostUsd, nil
+	analytics := result.Data.FetchUser.AICodeOtel.Analytics
+	return CCStatuslineDailyStats{
+		Cost:           analytics.TotalCostUsd,
+		SessionSeconds: analytics.TotalSessionSeconds,
+	}, nil
 }

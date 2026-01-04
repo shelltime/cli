@@ -36,9 +36,10 @@ type CCInfoRequest struct {
 }
 
 type CCInfoResponse struct {
-	TotalCostUSD float64   `json:"totalCostUsd"`
-	TimeRange    string    `json:"timeRange"`
-	CachedAt     time.Time `json:"cachedAt"`
+	TotalCostUSD        float64   `json:"totalCostUsd"`
+	TotalSessionSeconds int       `json:"totalSessionSeconds"`
+	TimeRange           string    `json:"timeRange"`
+	CachedAt            time.Time `json:"cachedAt"`
 }
 
 // StatusResponse contains daemon status information
@@ -209,9 +210,10 @@ func (p *SocketHandler) handleCCInfo(conn net.Conn, msg SocketMessage) {
 	p.ccInfoTimer.NotifyActivity()
 
 	response := CCInfoResponse{
-		TotalCostUSD: cache.TotalCostUSD,
-		TimeRange:    string(timeRange),
-		CachedAt:     cache.FetchedAt,
+		TotalCostUSD:        cache.TotalCostUSD,
+		TotalSessionSeconds: cache.TotalSessionSeconds,
+		TimeRange:           string(timeRange),
+		CachedAt:            cache.FetchedAt,
 	}
 
 	encoder := json.NewEncoder(conn)

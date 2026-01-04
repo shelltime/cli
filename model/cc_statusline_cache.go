@@ -10,12 +10,19 @@ const (
 	DefaultStatuslineCacheTTL = 5 * time.Minute
 )
 
+// CCStatuslineDailyStats holds daily statistics for the statusline
+type CCStatuslineDailyStats struct {
+	Cost           float64
+	SessionSeconds int
+}
+
 // ccStatuslineCacheEntry represents a cached daily cost entry
 type ccStatuslineCacheEntry struct {
-	Date      string
-	CostUsd   float64
-	FetchedAt time.Time
-	TTL       time.Duration
+	Date           string
+	CostUsd        float64
+	SessionSeconds int
+	FetchedAt      time.Time
+	TTL            time.Duration
 }
 
 // IsValid returns true if the cache entry is still valid
@@ -46,37 +53,44 @@ var statuslineCache = &ccStatuslineCache{
 }
 
 // CCStatuslineCacheGet returns cached value and whether it's valid
-func CCStatuslineCacheGet() (float64, bool) {
+func CCStatuslineCacheGet() (CCStatuslineDailyStats, bool) {
 	statuslineCache.mu.RLock()
 	defer statuslineCache.mu.RUnlock()
 
 	if statuslineCache.entry != nil && statuslineCache.entry.IsValid() {
-		return statuslineCache.entry.CostUsd, true
+		return CCStatuslineDailyStats{
+			Cost:           statuslineCache.entry.CostUsd,
+			SessionSeconds: statuslineCache.entry.SessionSeconds,
+		}, true
 	}
-	return 0, false
+	return CCStatuslineDailyStats{}, false
 }
 
 // CCStatuslineCacheGetLastValue returns the last cached value even if expired
-func CCStatuslineCacheGetLastValue() float64 {
+func CCStatuslineCacheGetLastValue() CCStatuslineDailyStats {
 	statuslineCache.mu.RLock()
 	defer statuslineCache.mu.RUnlock()
 
 	if statuslineCache.entry != nil {
-		return statuslineCache.entry.CostUsd
+		return CCStatuslineDailyStats{
+			Cost:           statuslineCache.entry.CostUsd,
+			SessionSeconds: statuslineCache.entry.SessionSeconds,
+		}
 	}
-	return 0
+	return CCStatuslineDailyStats{}
 }
 
 // CCStatuslineCacheSet updates the cache with a new value
-func CCStatuslineCacheSet(costUsd float64) {
+func CCStatuslineCacheSet(stats CCStatuslineDailyStats) {
 	statuslineCache.mu.Lock()
 	defer statuslineCache.mu.Unlock()
 
 	statuslineCache.entry = &ccStatuslineCacheEntry{
-		Date:      time.Now().Format("2006-01-02"),
-		CostUsd:   costUsd,
-		FetchedAt: time.Now(),
-		TTL:       statuslineCache.ttl,
+		Date:           time.Now().Format("2006-01-02"),
+		CostUsd:        stats.Cost,
+		SessionSeconds: stats.SessionSeconds,
+		FetchedAt:      time.Now(),
+		TTL:            statuslineCache.ttl,
 	}
 	statuslineCache.fetching = false
 }
