@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.1.55](https://github.com/shelltime/cli/compare/v0.1.54...v0.1.55) (2026-01-04)
+
+
+### Bug Fixes
+
+* **daemon:** convert cc_info timestamps to UTC before sending to server ([c0dd522](https://github.com/shelltime/cli/commit/c0dd522d4d948d0b5ac670d9a083d6bd2d04f748))
+* **daemon:** convert cc_info timestamps to UTC before sending to server ([1b7b417](https://github.com/shelltime/cli/commit/1b7b417ddf7c19dbb0735cbac3c79080f802e4c3))
+
 ## [0.1.54](https://github.com/shelltime/cli/compare/v0.1.53...v0.1.54) (2026-01-04)
 
 
