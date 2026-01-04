@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.54](https://github.com/shelltime/cli/compare/v0.1.53...v0.1.54) (2026-01-04)
+
+
+### Documentation
+
+* add Claude Code statusline integration guide to README ([7f9e16c](https://github.com/shelltime/cli/commit/7f9e16c3413cafd1ba2f0235995e076c893a40e0))
+
 ## [0.1.53](https://github.com/shelltime/cli/compare/v0.1.52...v0.1.53) (2026-01-04)
 
 
