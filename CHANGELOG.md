@@ -1,5 +1,45 @@
 # Changelog
 
+## [0.1.52](https://github.com/shelltime/cli/compare/v0.1.51...v0.1.52) (2026-01-04)
+
+
+### Features
+
+* **cc:** add statusline command for Claude Code integration ([ed80256](https://github.com/shelltime/cli/commit/ed8025699411715bced935fea040ad882e1abea7))
+* **cc:** add statusline command for Claude Code integration ([0cd5c4a](https://github.com/shelltime/cli/commit/0cd5c4a4b12fe4f441663c675371d3e3fae3f630))
+* **cli:** add loading spinner to grep command ([e6462eb](https://github.com/shelltime/cli/commit/e6462eb015e2b5bea04957eb5efa5e45f5c766b3))
+* **cli:** add rg/grep command for searching synced commands ([8a55de2](https://github.com/shelltime/cli/commit/8a55de22543798d76dcc432d9598e8bf3606ac46))
+* **cli:** add rg/grep command for searching synced commands ([c883a27](https://github.com/shelltime/cli/commit/c883a274c612000e4743171796d5521b6e74c4f8))
+* **cli:** display API errors in grep output format ([69b7ec8](https://github.com/shelltime/cli/commit/69b7ec84652afe8407e8e6fc16bee71d8a22c9bd))
+* **daemon:** add cc_info socket handler with lazy timer for statusline ([8dac5fb](https://github.com/shelltime/cli/commit/8dac5fb4d8a83d03e3af3e705fc7b98c69c93905))
+* **stloader:** add terminal spinner package with shining text effect ([a9f7747](https://github.com/shelltime/cli/commit/a9f774719d87a87732b7fe6a0b92093506227f79))
+* **stloader:** add terminal spinner package with shining text effect ([736dc83](https://github.com/shelltime/cli/commit/736dc83059447ce55985f82b0887d895e1a71cf0))
+
+
+### Bug Fixes
+
+* **cc:** include output tokens in context calculation ([b994613](https://github.com/shelltime/cli/commit/b994613b4edd85798e367e3041d01c7530fd366c))
+* **cli:** use cursor-based pagination for grep command ([96816c3](https://github.com/shelltime/cli/commit/96816c31fa6de75f72f07bf4f2e9793a181d243d))
+* **stloader:** address PR review comments ([5d37a52](https://github.com/shelltime/cli/commit/5d37a523ab9ca01ccb9feff2361e87f7068757ad))
+* **test:** correct path handling and mock setup in test files ([2e5a1eb](https://github.com/shelltime/cli/commit/2e5a1ebcc947ffc88a9502a56b3badb00d732b12))
+
+
+### Code Refactoring
+
+* **cli:** split grep command API into model package ([523ca67](https://github.com/shelltime/cli/commit/523ca672bcad508d065e478099adb7a26564bef0))
+* **commands:** replace briandowns/spinner with stloader ([5f336b8](https://github.com/shelltime/cli/commit/5f336b84c4e7d2b2b602ef39ed2613b9fd84d8f5))
+
+
+### Miscellaneous Chores
+
+* release 0.1.52 ([0737e79](https://github.com/shelltime/cli/commit/0737e79e2a60b7196d287608d24babe0e4ddeb43))
+
+
+### Tests
+
+* add comprehensive test coverage for model, daemon, and commands packages ([1945bb2](https://github.com/shelltime/cli/commit/1945bb238cb122494b4e943513e269d8c3a6f2c3))
+* **daemon:** add comprehensive tests for cc_info statusline feature ([fb6be48](https://github.com/shelltime/cli/commit/fb6be48bc2c6f11ce659447b238e2a10e86bbb90))
+
 ## [0.1.51](https://github.com/shelltime/cli/compare/v0.1.50...v0.1.51) (2026-01-02)
 
 
