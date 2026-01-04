@@ -217,10 +217,14 @@ func (s *CCInfoTimerService) fetchCost(ctx context.Context, timeRange CCInfoTime
 		since = time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())
 	}
 
+	// Convert to UTC before sending to server to avoid timezone parsing issues
+	sinceUTC := since.UTC()
+	nowUTC := now.UTC()
+
 	variables := map[string]interface{}{
 		"filter": map[string]interface{}{
-			"since":      since.Format(time.RFC3339),
-			"until":      now.Format(time.RFC3339),
+			"since":      sinceUTC.Format(time.RFC3339),
+			"until":      nowUTC.Format(time.RFC3339),
 			"clientType": "claude_code",
 		},
 	}
