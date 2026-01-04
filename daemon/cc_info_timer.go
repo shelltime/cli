@@ -9,7 +9,7 @@ import (
 	"github.com/malamtime/cli/model"
 )
 
-const (
+var (
 	CCInfoFetchInterval     = 3 * time.Second
 	CCInfoInactivityTimeout = 3 * time.Minute
 )
