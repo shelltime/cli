@@ -8,10 +8,10 @@ import (
 	"os"
 	"time"
 
-	"github.com/malamtime/cli/stloader"
 	"github.com/gookit/color"
 	"github.com/invopop/jsonschema"
 	"github.com/malamtime/cli/model"
+	"github.com/malamtime/cli/stloader"
 	"github.com/pkg/browser"
 	"github.com/urfave/cli/v2"
 	"go.opentelemetry.io/otel/trace"
