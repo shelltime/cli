@@ -1,5 +1,28 @@
 # Changelog
 
+## [0.1.53](https://github.com/shelltime/cli/compare/v0.1.52...v0.1.53) (2026-01-04)
+
+
+### Features
+
+* **cli:** add config view command with JSON output support ([f403167](https://github.com/shelltime/cli/commit/f403167ae994f36c81c4a7d9ce901e862e6d86ac))
+* **cli:** add config view command with JSON output support ([f4f8fb9](https://github.com/shelltime/cli/commit/f4f8fb90eb0cb40957443ace05a11e399cb3d04f))
+
+
+### Bug Fixes
+
+* **daemon:** resolve race condition in cc_info timer startup ([0e89dd0](https://github.com/shelltime/cli/commit/0e89dd0b572f2d5cd819459ccb2b8ab6c39e2e0f))
+
+
+### Miscellaneous Chores
+
+* release 0.1.53 ([bdd34fe](https://github.com/shelltime/cli/commit/bdd34fe19491d1140f8567cff72acd01f073fd7c))
+
+
+### Styles
+
+* **commands:** apply go fmt formatting ([b8d3b91](https://github.com/shelltime/cli/commit/b8d3b919a38d15e15811db290d5fb5e66438f0e0))
+
 ## [0.1.52](https://github.com/shelltime/cli/compare/v0.1.51...v0.1.52) (2026-01-04)
 
 
