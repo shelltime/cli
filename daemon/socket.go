@@ -194,6 +194,8 @@ func (p *SocketHandler) handleStatus(conn net.Conn) {
 }
 
 func (p *SocketHandler) handleCCInfo(conn net.Conn, msg SocketMessage) {
+	slog.Debug("cc_info socket event received")
+
 	// Parse time range from payload, default to "today"
 	timeRange := CCInfoTimeRangeToday
 	if payload, ok := msg.Payload.(map[string]interface{}); ok {
@@ -202,9 +204,9 @@ func (p *SocketHandler) handleCCInfo(conn net.Conn, msg SocketMessage) {
 		}
 	}
 
-	// Notify activity and get cached cost
-	p.ccInfoTimer.NotifyActivity()
+	// Get cached cost first (marks range as active), then notify activity (starts timer)
 	cache := p.ccInfoTimer.GetCachedCost(timeRange)
+	p.ccInfoTimer.NotifyActivity()
 
 	response := CCInfoResponse{
 		TotalCostUSD: cache.TotalCostUSD,

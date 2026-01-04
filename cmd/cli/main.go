@@ -110,6 +110,7 @@ func main() {
 		commands.CodexCommand,
 		commands.SchemaCommand,
 		commands.GrepCommand,
+		commands.ConfigCommand,
 	}
 	err = app.Run(os.Args)
 	if err != nil {

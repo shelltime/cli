@@ -9,9 +9,9 @@ import (
 	"runtime"
 	"strings"
 
-	"github.com/malamtime/cli/stloader"
 	"github.com/gookit/color"
 	"github.com/malamtime/cli/model"
+	"github.com/malamtime/cli/stloader"
 	"github.com/urfave/cli/v2"
 )
 
