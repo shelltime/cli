@@ -68,6 +68,38 @@ Local overrides: `~/.shelltime/config.local.yaml`
 
 The daemon handles network sync in the background with automatic retry and buffering.
 
+## Claude Code Statusline Integration
+
+Display real-time cost and context usage in [Claude Code's status bar](https://code.claude.com/docs/en/statusline).
+
+### Setup
+
+Add to your Claude Code settings (`~/.claude/settings.json`):
+
+```json
+{
+  "statusLine": {
+    "type": "command",
+    "command": "shelltime cc statusline"
+  }
+}
+```
+
+The status line will display:
+
+```
+🤖 Opus | 💰 $0.12 | 📊 $3.45 | 📈 45%
+```
+
+| Section | Description |
+|---------|-------------|
+| 🤖 Model | Current model name |
+| 💰 Session | Current session cost |
+| 📊 Today | Today's total cost (requires daemon + OTEL) |
+| 📈 Context | Context window usage % |
+
+For full details, see [Claude Code Statusline Guide](docs/CC_STATUSLINE.md).
+
 ## Security
 
 - **Data Masking**: Sensitive info automatically redacted
