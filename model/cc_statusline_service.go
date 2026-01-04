@@ -55,10 +55,14 @@ func FetchDailyCost(ctx context.Context, config ShellTimeConfig) (float64, error
 	now := time.Now()
 	startOfDay := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())
 
+	// Convert to UTC before sending to server to avoid timezone parsing issues
+	startOfDayUTC := startOfDay.UTC()
+	nowUTC := now.UTC()
+
 	variables := map[string]interface{}{
 		"filter": map[string]interface{}{
-			"since":      startOfDay.Format(time.RFC3339),
-			"until":      now.Format(time.RFC3339),
+			"since":      startOfDayUTC.Format(time.RFC3339),
+			"until":      nowUTC.Format(time.RFC3339),
 			"clientType": "claude_code",
 		},
 	}
