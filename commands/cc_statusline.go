@@ -16,8 +16,8 @@ import (
 )
 
 var CCStatuslineCommand = &cli.Command{
-	Name:  "statusline",
-	Usage: "Output statusline for Claude Code (reads JSON from stdin)",
+	Name:   "statusline",
+	Usage:  "Output statusline for Claude Code (reads JSON from stdin)",
 	Action: commandCCStatusline,
 }
 
@@ -96,6 +96,7 @@ func calculateContextPercent(cw model.CCStatuslineContextWindow) float64 {
 	// Use current_usage if available for accurate context window state
 	if cw.CurrentUsage != nil {
 		currentTokens := cw.CurrentUsage.InputTokens +
+			cw.CurrentUsage.OutputTokens +
 			cw.CurrentUsage.CacheCreationInputTokens +
 			cw.CurrentUsage.CacheReadInputTokens
 		return float64(currentTokens) / float64(cw.ContextWindowSize) * 100
