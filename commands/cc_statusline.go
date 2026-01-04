@@ -44,15 +44,15 @@ func commandCCStatusline(c *cli.Context) error {
 	// Calculate context percentage
 	contextPercent := calculateContextPercent(data.ContextWindow)
 
-	// Get daily cost - try daemon first, fallback to direct API
-	var dailyCost float64
+	// Get daily stats - try daemon first, fallback to direct API
+	var dailyStats model.CCStatuslineDailyStats
 	config, err := configService.ReadConfigFile(ctx)
 	if err == nil {
-		dailyCost = getDailyCostWithDaemonFallback(ctx, config)
+		dailyStats = getDailyStatsWithDaemonFallback(ctx, config)
 	}
 
 	// Format and output
-	output := formatStatuslineOutput(data.Model.DisplayName, data.Cost.TotalCostUSD, dailyCost, contextPercent)
+	output := formatStatuslineOutput(data.Model.DisplayName, data.Cost.TotalCostUSD, dailyStats.Cost, dailyStats.SessionSeconds, contextPercent)
 	fmt.Println(output)
 
 	return nil
@@ -108,7 +108,7 @@ func calculateContextPercent(cw model.CCStatuslineContextWindow) float64 {
 	return float64(currentTokens) / float64(cw.ContextWindowSize) * 100
 }
 
-func formatStatuslineOutput(modelName string, sessionCost, dailyCost, contextPercent float64) string {
+func formatStatuslineOutput(modelName string, sessionCost, dailyCost float64, sessionSeconds int, contextPercent float64) string {
 	var parts []string
 
 	// Model name
@@ -127,6 +127,14 @@ func formatStatuslineOutput(modelName string, sessionCost, dailyCost, contextPer
 		parts = append(parts, color.Gray.Sprint("📊 -"))
 	}
 
+	// AI agent time (magenta)
+	if sessionSeconds > 0 {
+		timeStr := color.Magenta.Sprintf("⏱️ %s", formatSessionDuration(sessionSeconds))
+		parts = append(parts, timeStr)
+	} else {
+		parts = append(parts, color.Gray.Sprint("⏱️ -"))
+	}
+
 	// Context percentage with color coding
 	var contextStr string
 	switch {
@@ -143,12 +151,27 @@ func formatStatuslineOutput(modelName string, sessionCost, dailyCost, contextPer
 }
 
 func outputFallback() {
-	fmt.Println(color.Gray.Sprint("🤖 - | 💰 - | 📊 - | 📈 -%"))
+	fmt.Println(color.Gray.Sprint("🤖 - | 💰 - | 📊 - | ⏱️ - | 📈 -%"))
 }
 
-// getDailyCostWithDaemonFallback tries to get daily cost from daemon first,
+// formatSessionDuration formats seconds into a human-readable duration
+func formatSessionDuration(totalSeconds int) string {
+	hours := totalSeconds / 3600
+	minutes := (totalSeconds % 3600) / 60
+	seconds := totalSeconds % 60
+
+	if hours > 0 {
+		return fmt.Sprintf("%dh%dm", hours, minutes)
+	}
+	if minutes > 0 {
+		return fmt.Sprintf("%dm%ds", minutes, seconds)
+	}
+	return fmt.Sprintf("%ds", seconds)
+}
+
+// getDailyStatsWithDaemonFallback tries to get daily stats from daemon first,
 // falls back to direct API if daemon is unavailable
-func getDailyCostWithDaemonFallback(ctx context.Context, config model.ShellTimeConfig) float64 {
+func getDailyStatsWithDaemonFallback(ctx context.Context, config model.ShellTimeConfig) model.CCStatuslineDailyStats {
 	socketPath := config.SocketPath
 	if socketPath == "" {
 		socketPath = model.DefaultSocketPath
@@ -158,10 +181,13 @@ func getDailyCostWithDaemonFallback(ctx context.Context, config model.ShellTimeC
 	if daemon.IsSocketReady(ctx, socketPath) {
 		resp, err := daemon.RequestCCInfo(socketPath, daemon.CCInfoTimeRangeToday, 50*time.Millisecond)
 		if err == nil && resp != nil {
-			return resp.TotalCostUSD
+			return model.CCStatuslineDailyStats{
+				Cost:           resp.TotalCostUSD,
+				SessionSeconds: resp.TotalSessionSeconds,
+			}
 		}
 	}
 
 	// Fallback to direct API (existing behavior)
-	return model.FetchDailyCostCached(ctx, config)
+	return model.FetchDailyStatsCached(ctx, config)
 }

@@ -34,7 +34,8 @@ func (s *CCInfoTimerTestSuite) SetupSuite() {
 					"fetchUser": map[string]interface{}{
 						"aiCodeOtel": map[string]interface{}{
 							"analytics": map[string]interface{}{
-								"totalCostUsd": 5.42,
+								"totalCostUsd":        5.42,
+								"totalSessionSeconds": 1800,
 							},
 						},
 					},
@@ -109,17 +110,20 @@ func (s *CCInfoTimerTestSuite) TestGetCachedCost_ReturnsCachedValue() {
 
 	// Manually set cache
 	expectedCost := 10.50
+	expectedSessionSeconds := 900
 	expectedTime := time.Now()
 	service.mu.Lock()
 	service.cache[CCInfoTimeRangeToday] = CCInfoCache{
-		TotalCostUSD: expectedCost,
-		FetchedAt:    expectedTime,
+		TotalCostUSD:        expectedCost,
+		TotalSessionSeconds: expectedSessionSeconds,
+		FetchedAt:           expectedTime,
 	}
 	service.mu.Unlock()
 
 	cache := service.GetCachedCost(CCInfoTimeRangeToday)
 
 	assert.Equal(s.T(), expectedCost, cache.TotalCostUSD)
+	assert.Equal(s.T(), expectedSessionSeconds, cache.TotalSessionSeconds)
 	assert.Equal(s.T(), expectedTime, cache.FetchedAt)
 }
 
@@ -129,9 +133,9 @@ func (s *CCInfoTimerTestSuite) TestGetCachedCost_MultipleRanges() {
 
 	// Set different values for different ranges
 	service.mu.Lock()
-	service.cache[CCInfoTimeRangeToday] = CCInfoCache{TotalCostUSD: 1.0}
-	service.cache[CCInfoTimeRangeWeek] = CCInfoCache{TotalCostUSD: 7.0}
-	service.cache[CCInfoTimeRangeMonth] = CCInfoCache{TotalCostUSD: 30.0}
+	service.cache[CCInfoTimeRangeToday] = CCInfoCache{TotalCostUSD: 1.0, TotalSessionSeconds: 100}
+	service.cache[CCInfoTimeRangeWeek] = CCInfoCache{TotalCostUSD: 7.0, TotalSessionSeconds: 700}
+	service.cache[CCInfoTimeRangeMonth] = CCInfoCache{TotalCostUSD: 30.0, TotalSessionSeconds: 3000}
 	service.mu.Unlock()
 
 	todayCache := service.GetCachedCost(CCInfoTimeRangeToday)
@@ -139,8 +143,11 @@ func (s *CCInfoTimerTestSuite) TestGetCachedCost_MultipleRanges() {
 	monthCache := service.GetCachedCost(CCInfoTimeRangeMonth)
 
 	assert.Equal(s.T(), 1.0, todayCache.TotalCostUSD)
+	assert.Equal(s.T(), 100, todayCache.TotalSessionSeconds)
 	assert.Equal(s.T(), 7.0, weekCache.TotalCostUSD)
+	assert.Equal(s.T(), 700, weekCache.TotalSessionSeconds)
 	assert.Equal(s.T(), 30.0, monthCache.TotalCostUSD)
+	assert.Equal(s.T(), 3000, monthCache.TotalSessionSeconds)
 }
 
 // Timer Lifecycle Tests
@@ -359,7 +366,7 @@ func (s *CCInfoTimerTestSuite) TestFetchActiveRanges_APIError() {
 	// Set initial cache value
 	service.mu.Lock()
 	service.activeRanges[CCInfoTimeRangeToday] = true
-	service.cache[CCInfoTimeRangeToday] = CCInfoCache{TotalCostUSD: 1.23}
+	service.cache[CCInfoTimeRangeToday] = CCInfoCache{TotalCostUSD: 1.23, TotalSessionSeconds: 600}
 	service.mu.Unlock()
 
 	service.fetchActiveRanges(context.Background())
@@ -369,45 +376,49 @@ func (s *CCInfoTimerTestSuite) TestFetchActiveRanges_APIError() {
 	cache := service.cache[CCInfoTimeRangeToday]
 	service.mu.RUnlock()
 	assert.Equal(s.T(), 1.23, cache.TotalCostUSD)
+	assert.Equal(s.T(), 600, cache.TotalSessionSeconds)
 }
 
-func (s *CCInfoTimerTestSuite) TestFetchCost_TodayRange() {
+func (s *CCInfoTimerTestSuite) TestFetchCCInfo_TodayRange() {
 	config := &model.ShellTimeConfig{
 		Token:       "test-token",
 		APIEndpoint: s.server.URL,
 	}
 	service := NewCCInfoTimerService(config)
 
-	cost, err := service.fetchCost(context.Background(), CCInfoTimeRangeToday)
+	result, err := service.fetchCCInfo(context.Background(), CCInfoTimeRangeToday)
 
 	assert.NoError(s.T(), err)
-	assert.Equal(s.T(), 5.42, cost)
+	assert.Equal(s.T(), 5.42, result.TotalCostUSD)
+	assert.Equal(s.T(), 1800, result.TotalSessionSeconds)
 }
 
-func (s *CCInfoTimerTestSuite) TestFetchCost_WeekRange() {
+func (s *CCInfoTimerTestSuite) TestFetchCCInfo_WeekRange() {
 	config := &model.ShellTimeConfig{
 		Token:       "test-token",
 		APIEndpoint: s.server.URL,
 	}
 	service := NewCCInfoTimerService(config)
 
-	cost, err := service.fetchCost(context.Background(), CCInfoTimeRangeWeek)
+	result, err := service.fetchCCInfo(context.Background(), CCInfoTimeRangeWeek)
 
 	assert.NoError(s.T(), err)
-	assert.Equal(s.T(), 5.42, cost)
+	assert.Equal(s.T(), 5.42, result.TotalCostUSD)
+	assert.Equal(s.T(), 1800, result.TotalSessionSeconds)
 }
 
-func (s *CCInfoTimerTestSuite) TestFetchCost_MonthRange() {
+func (s *CCInfoTimerTestSuite) TestFetchCCInfo_MonthRange() {
 	config := &model.ShellTimeConfig{
 		Token:       "test-token",
 		APIEndpoint: s.server.URL,
 	}
 	service := NewCCInfoTimerService(config)
 
-	cost, err := service.fetchCost(context.Background(), CCInfoTimeRangeMonth)
+	result, err := service.fetchCCInfo(context.Background(), CCInfoTimeRangeMonth)
 
 	assert.NoError(s.T(), err)
-	assert.Equal(s.T(), 5.42, cost)
+	assert.Equal(s.T(), 5.42, result.TotalCostUSD)
+	assert.Equal(s.T(), 1800, result.TotalSessionSeconds)
 }
 
 // Concurrency Tests

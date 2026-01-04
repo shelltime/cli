@@ -58,24 +58,30 @@ func TestCCStatuslineCacheGetSet(t *testing.T) {
 	statuslineCache.mu.Unlock()
 
 	// Initially cache should be empty
-	cost, valid := CCStatuslineCacheGet()
+	stats, valid := CCStatuslineCacheGet()
 	if valid {
 		t.Error("cache should initially be invalid")
 	}
-	if cost != 0 {
-		t.Errorf("Expected 0 cost, got %f", cost)
+	if stats.Cost != 0 {
+		t.Errorf("Expected 0 cost, got %f", stats.Cost)
+	}
+	if stats.SessionSeconds != 0 {
+		t.Errorf("Expected 0 session seconds, got %d", stats.SessionSeconds)
 	}
 
 	// Set a value
-	CCStatuslineCacheSet(2.50)
+	CCStatuslineCacheSet(CCStatuslineDailyStats{Cost: 2.50, SessionSeconds: 1800})
 
 	// Now cache should be valid
-	cost, valid = CCStatuslineCacheGet()
+	stats, valid = CCStatuslineCacheGet()
 	if !valid {
 		t.Error("cache should be valid after set")
 	}
-	if cost != 2.50 {
-		t.Errorf("Expected 2.50, got %f", cost)
+	if stats.Cost != 2.50 {
+		t.Errorf("Expected 2.50, got %f", stats.Cost)
+	}
+	if stats.SessionSeconds != 1800 {
+		t.Errorf("Expected 1800, got %d", stats.SessionSeconds)
 	}
 }
 
@@ -85,17 +91,25 @@ func TestCCStatuslineCacheGetLastValue(t *testing.T) {
 	statuslineCache.entry = nil
 	statuslineCache.mu.Unlock()
 
-	// No entry - should return 0
-	if CCStatuslineCacheGetLastValue() != 0 {
-		t.Error("Expected 0 for nil entry")
+	// No entry - should return zero values
+	stats := CCStatuslineCacheGetLastValue()
+	if stats.Cost != 0 {
+		t.Errorf("Expected 0 for nil entry, got %f", stats.Cost)
+	}
+	if stats.SessionSeconds != 0 {
+		t.Errorf("Expected 0 session seconds for nil entry, got %d", stats.SessionSeconds)
 	}
 
 	// Set a value
-	CCStatuslineCacheSet(3.75)
+	CCStatuslineCacheSet(CCStatuslineDailyStats{Cost: 3.75, SessionSeconds: 2400})
 
 	// Should return the value
-	if CCStatuslineCacheGetLastValue() != 3.75 {
-		t.Errorf("Expected 3.75, got %f", CCStatuslineCacheGetLastValue())
+	stats = CCStatuslineCacheGetLastValue()
+	if stats.Cost != 3.75 {
+		t.Errorf("Expected 3.75, got %f", stats.Cost)
+	}
+	if stats.SessionSeconds != 2400 {
+		t.Errorf("Expected 2400, got %d", stats.SessionSeconds)
 	}
 
 	// Manually expire the entry but keep it
@@ -104,8 +118,9 @@ func TestCCStatuslineCacheGetLastValue(t *testing.T) {
 	statuslineCache.mu.Unlock()
 
 	// GetLastValue should still return the value even if expired
-	if CCStatuslineCacheGetLastValue() != 3.75 {
-		t.Errorf("Expected 3.75 even when expired, got %f", CCStatuslineCacheGetLastValue())
+	stats = CCStatuslineCacheGetLastValue()
+	if stats.Cost != 3.75 {
+		t.Errorf("Expected 3.75 even when expired, got %f", stats.Cost)
 	}
 
 	// But CCStatuslineCacheGet should return invalid
@@ -168,7 +183,7 @@ func TestCCStatuslineCacheSet_ClearsFetching(t *testing.T) {
 	statuslineCache.mu.Unlock()
 
 	// Set value
-	CCStatuslineCacheSet(1.00)
+	CCStatuslineCacheSet(CCStatuslineDailyStats{Cost: 1.00, SessionSeconds: 60})
 
 	// Verify fetching is false
 	statuslineCache.mu.RLock()
@@ -208,7 +223,7 @@ func TestCCStatuslineCache_ConcurrentAccess(t *testing.T) {
 	// Concurrent writes
 	for i := 0; i < 5; i++ {
 		go func(val float64) {
-			CCStatuslineCacheSet(val)
+			CCStatuslineCacheSet(CCStatuslineDailyStats{Cost: val, SessionSeconds: int(val) * 100})
 			done <- true
 		}(float64(i))
 	}
