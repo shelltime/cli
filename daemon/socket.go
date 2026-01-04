@@ -20,7 +20,26 @@ const (
 	SocketMessageTypeSync      SocketMessageType = "sync"
 	SocketMessageTypeHeartbeat SocketMessageType = "heartbeat"
 	SocketMessageTypeStatus    SocketMessageType = "status"
+	SocketMessageTypeCCInfo    SocketMessageType = "cc_info"
 )
+
+type CCInfoTimeRange string
+
+const (
+	CCInfoTimeRangeToday CCInfoTimeRange = "today"
+	CCInfoTimeRangeWeek  CCInfoTimeRange = "week"
+	CCInfoTimeRangeMonth CCInfoTimeRange = "month"
+)
+
+type CCInfoRequest struct {
+	TimeRange CCInfoTimeRange `json:"timeRange"`
+}
+
+type CCInfoResponse struct {
+	TotalCostUSD float64   `json:"totalCostUsd"`
+	TimeRange    string    `json:"timeRange"`
+	CachedAt     time.Time `json:"cachedAt"`
+}
 
 // StatusResponse contains daemon status information
 type StatusResponse struct {
@@ -41,15 +60,17 @@ type SocketHandler struct {
 	config   *model.ShellTimeConfig
 	listener net.Listener
 
-	channel  *GoChannel
-	stopChan chan struct{}
+	channel     *GoChannel
+	stopChan    chan struct{}
+	ccInfoTimer *CCInfoTimerService
 }
 
 func NewSocketHandler(config *model.ShellTimeConfig, ch *GoChannel) *SocketHandler {
 	return &SocketHandler{
-		config:   config,
-		channel:  ch,
-		stopChan: make(chan struct{}),
+		config:      config,
+		channel:     ch,
+		stopChan:    make(chan struct{}),
+		ccInfoTimer: NewCCInfoTimerService(config),
 	}
 }
 
@@ -80,6 +101,9 @@ func (p *SocketHandler) Start() error {
 func (p *SocketHandler) Stop() {
 	p.channel.Close()
 	close(p.stopChan)
+	if p.ccInfoTimer != nil {
+		p.ccInfoTimer.Stop()
+	}
 	if p.listener != nil {
 		p.listener.Close()
 	}
@@ -146,6 +170,8 @@ func (p *SocketHandler) handleConnection(conn net.Conn) {
 		// Send acknowledgment to client
 		encoder := json.NewEncoder(conn)
 		encoder.Encode(map[string]string{"status": "ok"})
+	case SocketMessageTypeCCInfo:
+		p.handleCCInfo(conn, msg)
 	default:
 		slog.Error("Unknown message type:", slog.String("messageType", string(msg.Type)))
 	}
@@ -164,6 +190,31 @@ func (p *SocketHandler) handleStatus(conn net.Conn) {
 	encoder := json.NewEncoder(conn)
 	if err := encoder.Encode(response); err != nil {
 		slog.Error("Error encoding status response", slog.Any("err", err))
+	}
+}
+
+func (p *SocketHandler) handleCCInfo(conn net.Conn, msg SocketMessage) {
+	// Parse time range from payload, default to "today"
+	timeRange := CCInfoTimeRangeToday
+	if payload, ok := msg.Payload.(map[string]interface{}); ok {
+		if tr, ok := payload["timeRange"].(string); ok {
+			timeRange = CCInfoTimeRange(tr)
+		}
+	}
+
+	// Notify activity and get cached cost
+	p.ccInfoTimer.NotifyActivity()
+	cache := p.ccInfoTimer.GetCachedCost(timeRange)
+
+	response := CCInfoResponse{
+		TotalCostUSD: cache.TotalCostUSD,
+		TimeRange:    string(timeRange),
+		CachedAt:     cache.FetchedAt,
+	}
+
+	encoder := json.NewEncoder(conn)
+	if err := encoder.Encode(response); err != nil {
+		slog.Error("Error encoding cc_info response", slog.Any("err", err))
 	}
 }
 

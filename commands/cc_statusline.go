@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/gookit/color"
+	"github.com/malamtime/cli/daemon"
 	"github.com/malamtime/cli/model"
 	"github.com/urfave/cli/v2"
 )
@@ -43,11 +44,11 @@ func commandCCStatusline(c *cli.Context) error {
 	// Calculate context percentage
 	contextPercent := calculateContextPercent(data.ContextWindow)
 
-	// Get daily cost (cached) - need to read config first
+	// Get daily cost - try daemon first, fallback to direct API
 	var dailyCost float64
 	config, err := configService.ReadConfigFile(ctx)
 	if err == nil {
-		dailyCost = model.FetchDailyCostCached(ctx, config)
+		dailyCost = getDailyCostWithDaemonFallback(ctx, config)
 	}
 
 	// Format and output
@@ -143,4 +144,24 @@ func formatStatuslineOutput(modelName string, sessionCost, dailyCost, contextPer
 
 func outputFallback() {
 	fmt.Println(color.Gray.Sprint("🤖 - | 💰 - | 📊 - | 📈 -%"))
+}
+
+// getDailyCostWithDaemonFallback tries to get daily cost from daemon first,
+// falls back to direct API if daemon is unavailable
+func getDailyCostWithDaemonFallback(ctx context.Context, config model.ShellTimeConfig) float64 {
+	socketPath := config.SocketPath
+	if socketPath == "" {
+		socketPath = model.DefaultSocketPath
+	}
+
+	// Try daemon first (50ms timeout for fast path)
+	if daemon.IsSocketReady(ctx, socketPath) {
+		resp, err := daemon.RequestCCInfo(socketPath, daemon.CCInfoTimeRangeToday, 50*time.Millisecond)
+		if err == nil && resp != nil {
+			return resp.TotalCostUSD
+		}
+	}
+
+	// Fallback to direct API (existing behavior)
+	return model.FetchDailyCostCached(ctx, config)
 }

@@ -50,3 +50,37 @@ func SendLocalDataToSocket(
 
 	return nil
 }
+
+// RequestCCInfo requests CC info (cost data) from the daemon
+func RequestCCInfo(socketPath string, timeRange CCInfoTimeRange, timeout time.Duration) (*CCInfoResponse, error) {
+	conn, err := net.DialTimeout("unix", socketPath, timeout)
+	if err != nil {
+		return nil, err
+	}
+	defer conn.Close()
+
+	// Set read/write deadline
+	conn.SetDeadline(time.Now().Add(timeout))
+
+	// Send request
+	msg := SocketMessage{
+		Type: SocketMessageTypeCCInfo,
+		Payload: CCInfoRequest{
+			TimeRange: timeRange,
+		},
+	}
+
+	encoder := json.NewEncoder(conn)
+	if err := encoder.Encode(msg); err != nil {
+		return nil, err
+	}
+
+	// Read response
+	var response CCInfoResponse
+	decoder := json.NewDecoder(conn)
+	if err := decoder.Decode(&response); err != nil {
+		return nil, err
+	}
+
+	return &response, nil
+}
