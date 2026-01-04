@@ -12,6 +12,7 @@ var CCCommand = &cli.Command{
 	Subcommands: []*cli.Command{
 		CCInstallCommand,
 		CCUninstallCommand,
+		CCStatuslineCommand,
 	},
 }
 
