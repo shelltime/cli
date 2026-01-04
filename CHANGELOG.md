@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.1.56](https://github.com/shelltime/cli/compare/v0.1.55...v0.1.56) (2026-01-04)
+
+
+### Features
+
+* **statusline:** add total AI agent time to CC statusline display ([2e0901f](https://github.com/shelltime/cli/commit/2e0901f36fa37eefd25abc5b03be9aa8ac49d3f4))
+* **statusline:** add total AI agent time to CC statusline display ([bed4581](https://github.com/shelltime/cli/commit/bed45814b25969b72571d84c6e4f549043808b40))
+
+
+### Miscellaneous Chores
+
+* release 0.0.56 ([e2ec9c6](https://github.com/shelltime/cli/commit/e2ec9c682f62f073e13549ab08cb5b5db77bcb6f))
+* release 0.1.56 ([1be6ade](https://github.com/shelltime/cli/commit/1be6ade6a61d6c4ed621410a334e82de7a7b9b1e))
+
 ## [0.1.55](https://github.com/shelltime/cli/compare/v0.1.54...v0.1.55) (2026-01-04)
 
 
