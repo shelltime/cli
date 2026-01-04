@@ -3,9 +3,12 @@ package daemon
 import (
 	"context"
 	"encoding/json"
+	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/ThreeDotsLabs/watermill/message"
+	"github.com/malamtime/cli/model"
 )
 
 // Mock publisher for testing
@@ -76,26 +79,60 @@ func TestSyncCircuitBreakerWrapper_RecordFailure(t *testing.T) {
 }
 
 func TestSyncCircuitBreakerWrapper_SaveForRetry(t *testing.T) {
+	// Create temp directory for test
+	tempDir, err := os.MkdirTemp("", "circuit-breaker-test-*")
+	if err != nil {
+		t.Fatalf("Failed to create temp dir: %v", err)
+	}
+	defer os.RemoveAll(tempDir)
+
+	// Override sync pending file
+	origFile := model.SYNC_PENDING_FILE
+	model.SYNC_PENDING_FILE = filepath.Join(tempDir, "sync-pending.jsonl")
+	defer func() { model.SYNC_PENDING_FILE = origFile }()
+
+	// Override HOME for test (so $HOME/ doesn't affect the path)
+	origHome := os.Getenv("HOME")
+	os.Setenv("HOME", "")
+	defer os.Setenv("HOME", origHome)
+
 	publisher := &mockPublisher{}
 	wrapper := NewSyncCircuitBreakerService(publisher)
 
 	ctx := context.Background()
 	payload := map[string]string{"key": "value"}
 
-	err := wrapper.SaveForRetry(ctx, payload)
+	err = wrapper.SaveForRetry(ctx, payload)
 	if err != nil {
 		t.Fatalf("SaveForRetry failed: %v", err)
 	}
 }
 
 func TestSyncCircuitBreakerWrapper_SaveForRetry_WrapsInSocketMessage(t *testing.T) {
+	// Create temp directory for test
+	tempDir, err := os.MkdirTemp("", "circuit-breaker-test-*")
+	if err != nil {
+		t.Fatalf("Failed to create temp dir: %v", err)
+	}
+	defer os.RemoveAll(tempDir)
+
+	// Override sync pending file
+	origFile := model.SYNC_PENDING_FILE
+	model.SYNC_PENDING_FILE = filepath.Join(tempDir, "sync-pending.jsonl")
+	defer func() { model.SYNC_PENDING_FILE = origFile }()
+
+	// Override HOME for test (so $HOME/ doesn't affect the path)
+	origHome := os.Getenv("HOME")
+	os.Setenv("HOME", "")
+	defer os.Setenv("HOME", origHome)
+
 	publisher := &mockPublisher{}
 	wrapper := NewSyncCircuitBreakerService(publisher)
 
 	ctx := context.Background()
 	payload := map[string]string{"test": "data"}
 
-	err := wrapper.SaveForRetry(ctx, payload)
+	err = wrapper.SaveForRetry(ctx, payload)
 	if err != nil {
 		t.Fatalf("SaveForRetry failed: %v", err)
 	}

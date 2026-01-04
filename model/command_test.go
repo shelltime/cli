@@ -517,8 +517,8 @@ func TestCommand_DoSavePre(t *testing.T) {
 		t.Fatalf("DoSavePre failed: %v", err)
 	}
 
-	// Verify the file was created
-	preFilePath := filepath.Join(tempDir, ".shelltime-test-save-pre", "commands", "pre.txt")
+	// Verify the file was created using the same path helper function
+	preFilePath := GetPreCommandFilePath()
 	if _, err := os.Stat(preFilePath); os.IsNotExist(err) {
 		t.Error("Pre-command file was not created")
 	}
@@ -566,8 +566,8 @@ func TestCommand_DoUpdate(t *testing.T) {
 		t.Fatalf("DoUpdate failed: %v", err)
 	}
 
-	// Verify the file was created
-	postFilePath := filepath.Join(tempDir, ".shelltime-test-update", "commands", "post.txt")
+	// Verify the file was created using the same path helper function
+	postFilePath := GetPostCommandFilePath()
 	if _, err := os.Stat(postFilePath); os.IsNotExist(err) {
 		t.Error("Post-command file was not created")
 	}
@@ -608,8 +608,8 @@ func TestEnsureStorageFolder(t *testing.T) {
 		t.Fatalf("ensureStorageFolder failed: %v", err)
 	}
 
-	// Verify folder was created
-	if _, err := os.Stat(COMMAND_STORAGE_FOLDER); os.IsNotExist(err) {
+	// Verify folder was created using the same path helper function
+	if _, err := os.Stat(GetCommandsStoragePath()); os.IsNotExist(err) {
 		t.Error("Storage folder was not created")
 	}
 

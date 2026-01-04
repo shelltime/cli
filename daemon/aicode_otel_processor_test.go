@@ -34,7 +34,7 @@ func TestNewAICodeOtelProcessor_Debug(t *testing.T) {
 	debug := true
 	config := model.ShellTimeConfig{
 		Token: "token",
-		AICodeOtel: &model.AICodeOtelConfig{
+		AICodeOtel: &model.AICodeOtel{
 			Debug: &debug,
 		},
 	}

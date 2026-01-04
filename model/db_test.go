@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"os"
-	"path/filepath"
 	"testing"
 	"time"
 )
@@ -68,8 +67,8 @@ func TestGetPreCommandsTree(t *testing.T) {
 	COMMAND_STORAGE_FOLDER = tempDir + "/commands"
 	COMMAND_PRE_STORAGE_FILE = COMMAND_STORAGE_FOLDER + "/pre.txt"
 
-	// Create the commands directory
-	if err := os.MkdirAll(COMMAND_STORAGE_FOLDER, 0755); err != nil {
+	// Create the commands directory using the path function to ensure consistency
+	if err := os.MkdirAll(GetCommandsStoragePath(), 0755); err != nil {
 		t.Fatalf("Failed to create commands dir: %v", err)
 	}
 
@@ -178,8 +177,8 @@ func TestGetPreCommands(t *testing.T) {
 	COMMAND_STORAGE_FOLDER = tempDir + "/commands"
 	COMMAND_PRE_STORAGE_FILE = COMMAND_STORAGE_FOLDER + "/pre.txt"
 
-	// Create the commands directory
-	if err := os.MkdirAll(COMMAND_STORAGE_FOLDER, 0755); err != nil {
+	// Create the commands directory using the path function to ensure consistency
+	if err := os.MkdirAll(GetCommandsStoragePath(), 0755); err != nil {
 		t.Fatalf("Failed to create commands dir: %v", err)
 	}
 
@@ -234,8 +233,8 @@ func TestGetPreCommands_EmptyLines(t *testing.T) {
 	COMMAND_STORAGE_FOLDER = tempDir + "/commands"
 	COMMAND_PRE_STORAGE_FILE = COMMAND_STORAGE_FOLDER + "/pre.txt"
 
-	// Create the commands directory
-	if err := os.MkdirAll(COMMAND_STORAGE_FOLDER, 0755); err != nil {
+	// Create the commands directory using the path function to ensure consistency
+	if err := os.MkdirAll(GetCommandsStoragePath(), 0755); err != nil {
 		t.Fatalf("Failed to create commands dir: %v", err)
 	}
 
@@ -315,14 +314,14 @@ func TestGetLastCursor_WithCursor(t *testing.T) {
 	COMMAND_STORAGE_FOLDER = tempDir + "/commands"
 	COMMAND_CURSOR_STORAGE_FILE = COMMAND_STORAGE_FOLDER + "/cursor.txt"
 
-	// Create the commands directory
-	if err := os.MkdirAll(COMMAND_STORAGE_FOLDER, 0755); err != nil {
+	// Create the commands directory using the path function to ensure consistency
+	if err := os.MkdirAll(GetCommandsStoragePath(), 0755); err != nil {
 		t.Fatalf("Failed to create commands dir: %v", err)
 	}
 
-	// Write cursor timestamp
+	// Write cursor timestamp using the path helper function
 	expectedTime := time.Date(2024, 1, 15, 10, 0, 0, 0, time.UTC)
-	cursorFile := filepath.Join(COMMAND_STORAGE_FOLDER, "cursor.txt")
+	cursorFile := GetCursorFilePath()
 	if err := os.WriteFile(cursorFile, []byte(fmt.Sprintf("%d", expectedTime.UnixNano())), 0644); err != nil {
 		t.Fatalf("Failed to write cursor file: %v", err)
 	}
@@ -362,15 +361,15 @@ func TestGetLastCursor_MultipleLines(t *testing.T) {
 	COMMAND_STORAGE_FOLDER = tempDir + "/commands"
 	COMMAND_CURSOR_STORAGE_FILE = COMMAND_STORAGE_FOLDER + "/cursor.txt"
 
-	// Create the commands directory
-	if err := os.MkdirAll(COMMAND_STORAGE_FOLDER, 0755); err != nil {
+	// Create the commands directory using the path function to ensure consistency
+	if err := os.MkdirAll(GetCommandsStoragePath(), 0755); err != nil {
 		t.Fatalf("Failed to create commands dir: %v", err)
 	}
 
 	// Write multiple cursor timestamps (should use last one)
 	time1 := time.Date(2024, 1, 10, 10, 0, 0, 0, time.UTC)
 	time2 := time.Date(2024, 1, 15, 10, 0, 0, 0, time.UTC) // Last line
-	cursorFile := filepath.Join(COMMAND_STORAGE_FOLDER, "cursor.txt")
+	cursorFile := GetCursorFilePath()
 	content := fmt.Sprintf("%d\n%d\n", time1.UnixNano(), time2.UnixNano())
 	if err := os.WriteFile(cursorFile, []byte(content), 0644); err != nil {
 		t.Fatalf("Failed to write cursor file: %v", err)
@@ -407,13 +406,13 @@ func TestGetLastCursor_InvalidContent(t *testing.T) {
 	COMMAND_STORAGE_FOLDER = tempDir + "/commands"
 	COMMAND_CURSOR_STORAGE_FILE = COMMAND_STORAGE_FOLDER + "/cursor.txt"
 
-	// Create the commands directory
-	if err := os.MkdirAll(COMMAND_STORAGE_FOLDER, 0755); err != nil {
+	// Create the commands directory using the path function to ensure consistency
+	if err := os.MkdirAll(GetCommandsStoragePath(), 0755); err != nil {
 		t.Fatalf("Failed to create commands dir: %v", err)
 	}
 
 	// Write invalid cursor content
-	cursorFile := filepath.Join(COMMAND_STORAGE_FOLDER, "cursor.txt")
+	cursorFile := GetCursorFilePath()
 	if err := os.WriteFile(cursorFile, []byte("not-a-number"), 0644); err != nil {
 		t.Fatalf("Failed to write cursor file: %v", err)
 	}
@@ -445,8 +444,8 @@ func TestGetPostCommands(t *testing.T) {
 	COMMAND_STORAGE_FOLDER = tempDir + "/commands"
 	COMMAND_POST_STORAGE_FILE = COMMAND_STORAGE_FOLDER + "/post.txt"
 
-	// Create the commands directory
-	if err := os.MkdirAll(COMMAND_STORAGE_FOLDER, 0755); err != nil {
+	// Create the commands directory using the path function to ensure consistency
+	if err := os.MkdirAll(GetCommandsStoragePath(), 0755); err != nil {
 		t.Fatalf("Failed to create commands dir: %v", err)
 	}
 
@@ -504,8 +503,8 @@ func TestGetPostCommands_EmptyLines(t *testing.T) {
 	COMMAND_STORAGE_FOLDER = tempDir + "/commands"
 	COMMAND_POST_STORAGE_FILE = COMMAND_STORAGE_FOLDER + "/post.txt"
 
-	// Create the commands directory
-	if err := os.MkdirAll(COMMAND_STORAGE_FOLDER, 0755); err != nil {
+	// Create the commands directory using the path function to ensure consistency
+	if err := os.MkdirAll(GetCommandsStoragePath(), 0755); err != nil {
 		t.Fatalf("Failed to create commands dir: %v", err)
 	}
 

@@ -15,7 +15,7 @@ func TestNewSocketHandler(t *testing.T) {
 	config := &model.ShellTimeConfig{
 		SocketPath: "/tmp/test-shelltime.sock",
 	}
-	ch := NewGoChannel()
+	ch := NewGoChannel(PubSubConfig{OutputChannelBuffer: 10}, nil)
 
 	handler := NewSocketHandler(config, ch)
 	if handler == nil {
@@ -51,7 +51,7 @@ func TestSocketHandler_StartStop(t *testing.T) {
 	config := &model.ShellTimeConfig{
 		SocketPath: socketPath,
 	}
-	ch := NewGoChannel()
+	ch := NewGoChannel(PubSubConfig{OutputChannelBuffer: 10}, nil)
 
 	handler := NewSocketHandler(config, ch)
 
@@ -90,7 +90,7 @@ func TestSocketHandler_StatusRequest(t *testing.T) {
 	config := &model.ShellTimeConfig{
 		SocketPath: socketPath,
 	}
-	ch := NewGoChannel()
+	ch := NewGoChannel(PubSubConfig{OutputChannelBuffer: 10}, nil)
 
 	handler := NewSocketHandler(config, ch)
 
@@ -310,7 +310,7 @@ func TestSocketHandler_MultipleConnections(t *testing.T) {
 	config := &model.ShellTimeConfig{
 		SocketPath: socketPath,
 	}
-	ch := NewGoChannel()
+	ch := NewGoChannel(PubSubConfig{OutputChannelBuffer: 10}, nil)
 
 	handler := NewSocketHandler(config, ch)
 

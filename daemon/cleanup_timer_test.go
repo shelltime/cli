@@ -12,7 +12,7 @@ import (
 
 func TestNewCleanupTimerService(t *testing.T) {
 	config := model.ShellTimeConfig{
-		LogCleanup: model.LogCleanupConfig{
+		LogCleanup: &model.LogCleanup{
 			ThresholdMB: 100,
 		},
 	}
@@ -33,7 +33,7 @@ func TestNewCleanupTimerService(t *testing.T) {
 
 func TestCleanupTimerService_StartStop(t *testing.T) {
 	config := model.ShellTimeConfig{
-		LogCleanup: model.LogCleanupConfig{
+		LogCleanup: &model.LogCleanup{
 			ThresholdMB: 100,
 		},
 	}
@@ -61,7 +61,7 @@ func TestCleanupTimerService_StartStop(t *testing.T) {
 
 func TestCleanupTimerService_StopWithoutStart(t *testing.T) {
 	config := model.ShellTimeConfig{
-		LogCleanup: model.LogCleanupConfig{
+		LogCleanup: &model.LogCleanup{
 			ThresholdMB: 100,
 		},
 	}
@@ -80,7 +80,7 @@ func TestCleanupTimerService_StopWithoutStart(t *testing.T) {
 
 func TestCleanupTimerService_ContextCancellation(t *testing.T) {
 	config := model.ShellTimeConfig{
-		LogCleanup: model.LogCleanupConfig{
+		LogCleanup: &model.LogCleanup{
 			ThresholdMB: 100,
 		},
 	}
@@ -125,7 +125,7 @@ func TestCleanupTimerService_Cleanup(t *testing.T) {
 	model.COMMAND_BASE_STORAGE_FOLDER = tempDir
 
 	config := model.ShellTimeConfig{
-		LogCleanup: model.LogCleanupConfig{
+		LogCleanup: &model.LogCleanup{
 			ThresholdMB: 1, // 1MB threshold (1024 * 1024 bytes)
 		},
 	}
@@ -179,7 +179,7 @@ func TestCleanupTimerService_CleanupBelowThreshold(t *testing.T) {
 	model.COMMAND_BASE_STORAGE_FOLDER = tempDir
 
 	config := model.ShellTimeConfig{
-		LogCleanup: model.LogCleanupConfig{
+		LogCleanup: &model.LogCleanup{
 			ThresholdMB: 10, // 10MB threshold
 		},
 	}
