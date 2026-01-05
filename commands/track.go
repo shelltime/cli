@@ -46,6 +46,11 @@ var TrackCommand *cli.Command = &cli.Command{
 			Aliases: []string{"r"},
 			Usage:   "Exit code of last command",
 		},
+		&cli.IntFlag{
+			Name:  "ppid",
+			Value: 0,
+			Usage: "Parent process ID of the shell (for terminal detection)",
+		},
 	},
 	Action: commandTrack,
 	OnUsageError: func(cCtx *cli.Context, err error, isSubcommand bool) error {
@@ -78,6 +83,7 @@ func commandTrack(c *cli.Context) error {
 	cmdCommand := c.String("command")
 	cmdPhase := c.String("phase")
 	result := c.Int("result")
+	ppid := c.Int("ppid")
 
 	instance := &model.Command{
 		Shell:     shell,
@@ -87,6 +93,7 @@ func commandTrack(c *cli.Context) error {
 		Username:  username,
 		Time:      time.Now(),
 		Phase:     model.CommandPhasePre,
+		PPID:      ppid,
 	}
 
 	// Check if command should be excluded
@@ -215,6 +222,7 @@ func trySyncLocalToServer(
 			EndTime:     postCommand.Time.Unix(),
 			EndTimeNano: postCommand.Time.UnixNano(),
 			Result:      postCommand.Result,
+			PPID:        postCommand.PPID,
 		}
 
 		// data masking
