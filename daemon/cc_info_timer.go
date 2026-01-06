@@ -12,6 +12,7 @@ import (
 var (
 	CCInfoFetchInterval     = 3 * time.Second
 	CCInfoInactivityTimeout = 3 * time.Minute
+	GitInfoCacheTTL         = 20 * time.Second
 )
 
 // CCInfoCache holds the cached cost data for a time range
@@ -19,6 +20,12 @@ type CCInfoCache struct {
 	TotalCostUSD        float64
 	TotalSessionSeconds int
 	FetchedAt           time.Time
+}
+
+// cachedGitInfo holds cached git information for a directory
+type cachedGitInfo struct {
+	info      GitInfo
+	fetchedAt time.Time
 }
 
 // CCInfoTimerService manages lazy-fetching of CC info data
@@ -35,6 +42,10 @@ type CCInfoTimerService struct {
 	ticker       *time.Ticker
 	stopChan     chan struct{}
 	wg           sync.WaitGroup
+
+	// Git info cache (per working directory)
+	gitCacheMu sync.RWMutex
+	gitCache   map[string]cachedGitInfo
 }
 
 // NewCCInfoTimerService creates a new CC info timer service
@@ -44,6 +55,7 @@ func NewCCInfoTimerService(config *model.ShellTimeConfig) *CCInfoTimerService {
 		cache:        make(map[CCInfoTimeRange]CCInfoCache),
 		activeRanges: make(map[CCInfoTimeRange]bool),
 		stopChan:     make(chan struct{}),
+		gitCache:     make(map[string]cachedGitInfo),
 	}
 }
 
@@ -261,4 +273,28 @@ func (s *CCInfoTimerService) fetchCCInfo(ctx context.Context, timeRange CCInfoTi
 		TotalCostUSD:        analytics.TotalCostUsd,
 		TotalSessionSeconds: analytics.TotalSessionSeconds,
 	}, nil
+}
+
+// GetCachedGitInfo returns cached git info, fetching fresh if cache expired
+func (s *CCInfoTimerService) GetCachedGitInfo(workingDir string) GitInfo {
+	if workingDir == "" {
+		return GitInfo{}
+	}
+
+	s.gitCacheMu.RLock()
+	cached, exists := s.gitCache[workingDir]
+	s.gitCacheMu.RUnlock()
+
+	if exists && time.Since(cached.fetchedAt) < GitInfoCacheTTL {
+		return cached.info
+	}
+
+	// Fetch fresh (this is the slow part)
+	info := GetGitInfo(workingDir)
+
+	s.gitCacheMu.Lock()
+	s.gitCache[workingDir] = cachedGitInfo{info: info, fetchedAt: time.Now()}
+	s.gitCacheMu.Unlock()
+
+	return info
 }

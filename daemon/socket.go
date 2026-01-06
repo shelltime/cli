@@ -216,8 +216,8 @@ func (p *SocketHandler) handleCCInfo(conn net.Conn, msg SocketMessage) {
 	cache := p.ccInfoTimer.GetCachedCost(timeRange)
 	p.ccInfoTimer.NotifyActivity()
 
-	// Get git info (fast, no caching needed since it changes frequently)
-	gitInfo := GetGitInfo(workingDir)
+	// Get git info (cached to avoid slow worktree.Status() on large repos)
+	gitInfo := p.ccInfoTimer.GetCachedGitInfo(workingDir)
 
 	response := CCInfoResponse{
 		TotalCostUSD:        cache.TotalCostUSD,
