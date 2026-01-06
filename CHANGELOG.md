@@ -1,5 +1,31 @@
 # Changelog
 
+## [0.1.58](https://github.com/shelltime/cli/compare/v0.1.57...v0.1.58) (2026-01-06)
+
+
+### Bug Fixes
+
+* **daemon:** cache git info to avoid cc statusline timeout ([a21a427](https://github.com/shelltime/cli/commit/a21a42704332c8695c262a359c9b18726d74dce3))
+* **daemon:** cache git info to avoid cc statusline timeout ([e6dd38f](https://github.com/shelltime/cli/commit/e6dd38fbaaaa835d326a63e616b99e8b75172610))
+
+
+### Code Refactoring
+
+* **daemon:** fetch git info in timer loop instead of on-demand ([0a4c29b](https://github.com/shelltime/cli/commit/0a4c29b57c80cdd2bbd703732162033f4dfa1503))
+
+
+### Documentation
+
+* **cc:** add git branch info to statusline documentation ([869ea38](https://github.com/shelltime/cli/commit/869ea38b9dd06b881945f35d98f4d710bfe1dd86))
+
+
+### Continuous Integration
+
+* **workflows:** migrate all runners to self-hosted jp-arm-oracle ([40aba69](https://github.com/shelltime/cli/commit/40aba697d2b696579aa2b6bc782ee04b37f66d49))
+* **workflows:** migrate all runners to self-hosted jp-arm-oracle ([0adbc8c](https://github.com/shelltime/cli/commit/0adbc8cf1dc4cd48664b8972e7d180b199a92a22))
+* **workflows:** switch from self-hosted to ubuntu-latest runner ([2719964](https://github.com/shelltime/cli/commit/2719964a810dd750e6a2ccae639e4686f77cfcb0))
+* **workflows:** switch from self-hosted to ubuntu-latest runner ([f7dc6c3](https://github.com/shelltime/cli/commit/f7dc6c3d819a1b9bb2a31c571100a1d773a345b3))
+
 ## [0.1.57](https://github.com/shelltime/cli/compare/v0.1.56...v0.1.57) (2026-01-06)
 
 
