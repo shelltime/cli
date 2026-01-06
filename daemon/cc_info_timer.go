@@ -21,6 +21,7 @@ type CCInfoCache struct {
 	FetchedAt           time.Time
 }
 
+
 // CCInfoTimerService manages lazy-fetching of CC info data
 type CCInfoTimerService struct {
 	config *model.ShellTimeConfig
@@ -35,6 +36,10 @@ type CCInfoTimerService struct {
 	ticker       *time.Ticker
 	stopChan     chan struct{}
 	wg           sync.WaitGroup
+
+	// Git info (single active working directory, fetched by timer)
+	activeWorkingDir string
+	gitInfo          GitInfo
 }
 
 // NewCCInfoTimerService creates a new CC info timer service
@@ -117,9 +122,11 @@ func (s *CCInfoTimerService) stopTimer() {
 	s.ticker.Stop()
 	s.timerRunning = false
 
-	// Clear active ranges when stopping
+	// Clear active ranges and git info when stopping
 	s.mu.Lock()
 	s.activeRanges = make(map[CCInfoTimeRange]bool)
+	s.activeWorkingDir = ""
+	s.gitInfo = GitInfo{}
 	s.mu.Unlock()
 
 	slog.Info("CC info timer stopped due to inactivity")
@@ -131,6 +138,7 @@ func (s *CCInfoTimerService) timerLoop() {
 
 	// Fetch immediately on start
 	s.fetchActiveRanges(context.Background())
+	s.fetchGitInfo()
 
 	for {
 		select {
@@ -143,6 +151,7 @@ func (s *CCInfoTimerService) timerLoop() {
 				return
 			}
 			s.fetchActiveRanges(context.Background())
+			s.fetchGitInfo()
 
 		case <-s.stopChan:
 			return
@@ -261,4 +270,41 @@ func (s *CCInfoTimerService) fetchCCInfo(ctx context.Context, timeRange CCInfoTi
 		TotalCostUSD:        analytics.TotalCostUsd,
 		TotalSessionSeconds: analytics.TotalSessionSeconds,
 	}, nil
+}
+
+// GetCachedGitInfo marks the working directory as active and returns cached git info.
+// Git info is fetched by the background timer, so first call may return empty.
+func (s *CCInfoTimerService) GetCachedGitInfo(workingDir string) GitInfo {
+	if workingDir == "" {
+		return GitInfo{}
+	}
+
+	s.mu.Lock()
+	s.activeWorkingDir = workingDir
+	info := s.gitInfo
+	s.mu.Unlock()
+
+	return info
+}
+
+// fetchGitInfo fetches git info for the active working directory
+func (s *CCInfoTimerService) fetchGitInfo() {
+	s.mu.RLock()
+	workingDir := s.activeWorkingDir
+	s.mu.RUnlock()
+
+	if workingDir == "" {
+		return
+	}
+
+	info := GetGitInfo(workingDir)
+
+	s.mu.Lock()
+	s.gitInfo = info
+	s.mu.Unlock()
+
+	slog.Debug("Git info updated",
+		slog.String("workingDir", workingDir),
+		slog.String("branch", info.Branch),
+		slog.Bool("dirty", info.Dirty))
 }
