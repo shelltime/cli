@@ -20,6 +20,7 @@ type TrackingData struct {
 	StartTimeNano int64  `json:"startTimeNano"`
 	EndTimeNano   int64  `json:"endTimeNano"`
 	Result        int    `json:"result"`
+	PPID          int    `json:"ppid,omitempty"`
 }
 
 type TrackingMetaData struct {
@@ -28,6 +29,8 @@ type TrackingMetaData struct {
 	OS        string `json:"os"`
 	OSVersion string `json:"osVersion"`
 	Shell     string `json:"shell"`
+	Terminal    string `json:"terminal,omitempty"`
+	Multiplexer string `json:"multiplexer,omitempty"`
 
 	// 0: cli, 1: daemon
 	Source int `json:"source"`

@@ -36,6 +36,7 @@ type Command struct {
 	EndTime   time.Time    `json:"et"`
 	Result    int          `json:"result"`
 	Phase     CommandPhase `json:"phase"`
+	PPID      int          `json:"ppid,omitempty"`
 
 	// Only work in file
 	RecordingTime time.Time `json:"-"`
