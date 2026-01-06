@@ -51,8 +51,8 @@ func SendLocalDataToSocket(
 	return nil
 }
 
-// RequestCCInfo requests CC info (cost data) from the daemon
-func RequestCCInfo(socketPath string, timeRange CCInfoTimeRange, timeout time.Duration) (*CCInfoResponse, error) {
+// RequestCCInfo requests CC info (cost data and git info) from the daemon
+func RequestCCInfo(socketPath string, timeRange CCInfoTimeRange, workingDir string, timeout time.Duration) (*CCInfoResponse, error) {
 	conn, err := net.DialTimeout("unix", socketPath, timeout)
 	if err != nil {
 		return nil, err
@@ -66,7 +66,8 @@ func RequestCCInfo(socketPath string, timeRange CCInfoTimeRange, timeout time.Du
 	msg := SocketMessage{
 		Type: SocketMessageTypeCCInfo,
 		Payload: CCInfoRequest{
-			TimeRange: timeRange,
+			TimeRange:        timeRange,
+			WorkingDirectory: workingDir,
 		},
 	}
 

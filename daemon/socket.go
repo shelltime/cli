@@ -32,7 +32,8 @@ const (
 )
 
 type CCInfoRequest struct {
-	TimeRange CCInfoTimeRange `json:"timeRange"`
+	TimeRange        CCInfoTimeRange `json:"timeRange"`
+	WorkingDirectory string          `json:"workingDirectory"`
 }
 
 type CCInfoResponse struct {
@@ -40,6 +41,8 @@ type CCInfoResponse struct {
 	TotalSessionSeconds int       `json:"totalSessionSeconds"`
 	TimeRange           string    `json:"timeRange"`
 	CachedAt            time.Time `json:"cachedAt"`
+	GitBranch           string    `json:"gitBranch"`
+	GitDirty            bool      `json:"gitDirty"`
 }
 
 // StatusResponse contains daemon status information
@@ -197,11 +200,15 @@ func (p *SocketHandler) handleStatus(conn net.Conn) {
 func (p *SocketHandler) handleCCInfo(conn net.Conn, msg SocketMessage) {
 	slog.Debug("cc_info socket event received")
 
-	// Parse time range from payload, default to "today"
+	// Parse time range and working directory from payload
 	timeRange := CCInfoTimeRangeToday
+	var workingDir string
 	if payload, ok := msg.Payload.(map[string]interface{}); ok {
 		if tr, ok := payload["timeRange"].(string); ok {
 			timeRange = CCInfoTimeRange(tr)
+		}
+		if wd, ok := payload["workingDirectory"].(string); ok {
+			workingDir = wd
 		}
 	}
 
@@ -209,11 +216,16 @@ func (p *SocketHandler) handleCCInfo(conn net.Conn, msg SocketMessage) {
 	cache := p.ccInfoTimer.GetCachedCost(timeRange)
 	p.ccInfoTimer.NotifyActivity()
 
+	// Get git info (fast, no caching needed since it changes frequently)
+	gitInfo := GetGitInfo(workingDir)
+
 	response := CCInfoResponse{
 		TotalCostUSD:        cache.TotalCostUSD,
 		TotalSessionSeconds: cache.TotalSessionSeconds,
 		TimeRange:           string(timeRange),
 		CachedAt:            cache.FetchedAt,
+		GitBranch:           gitInfo.Branch,
+		GitDirty:            gitInfo.Dirty,
 	}
 
 	encoder := json.NewEncoder(conn)

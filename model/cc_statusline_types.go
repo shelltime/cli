@@ -2,9 +2,10 @@ package model
 
 // CCStatuslineInput represents the JSON input from Claude Code statusline
 type CCStatuslineInput struct {
-	Model         CCStatuslineModel         `json:"model"`
-	Cost          CCStatuslineCost          `json:"cost"`
-	ContextWindow CCStatuslineContextWindow `json:"context_window"`
+	Model            CCStatuslineModel         `json:"model"`
+	Cost             CCStatuslineCost          `json:"cost"`
+	ContextWindow    CCStatuslineContextWindow `json:"context_window"`
+	WorkingDirectory string                    `json:"working_directory"`
 }
 
 // CCStatuslineModel represents model information

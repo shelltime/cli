@@ -22,6 +22,14 @@ var CCStatuslineCommand = &cli.Command{
 	Action: commandCCStatusline,
 }
 
+// ccStatuslineResult combines daily stats with git info from daemon
+type ccStatuslineResult struct {
+	Cost           float64
+	SessionSeconds int
+	GitBranch      string
+	GitDirty       bool
+}
+
 func commandCCStatusline(c *cli.Context) error {
 	// Hard timeout for entire operation - statusline must be fast
 	ctx, cancel := context.WithTimeout(c.Context, 100*time.Millisecond)
@@ -44,15 +52,15 @@ func commandCCStatusline(c *cli.Context) error {
 	// Calculate context percentage
 	contextPercent := calculateContextPercent(data.ContextWindow)
 
-	// Get daily stats - try daemon first, fallback to direct API
-	var dailyStats model.CCStatuslineDailyStats
+	// Get daily stats and git info - try daemon first, fallback to direct API
+	var result ccStatuslineResult
 	config, err := configService.ReadConfigFile(ctx)
 	if err == nil {
-		dailyStats = getDailyStatsWithDaemonFallback(ctx, config)
+		result = getDaemonInfoWithFallback(ctx, config, data.WorkingDirectory)
 	}
 
 	// Format and output
-	output := formatStatuslineOutput(data.Model.DisplayName, data.Cost.TotalCostUSD, dailyStats.Cost, dailyStats.SessionSeconds, contextPercent)
+	output := formatStatuslineOutput(data.Model.DisplayName, data.Cost.TotalCostUSD, result.Cost, result.SessionSeconds, contextPercent, result.GitBranch, result.GitDirty)
 	fmt.Println(output)
 
 	return nil
@@ -108,8 +116,19 @@ func calculateContextPercent(cw model.CCStatuslineContextWindow) float64 {
 	return float64(currentTokens) / float64(cw.ContextWindowSize) * 100
 }
 
-func formatStatuslineOutput(modelName string, sessionCost, dailyCost float64, sessionSeconds int, contextPercent float64) string {
+func formatStatuslineOutput(modelName string, sessionCost, dailyCost float64, sessionSeconds int, contextPercent float64, gitBranch string, gitDirty bool) string {
 	var parts []string
+
+	// Git info FIRST (green)
+	if gitBranch != "" {
+		gitStr := gitBranch
+		if gitDirty {
+			gitStr += "*"
+		}
+		parts = append(parts, color.Green.Sprintf("🌿 %s", gitStr))
+	} else {
+		parts = append(parts, color.Gray.Sprint("🌿 -"))
+	}
 
 	// Model name
 	modelStr := fmt.Sprintf("🤖 %s", modelName)
@@ -151,7 +170,7 @@ func formatStatuslineOutput(modelName string, sessionCost, dailyCost float64, se
 }
 
 func outputFallback() {
-	fmt.Println(color.Gray.Sprint("🤖 - | 💰 - | 📊 - | ⏱️ - | 📈 -%"))
+	fmt.Println(color.Gray.Sprint("🌿 - | 🤖 - | 💰 - | 📊 - | ⏱️ - | 📈 -%"))
 }
 
 // formatSessionDuration formats seconds into a human-readable duration
@@ -169,9 +188,9 @@ func formatSessionDuration(totalSeconds int) string {
 	return fmt.Sprintf("%ds", seconds)
 }
 
-// getDailyStatsWithDaemonFallback tries to get daily stats from daemon first,
-// falls back to direct API if daemon is unavailable
-func getDailyStatsWithDaemonFallback(ctx context.Context, config model.ShellTimeConfig) model.CCStatuslineDailyStats {
+// getDaemonInfoWithFallback tries to get daily stats and git info from daemon first,
+// falls back to direct API for stats if daemon is unavailable (git info only from daemon)
+func getDaemonInfoWithFallback(ctx context.Context, config model.ShellTimeConfig, workingDir string) ccStatuslineResult {
 	socketPath := config.SocketPath
 	if socketPath == "" {
 		socketPath = model.DefaultSocketPath
@@ -179,15 +198,21 @@ func getDailyStatsWithDaemonFallback(ctx context.Context, config model.ShellTime
 
 	// Try daemon first (50ms timeout for fast path)
 	if daemon.IsSocketReady(ctx, socketPath) {
-		resp, err := daemon.RequestCCInfo(socketPath, daemon.CCInfoTimeRangeToday, 50*time.Millisecond)
+		resp, err := daemon.RequestCCInfo(socketPath, daemon.CCInfoTimeRangeToday, workingDir, 50*time.Millisecond)
 		if err == nil && resp != nil {
-			return model.CCStatuslineDailyStats{
+			return ccStatuslineResult{
 				Cost:           resp.TotalCostUSD,
 				SessionSeconds: resp.TotalSessionSeconds,
+				GitBranch:      resp.GitBranch,
+				GitDirty:       resp.GitDirty,
 			}
 		}
 	}
 
-	// Fallback to direct API (existing behavior)
-	return model.FetchDailyStatsCached(ctx, config)
+	// Fallback to direct API for stats (no git info available without daemon)
+	stats := model.FetchDailyStatsCached(ctx, config)
+	return ccStatuslineResult{
+		Cost:           stats.Cost,
+		SessionSeconds: stats.SessionSeconds,
+	}
 }
