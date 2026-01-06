@@ -58,15 +58,12 @@ var knownRemote = map[string]bool{
 }
 
 // ResolveTerminal walks up the process tree starting from ppid
-// to find the terminal emulator. Returns raw process names.
-// Format: "terminal" or "terminal -> multiplexer" for multiplexed sessions
-func ResolveTerminal(ppid int) string {
+// to find the terminal emulator and multiplexer separately.
+// Returns (terminal, multiplexer) as separate values.
+func ResolveTerminal(ppid int) (terminal string, multiplexer string) {
 	if ppid <= 0 {
-		return ""
+		return "", ""
 	}
-
-	var terminal string
-	var multiplexer string
 
 	currentPID := ppid
 	visited := make(map[int]bool)
@@ -111,20 +108,12 @@ func ResolveTerminal(ppid int) string {
 		currentPID = parentPID
 	}
 
-	// Build result string
+	// If neither found, return "unknown" for terminal
 	if terminal == "" && multiplexer == "" {
-		return "unknown"
+		return "unknown", ""
 	}
 
-	if terminal != "" && multiplexer != "" {
-		return terminal + " -> " + multiplexer
-	}
-
-	if terminal != "" {
-		return terminal
-	}
-
-	return multiplexer
+	return terminal, multiplexer
 }
 
 // getProcessName returns the process name for the given PID

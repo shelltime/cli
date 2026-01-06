@@ -29,7 +29,8 @@ type TrackingMetaData struct {
 	OS        string `json:"os"`
 	OSVersion string `json:"osVersion"`
 	Shell     string `json:"shell"`
-	Terminal  string `json:"terminal,omitempty"`
+	Terminal    string `json:"terminal,omitempty"`
+	Multiplexer string `json:"multiplexer,omitempty"`
 
 	// 0: cli, 1: daemon
 	Source int `json:"source"`

@@ -36,9 +36,10 @@ func handlePubSubSync(ctx context.Context, socketMsgPayload interface{}) error {
 
 	// Resolve terminal from PPID (use first data item's PPID)
 	if len(syncMsg.Data) > 0 && syncMsg.Data[0].PPID > 0 {
-		terminal := ResolveTerminal(syncMsg.Data[0].PPID)
+		terminal, multiplexer := ResolveTerminal(syncMsg.Data[0].PPID)
 		syncMsg.Meta.Terminal = terminal
-		slog.Debug("Resolved terminal", slog.String("terminal", terminal), slog.Int("ppid", syncMsg.Data[0].PPID))
+		syncMsg.Meta.Multiplexer = multiplexer
+		slog.Debug("Resolved terminal", slog.String("terminal", terminal), slog.String("multiplexer", multiplexer), slog.Int("ppid", syncMsg.Data[0].PPID))
 	}
 
 	// set as daemon
