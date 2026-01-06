@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.59](https://github.com/shelltime/cli/compare/v0.1.58...v0.1.59) (2026-01-06)
+
+
+### Bug Fixes
+
+* **cc:** align statusline input struct with Claude Code JSON format ([e6bb0b1](https://github.com/shelltime/cli/commit/e6bb0b1f630c3d10bbb7510c49630a3dbf80a2ed))
+
 ## [0.1.58](https://github.com/shelltime/cli/compare/v0.1.57...v0.1.58) (2026-01-06)
 
 
