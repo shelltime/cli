@@ -6,9 +6,11 @@ Display real-time cost and context usage in Claude Code's status bar using Shell
 
 The `shelltime cc statusline` command provides a custom status line for Claude Code that shows:
 
+- Git branch name and dirty status
 - Current model name
 - Session cost (current conversation)
 - Today's total cost (from ShellTime API)
+- AI agent time (session duration)
 - Context window usage percentage
 
 ## Quick Start
@@ -31,7 +33,7 @@ Add to your Claude Code settings (`~/.claude/settings.json`):
 The status line will appear at the bottom of Claude Code:
 
 ```
-🤖 Opus | 💰 $0.12 | 📊 $3.45 | 📈 45%
+🌿 main* | 🤖 Opus | 💰 $0.12 | 📊 $3.45 | ⏱️ 5m30s | 📈 45%
 ```
 
 ---
@@ -40,10 +42,21 @@ The status line will appear at the bottom of Claude Code:
 
 | Section | Emoji | Description | Color |
 |---------|-------|-------------|-------|
+| Git | 🌿 | Current branch name (`*` if dirty) | Green |
 | Model | 🤖 | Current model display name | Default |
 | Session | 💰 | Current session cost in USD | Cyan |
 | Today | 📊 | Today's total cost from API | Yellow |
+| Time | ⏱️ | AI agent session duration | Magenta |
 | Context | 📈 | Context window usage % | Green/Yellow/Red |
+
+### Git Status Indicator
+
+The git section shows the current branch name. If there are uncommitted changes (dirty working tree), an asterisk (`*`) is appended:
+
+- `🌿 main` - On main branch, no uncommitted changes
+- `🌿 main*` - On main branch, with uncommitted changes
+- `🌿 feature/auth` - On feature branch
+- `🌿 -` - Not in a git repository
 
 ### Context Color Coding
 
@@ -62,8 +75,10 @@ The status line will appear at the bottom of Claude Code:
    - Model name from `model.display_name`
    - Session cost from `cost.total_cost_usd`
    - Context usage from `context_window`
-3. **Daily cost** is fetched from ShellTime GraphQL API (cached for 5 minutes)
-4. **Output** is a single formatted line with ANSI colors
+   - Working directory from `working_directory`
+3. **Git info** is fetched from the daemon (which caches it for performance)
+4. **Daily cost** is fetched from ShellTime GraphQL API (cached for 5 minutes)
+5. **Output** is a single formatted line with ANSI colors
 
 ### JSON Input (from Claude Code)
 
@@ -87,7 +102,8 @@ The status line will appear at the bottom of Claude Code:
       "cache_creation_input_tokens": 5000,
       "cache_read_input_tokens": 2000
     }
-  }
+  },
+  "working_directory": "/home/user/projects/my-app"
 }
 ```
 
@@ -98,6 +114,20 @@ The status line will appear at the bottom of Claude Code:
 ### For Session Cost & Context
 
 No additional setup required - data comes directly from Claude Code.
+
+### For Git Branch Info
+
+Requires the ShellTime daemon to be running:
+
+```bash
+# Start the daemon
+shelltime daemon start
+
+# Verify it's running
+shelltime daemon status
+```
+
+The daemon caches git info and refreshes it periodically for optimal performance.
 
 ### For Today's Cost
 
@@ -121,8 +151,9 @@ If no token is configured, the daily cost will show as `-`.
 
 - **Hard timeout:** 100ms for entire operation
 - **API caching:** 5-minute TTL to minimize API calls
-- **Non-blocking:** Background API fetches don't delay output
-- **Graceful degradation:** Shows available data even if API fails
+- **Git info caching:** Daemon fetches git info in background timer loop, not on-demand
+- **Non-blocking:** Background fetches don't delay output
+- **Graceful degradation:** Shows available data even if API or daemon fails
 
 ---
 
@@ -139,6 +170,12 @@ If no token is configured, the daily cost will show as `-`.
 1. Verify your token is configured: `shelltime doctor`
 2. Check AICodeOtel is enabled in your config
 3. Ensure the daemon is running: `shelltime daemon status`
+
+### Git branch shows `-`
+
+1. Ensure you're in a git repository
+2. Verify the daemon is running: `shelltime daemon status`
+3. The daemon must be running for git info to appear (direct API fallback doesn't include git info)
 
 ### Colors not displaying
 
