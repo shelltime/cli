@@ -11,7 +11,7 @@ permissions:
 
 jobs:
   goreleaser:
-    runs-on: jp-arm-oracle
+    runs-on: ubuntu-latest
     environment: CI
     steps:
       - uses: googleapis/release-please-action@v4
