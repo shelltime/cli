@@ -232,7 +232,7 @@ func (s *CCInfoClientTestSuite) TestRequestCCInfo_Success() {
 	// Give server time to start
 	time.Sleep(10 * time.Millisecond)
 
-	response, err := RequestCCInfo(s.socketPath, CCInfoTimeRangeToday, 1*time.Second)
+	response, err := RequestCCInfo(s.socketPath, CCInfoTimeRangeToday, "", 1*time.Second)
 
 	assert.NoError(s.T(), err)
 	assert.NotNil(s.T(), response)
@@ -255,14 +255,14 @@ func (s *CCInfoClientTestSuite) TestRequestCCInfo_Timeout() {
 
 	time.Sleep(10 * time.Millisecond)
 
-	response, err := RequestCCInfo(s.socketPath, CCInfoTimeRangeToday, 50*time.Millisecond)
+	response, err := RequestCCInfo(s.socketPath, CCInfoTimeRangeToday, "", 50*time.Millisecond)
 
 	assert.Error(s.T(), err)
 	assert.Nil(s.T(), response)
 }
 
 func (s *CCInfoClientTestSuite) TestRequestCCInfo_SocketNotFound() {
-	response, err := RequestCCInfo("/nonexistent/socket.sock", CCInfoTimeRangeToday, 100*time.Millisecond)
+	response, err := RequestCCInfo("/nonexistent/socket.sock", CCInfoTimeRangeToday, "", 100*time.Millisecond)
 
 	assert.Error(s.T(), err)
 	assert.Nil(s.T(), response)
@@ -287,7 +287,7 @@ func (s *CCInfoClientTestSuite) TestRequestCCInfo_InvalidResponse() {
 
 	time.Sleep(10 * time.Millisecond)
 
-	response, err := RequestCCInfo(s.socketPath, CCInfoTimeRangeToday, 1*time.Second)
+	response, err := RequestCCInfo(s.socketPath, CCInfoTimeRangeToday, "", 1*time.Second)
 
 	assert.Error(s.T(), err)
 	assert.Nil(s.T(), response)
@@ -312,7 +312,7 @@ func (s *CCInfoClientTestSuite) TestRequestCCInfo_SendsCorrectMessage() {
 
 	time.Sleep(10 * time.Millisecond)
 
-	RequestCCInfo(s.socketPath, CCInfoTimeRangeWeek, 1*time.Second)
+	RequestCCInfo(s.socketPath, CCInfoTimeRangeWeek, "", 1*time.Second)
 
 	assert.Equal(s.T(), SocketMessageTypeCCInfo, receivedMsg.Type)
 

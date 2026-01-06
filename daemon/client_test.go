@@ -157,7 +157,7 @@ func TestRequestCCInfo(t *testing.T) {
 	// Give server time to start
 	time.Sleep(50 * time.Millisecond)
 
-	response, err := RequestCCInfo(socketPath, CCInfoTimeRangeToday, 5*time.Second)
+	response, err := RequestCCInfo(socketPath, CCInfoTimeRangeToday, "", 5*time.Second)
 	if err != nil {
 		t.Fatalf("RequestCCInfo failed: %v", err)
 	}
@@ -200,14 +200,14 @@ func TestRequestCCInfo_Timeout(t *testing.T) {
 	// Give server time to start
 	time.Sleep(50 * time.Millisecond)
 
-	_, err = RequestCCInfo(socketPath, CCInfoTimeRangeToday, 100*time.Millisecond)
+	_, err = RequestCCInfo(socketPath, CCInfoTimeRangeToday, "", 100*time.Millisecond)
 	if err == nil {
 		t.Error("Expected timeout error")
 	}
 }
 
 func TestRequestCCInfo_SocketNotExists(t *testing.T) {
-	_, err := RequestCCInfo("/nonexistent/socket.sock", CCInfoTimeRangeToday, 1*time.Second)
+	_, err := RequestCCInfo("/nonexistent/socket.sock", CCInfoTimeRangeToday, "", 1*time.Second)
 	if err == nil {
 		t.Error("Expected error when socket doesn't exist")
 	}
@@ -261,7 +261,7 @@ func TestRequestCCInfo_AllTimeRanges(t *testing.T) {
 
 			time.Sleep(50 * time.Millisecond)
 
-			response, err := RequestCCInfo(socketPath, timeRange, 5*time.Second)
+			response, err := RequestCCInfo(socketPath, timeRange, "", 5*time.Second)
 			if err != nil {
 				t.Fatalf("RequestCCInfo failed: %v", err)
 			}

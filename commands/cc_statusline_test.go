@@ -40,9 +40,9 @@ func (s *CCStatuslineTestSuite) TearDownTest() {
 	os.Remove(s.socketPath)
 }
 
-// getDailyCostWithDaemonFallback Tests
+// getDaemonInfoWithFallback Tests
 
-func (s *CCStatuslineTestSuite) TestGetDailyStats_UsesDaemonWhenAvailable() {
+func (s *CCStatuslineTestSuite) TestGetDaemonInfo_UsesDaemonWhenAvailable() {
 	// Start mock daemon socket
 	listener, err := net.Listen("unix", s.socketPath)
 	assert.NoError(s.T(), err)
@@ -50,6 +50,8 @@ func (s *CCStatuslineTestSuite) TestGetDailyStats_UsesDaemonWhenAvailable() {
 
 	expectedCost := 15.67
 	expectedSessionSeconds := 3600
+	expectedBranch := "main"
+	expectedDirty := true
 	go func() {
 		conn, _ := listener.Accept()
 		defer conn.Close()
@@ -62,6 +64,8 @@ func (s *CCStatuslineTestSuite) TestGetDailyStats_UsesDaemonWhenAvailable() {
 			TotalSessionSeconds: expectedSessionSeconds,
 			TimeRange:           "today",
 			CachedAt:            time.Now(),
+			GitBranch:           expectedBranch,
+			GitDirty:            expectedDirty,
 		}
 		json.NewEncoder(conn).Encode(response)
 	}()
@@ -72,27 +76,31 @@ func (s *CCStatuslineTestSuite) TestGetDailyStats_UsesDaemonWhenAvailable() {
 		SocketPath: s.socketPath,
 	}
 
-	stats := getDailyStatsWithDaemonFallback(context.Background(), config)
+	result := getDaemonInfoWithFallback(context.Background(), config, "/some/path")
 
-	assert.Equal(s.T(), expectedCost, stats.Cost)
-	assert.Equal(s.T(), expectedSessionSeconds, stats.SessionSeconds)
+	assert.Equal(s.T(), expectedCost, result.Cost)
+	assert.Equal(s.T(), expectedSessionSeconds, result.SessionSeconds)
+	assert.Equal(s.T(), expectedBranch, result.GitBranch)
+	assert.Equal(s.T(), expectedDirty, result.GitDirty)
 }
 
-func (s *CCStatuslineTestSuite) TestGetDailyStats_FallbackWhenDaemonUnavailable() {
+func (s *CCStatuslineTestSuite) TestGetDaemonInfo_FallbackWhenDaemonUnavailable() {
 	// No socket exists, should fall back to cached API
 	config := model.ShellTimeConfig{
 		SocketPath: "/nonexistent/socket.sock",
 		Token:      "", // No token means FetchDailyStatsCached returns zero values
 	}
 
-	stats := getDailyStatsWithDaemonFallback(context.Background(), config)
+	result := getDaemonInfoWithFallback(context.Background(), config, "")
 
 	// Should return zero values (from cache fallback with no token)
-	assert.Equal(s.T(), float64(0), stats.Cost)
-	assert.Equal(s.T(), 0, stats.SessionSeconds)
+	assert.Equal(s.T(), float64(0), result.Cost)
+	assert.Equal(s.T(), 0, result.SessionSeconds)
+	assert.Empty(s.T(), result.GitBranch)
+	assert.False(s.T(), result.GitDirty)
 }
 
-func (s *CCStatuslineTestSuite) TestGetDailyStats_FallbackOnDaemonError() {
+func (s *CCStatuslineTestSuite) TestGetDaemonInfo_FallbackOnDaemonError() {
 	// Start mock daemon that returns error
 	listener, err := net.Listen("unix", s.socketPath)
 	assert.NoError(s.T(), err)
@@ -111,14 +119,16 @@ func (s *CCStatuslineTestSuite) TestGetDailyStats_FallbackOnDaemonError() {
 		Token:      "", // No token
 	}
 
-	stats := getDailyStatsWithDaemonFallback(context.Background(), config)
+	result := getDaemonInfoWithFallback(context.Background(), config, "")
 
 	// Should fall back and return zero values
-	assert.Equal(s.T(), float64(0), stats.Cost)
-	assert.Equal(s.T(), 0, stats.SessionSeconds)
+	assert.Equal(s.T(), float64(0), result.Cost)
+	assert.Equal(s.T(), 0, result.SessionSeconds)
+	assert.Empty(s.T(), result.GitBranch)
+	assert.False(s.T(), result.GitDirty)
 }
 
-func (s *CCStatuslineTestSuite) TestGetDailyStats_UsesDefaultSocketPath() {
+func (s *CCStatuslineTestSuite) TestGetDaemonInfo_UsesDefaultSocketPath() {
 	// Test that default socket path is used when config is empty
 	config := model.ShellTimeConfig{
 		SocketPath: "", // Empty path - should use model.DefaultSocketPath
@@ -127,22 +137,23 @@ func (s *CCStatuslineTestSuite) TestGetDailyStats_UsesDefaultSocketPath() {
 
 	// This should use model.DefaultSocketPath internally
 	// Since no daemon is running at the default path, it will fall back to cached API
-	// The function should not panic and should return a valid stats struct
-	stats := getDailyStatsWithDaemonFallback(context.Background(), config)
+	// The function should not panic and should return a valid result struct
+	result := getDaemonInfoWithFallback(context.Background(), config, "")
 
 	// We can't assert on exact values since the global cache might have data
 	// from previous tests. Just verify the function returns without error
 	// and returns non-negative values
-	assert.GreaterOrEqual(s.T(), stats.Cost, float64(0))
-	assert.GreaterOrEqual(s.T(), stats.SessionSeconds, 0)
+	assert.GreaterOrEqual(s.T(), result.Cost, float64(0))
+	assert.GreaterOrEqual(s.T(), result.SessionSeconds, 0)
 }
 
 // formatStatuslineOutput Tests
 
 func (s *CCStatuslineTestSuite) TestFormatStatuslineOutput_AllValues() {
-	output := formatStatuslineOutput("claude-opus-4", 1.23, 4.56, 3661, 75.0)
+	output := formatStatuslineOutput("claude-opus-4", 1.23, 4.56, 3661, 75.0, "main", false)
 
 	// Should contain all components
+	assert.Contains(s.T(), output, "🌿 main")
 	assert.Contains(s.T(), output, "🤖 claude-opus-4")
 	assert.Contains(s.T(), output, "$1.23")
 	assert.Contains(s.T(), output, "$4.56")
@@ -150,8 +161,24 @@ func (s *CCStatuslineTestSuite) TestFormatStatuslineOutput_AllValues() {
 	assert.Contains(s.T(), output, "75%")     // Context percentage
 }
 
+func (s *CCStatuslineTestSuite) TestFormatStatuslineOutput_WithDirtyBranch() {
+	output := formatStatuslineOutput("claude-opus-4", 1.23, 4.56, 3661, 75.0, "feature/test", true)
+
+	// Should contain branch with asterisk for dirty
+	assert.Contains(s.T(), output, "🌿 feature/test*")
+	assert.Contains(s.T(), output, "🤖 claude-opus-4")
+}
+
+func (s *CCStatuslineTestSuite) TestFormatStatuslineOutput_NoBranch() {
+	output := formatStatuslineOutput("claude-opus-4", 1.23, 4.56, 3661, 75.0, "", false)
+
+	// Should show "-" for no branch
+	assert.Contains(s.T(), output, "🌿 -")
+	assert.Contains(s.T(), output, "🤖 claude-opus-4")
+}
+
 func (s *CCStatuslineTestSuite) TestFormatStatuslineOutput_ZeroDailyCost() {
-	output := formatStatuslineOutput("claude-sonnet", 0.50, 0, 300, 50.0)
+	output := formatStatuslineOutput("claude-sonnet", 0.50, 0, 300, 50.0, "main", false)
 
 	// Should show "-" for zero daily cost
 	assert.Contains(s.T(), output, "📊 -")
@@ -159,14 +186,14 @@ func (s *CCStatuslineTestSuite) TestFormatStatuslineOutput_ZeroDailyCost() {
 }
 
 func (s *CCStatuslineTestSuite) TestFormatStatuslineOutput_ZeroSessionSeconds() {
-	output := formatStatuslineOutput("claude-sonnet", 0.50, 1.0, 0, 50.0)
+	output := formatStatuslineOutput("claude-sonnet", 0.50, 1.0, 0, 50.0, "main", false)
 
 	// Should show "-" for zero session seconds
 	assert.Contains(s.T(), output, "⏱️ -")
 }
 
 func (s *CCStatuslineTestSuite) TestFormatStatuslineOutput_HighContextPercentage() {
-	output := formatStatuslineOutput("test-model", 1.0, 1.0, 60, 85.0)
+	output := formatStatuslineOutput("test-model", 1.0, 1.0, 60, 85.0, "main", false)
 
 	// Should contain the percentage (color codes may vary)
 	assert.Contains(s.T(), output, "85%")
@@ -174,7 +201,7 @@ func (s *CCStatuslineTestSuite) TestFormatStatuslineOutput_HighContextPercentage
 }
 
 func (s *CCStatuslineTestSuite) TestFormatStatuslineOutput_LowContextPercentage() {
-	output := formatStatuslineOutput("test-model", 1.0, 1.0, 45, 25.0)
+	output := formatStatuslineOutput("test-model", 1.0, 1.0, 45, 25.0, "main", false)
 
 	// Should contain the percentage
 	assert.Contains(s.T(), output, "25%")
