@@ -1,5 +1,30 @@
 # Changelog
 
+## [0.1.57](https://github.com/shelltime/cli/compare/v0.1.56...v0.1.57) (2026-01-06)
+
+
+### Features
+
+* **cc:** add git branch and dirty status to statusline ([a972290](https://github.com/shelltime/cli/commit/a972290a47a102ee7c2e4b41f599c8802c2d8d69))
+* **cc:** add git branch and dirty status to statusline ([fadef4b](https://github.com/shelltime/cli/commit/fadef4b1defb263d1915c66a36931e9dde393d67))
+* **track:** add terminal tracking via PPID resolution ([fa5227a](https://github.com/shelltime/cli/commit/fa5227abcb3af8809928494bde76296a97bd4559))
+* **track:** add terminal tracking via PPID resolution ([0aa8267](https://github.com/shelltime/cli/commit/0aa82678cb4e671ef78299b320508c19fe379c6e))
+
+
+### Bug Fixes
+
+* **cc:** update statusline tests for new git info parameters ([5c38a67](https://github.com/shelltime/cli/commit/5c38a67a686ff24e1d1e92575791eda6c351c661))
+
+
+### Code Refactoring
+
+* **track:** split terminal field into terminal and multiplexer ([c38b9c0](https://github.com/shelltime/cli/commit/c38b9c0f51dfd06f2061cb1133a0b78adfd7da51))
+
+
+### Miscellaneous Chores
+
+* release 0.1.57 ([fde361e](https://github.com/shelltime/cli/commit/fde361e5ef19b3ed02e9a3c90ee7016837f319c0))
+
 ## [0.1.56](https://github.com/shelltime/cli/compare/v0.1.55...v0.1.56) (2026-01-04)
 
 
