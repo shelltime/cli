@@ -15,7 +15,7 @@ permissions:
 
 jobs:
   test:
-    runs-on: ubuntu-latest
+    runs-on: jp-arm-oracle
     steps:
       - name: Checkout code
         uses: actions/checkout@v5
