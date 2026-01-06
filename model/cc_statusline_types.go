@@ -2,10 +2,12 @@ package model
 
 // CCStatuslineInput represents the JSON input from Claude Code statusline
 type CCStatuslineInput struct {
-	Model            CCStatuslineModel         `json:"model"`
-	Cost             CCStatuslineCost          `json:"cost"`
-	ContextWindow    CCStatuslineContextWindow `json:"context_window"`
-	WorkingDirectory string                    `json:"working_directory"`
+	HookEventName string                    `json:"hook_event_name"`
+	Model         CCStatuslineModel         `json:"model"`
+	Cost          CCStatuslineCost          `json:"cost"`
+	ContextWindow CCStatuslineContextWindow `json:"context_window"`
+	Cwd           string                    `json:"cwd"`
+	Version       string                    `json:"version"`
 }
 
 // CCStatuslineModel represents model information
@@ -22,9 +24,9 @@ type CCStatuslineCost struct {
 
 // CCStatuslineContextWindow represents context window usage
 type CCStatuslineContextWindow struct {
-	TotalInputTokens  int                      `json:"total_input_tokens"`
-	TotalOutputTokens int                      `json:"total_output_tokens"`
-	ContextWindowSize int                      `json:"context_window_size"`
+	TotalInputTokens  int                       `json:"total_input_tokens"`
+	TotalOutputTokens int                       `json:"total_output_tokens"`
+	ContextWindowSize int                       `json:"context_window_size"`
 	CurrentUsage      *CCStatuslineContextUsage `json:"current_usage"`
 }
 

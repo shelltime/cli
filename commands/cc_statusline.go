@@ -56,7 +56,7 @@ func commandCCStatusline(c *cli.Context) error {
 	var result ccStatuslineResult
 	config, err := configService.ReadConfigFile(ctx)
 	if err == nil {
-		result = getDaemonInfoWithFallback(ctx, config, data.WorkingDirectory)
+		result = getDaemonInfoWithFallback(ctx, config, data.Cwd)
 	}
 
 	// Format and output
