@@ -465,6 +465,177 @@ func (s *CCInfoTimerTestSuite) TestConcurrentNotifyActivity() {
 	wg.Wait()
 }
 
+// Git Cache Tests
+
+func (s *CCInfoTimerTestSuite) TestGetCachedGitInfo_EmptyWorkingDir() {
+	config := &model.ShellTimeConfig{}
+	service := NewCCInfoTimerService(config)
+
+	info := service.GetCachedGitInfo("")
+
+	assert.Equal(s.T(), GitInfo{}, info)
+}
+
+func (s *CCInfoTimerTestSuite) TestGetCachedGitInfo_CreatesNewEntry() {
+	config := &model.ShellTimeConfig{}
+	service := NewCCInfoTimerService(config)
+
+	_ = service.GetCachedGitInfo("/project/a")
+
+	service.mu.RLock()
+	defer service.mu.RUnlock()
+	assert.Contains(s.T(), service.gitCache, "/project/a")
+	assert.NotNil(s.T(), service.gitCache["/project/a"])
+}
+
+func (s *CCInfoTimerTestSuite) TestGetCachedGitInfo_MultipleCWDs() {
+	config := &model.ShellTimeConfig{}
+	service := NewCCInfoTimerService(config)
+
+	// Request git info for multiple directories
+	_ = service.GetCachedGitInfo("/project/a")
+	_ = service.GetCachedGitInfo("/project/b")
+	_ = service.GetCachedGitInfo("/project/c")
+
+	service.mu.RLock()
+	defer service.mu.RUnlock()
+	assert.Len(s.T(), service.gitCache, 3)
+	assert.Contains(s.T(), service.gitCache, "/project/a")
+	assert.Contains(s.T(), service.gitCache, "/project/b")
+	assert.Contains(s.T(), service.gitCache, "/project/c")
+}
+
+func (s *CCInfoTimerTestSuite) TestGetCachedGitInfo_PathNormalization() {
+	config := &model.ShellTimeConfig{}
+	service := NewCCInfoTimerService(config)
+
+	// Request with trailing slash and without - should be same entry
+	_ = service.GetCachedGitInfo("/project/a/")
+	_ = service.GetCachedGitInfo("/project/a")
+
+	service.mu.RLock()
+	defer service.mu.RUnlock()
+	// Both should map to the same normalized path
+	assert.Len(s.T(), service.gitCache, 1)
+	assert.Contains(s.T(), service.gitCache, "/project/a")
+}
+
+func (s *CCInfoTimerTestSuite) TestGetCachedGitInfo_UpdatesLastAccessed() {
+	config := &model.ShellTimeConfig{}
+	service := NewCCInfoTimerService(config)
+
+	// First access
+	_ = service.GetCachedGitInfo("/project/a")
+	service.mu.RLock()
+	firstAccess := service.gitCache["/project/a"].LastAccessed
+	service.mu.RUnlock()
+
+	time.Sleep(10 * time.Millisecond)
+
+	// Second access
+	_ = service.GetCachedGitInfo("/project/a")
+	service.mu.RLock()
+	secondAccess := service.gitCache["/project/a"].LastAccessed
+	service.mu.RUnlock()
+
+	assert.True(s.T(), secondAccess.After(firstAccess))
+}
+
+func (s *CCInfoTimerTestSuite) TestGetCachedGitInfo_ReturnsCachedValue() {
+	config := &model.ShellTimeConfig{}
+	service := NewCCInfoTimerService(config)
+
+	// Manually set cached git info
+	expectedInfo := GitInfo{Branch: "main", Dirty: true, IsRepo: true}
+	service.mu.Lock()
+	service.gitCache["/project/a"] = &GitCacheEntry{
+		Info:         expectedInfo,
+		LastAccessed: time.Now(),
+		LastFetched:  time.Now(),
+	}
+	service.mu.Unlock()
+
+	info := service.GetCachedGitInfo("/project/a")
+
+	assert.Equal(s.T(), expectedInfo, info)
+}
+
+func (s *CCInfoTimerTestSuite) TestCleanupStaleGitCache_RemovesOldEntries() {
+	config := &model.ShellTimeConfig{}
+	service := NewCCInfoTimerService(config)
+
+	// Add entries with different ages
+	service.mu.Lock()
+	service.gitCache["/project/old"] = &GitCacheEntry{
+		LastAccessed: time.Now().Add(-CCInfoInactivityTimeout - time.Minute),
+	}
+	service.gitCache["/project/new"] = &GitCacheEntry{
+		LastAccessed: time.Now(),
+	}
+	service.mu.Unlock()
+
+	service.cleanupStaleGitCache()
+
+	service.mu.RLock()
+	defer service.mu.RUnlock()
+	assert.NotContains(s.T(), service.gitCache, "/project/old")
+	assert.Contains(s.T(), service.gitCache, "/project/new")
+}
+
+func (s *CCInfoTimerTestSuite) TestConcurrentGetCachedGitInfo_DifferentDirs() {
+	config := &model.ShellTimeConfig{}
+	service := NewCCInfoTimerService(config)
+
+	var wg sync.WaitGroup
+	numGoroutines := 100
+
+	for i := 0; i < numGoroutines; i++ {
+		wg.Add(1)
+		go func(idx int) {
+			defer wg.Done()
+			// Access different directories
+			dir := "/project/" + string(rune('a'+idx%10))
+			service.GetCachedGitInfo(dir)
+		}(i)
+	}
+
+	// Should complete without race conditions
+	wg.Wait()
+
+	// Verify cache has entries
+	service.mu.RLock()
+	defer service.mu.RUnlock()
+	assert.GreaterOrEqual(s.T(), len(service.gitCache), 1)
+}
+
+func (s *CCInfoTimerTestSuite) TestStopTimer_ClearsGitCache() {
+	config := &model.ShellTimeConfig{
+		Token:       "test-token",
+		APIEndpoint: s.server.URL,
+	}
+	service := NewCCInfoTimerService(config)
+
+	// Add git cache entries
+	service.mu.Lock()
+	service.gitCache["/project/a"] = &GitCacheEntry{LastAccessed: time.Now()}
+	service.gitCache["/project/b"] = &GitCacheEntry{LastAccessed: time.Now()}
+	service.mu.Unlock()
+
+	// Start timer
+	service.NotifyActivity()
+	time.Sleep(20 * time.Millisecond)
+
+	// Stop timer
+	service.timerMu.Lock()
+	service.stopTimer()
+	service.timerMu.Unlock()
+
+	// Git cache should be cleared
+	service.mu.RLock()
+	defer service.mu.RUnlock()
+	assert.Empty(s.T(), service.gitCache)
+}
+
 func TestCCInfoTimerTestSuite(t *testing.T) {
 	suite.Run(t, new(CCInfoTimerTestSuite))
 }
