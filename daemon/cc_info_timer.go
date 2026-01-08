@@ -3,6 +3,7 @@ package daemon
 import (
 	"context"
 	"log/slog"
+	"path/filepath"
 	"sync"
 	"time"
 
@@ -21,6 +22,12 @@ type CCInfoCache struct {
 	FetchedAt           time.Time
 }
 
+// GitCacheEntry holds cached git info for a single working directory
+type GitCacheEntry struct {
+	Info         GitInfo
+	LastAccessed time.Time
+	LastFetched  time.Time
+}
 
 // CCInfoTimerService manages lazy-fetching of CC info data
 type CCInfoTimerService struct {
@@ -37,9 +44,8 @@ type CCInfoTimerService struct {
 	stopChan     chan struct{}
 	wg           sync.WaitGroup
 
-	// Git info (single active working directory, fetched by timer)
-	activeWorkingDir string
-	gitInfo          GitInfo
+	// Git info cache (per working directory)
+	gitCache map[string]*GitCacheEntry
 }
 
 // NewCCInfoTimerService creates a new CC info timer service
@@ -48,6 +54,7 @@ func NewCCInfoTimerService(config *model.ShellTimeConfig) *CCInfoTimerService {
 		config:       config,
 		cache:        make(map[CCInfoTimeRange]CCInfoCache),
 		activeRanges: make(map[CCInfoTimeRange]bool),
+		gitCache:     make(map[string]*GitCacheEntry),
 		stopChan:     make(chan struct{}),
 	}
 }
@@ -122,11 +129,10 @@ func (s *CCInfoTimerService) stopTimer() {
 	s.ticker.Stop()
 	s.timerRunning = false
 
-	// Clear active ranges and git info when stopping
+	// Clear active ranges and git cache when stopping
 	s.mu.Lock()
 	s.activeRanges = make(map[CCInfoTimeRange]bool)
-	s.activeWorkingDir = ""
-	s.gitInfo = GitInfo{}
+	s.gitCache = make(map[string]*GitCacheEntry)
 	s.mu.Unlock()
 
 	slog.Info("CC info timer stopped due to inactivity")
@@ -272,39 +278,79 @@ func (s *CCInfoTimerService) fetchCCInfo(ctx context.Context, timeRange CCInfoTi
 	}, nil
 }
 
-// GetCachedGitInfo marks the working directory as active and returns cached git info.
+// GetCachedGitInfo returns cached git info for the given working directory.
+// It marks the directory as active for background refresh.
 // Git info is fetched by the background timer, so first call may return empty.
 func (s *CCInfoTimerService) GetCachedGitInfo(workingDir string) GitInfo {
 	if workingDir == "" {
 		return GitInfo{}
 	}
 
+	// Normalize path for consistent cache keys
+	normalizedDir := filepath.Clean(workingDir)
+
 	s.mu.Lock()
-	s.activeWorkingDir = workingDir
-	info := s.gitInfo
+	entry, exists := s.gitCache[normalizedDir]
+	if !exists {
+		// Create new entry for this directory
+		entry = &GitCacheEntry{
+			LastAccessed: time.Now(),
+		}
+		s.gitCache[normalizedDir] = entry
+	} else {
+		// Update last accessed time
+		entry.LastAccessed = time.Now()
+	}
+	info := entry.Info
 	s.mu.Unlock()
 
 	return info
 }
 
-// fetchGitInfo fetches git info for the active working directory
+// fetchGitInfo fetches git info for all recently accessed working directories
 func (s *CCInfoTimerService) fetchGitInfo() {
+	// Collect directories that need refresh (under read lock)
 	s.mu.RLock()
-	workingDir := s.activeWorkingDir
+	dirsToFetch := make([]string, 0, len(s.gitCache))
+	for dir, entry := range s.gitCache {
+		// Only fetch for recently accessed entries
+		if time.Since(entry.LastAccessed) <= CCInfoInactivityTimeout {
+			dirsToFetch = append(dirsToFetch, dir)
+		}
+	}
 	s.mu.RUnlock()
 
-	if workingDir == "" {
-		return
+	// Fetch git info for each directory (outside lock to avoid blocking)
+	for _, dir := range dirsToFetch {
+		info := GetGitInfo(dir)
+
+		s.mu.Lock()
+		if entry, exists := s.gitCache[dir]; exists {
+			entry.Info = info
+			entry.LastFetched = time.Now()
+		}
+		s.mu.Unlock()
+
+		slog.Debug("Git info updated",
+			slog.String("workingDir", dir),
+			slog.String("branch", info.Branch),
+			slog.Bool("dirty", info.Dirty))
 	}
 
-	info := GetGitInfo(workingDir)
+	// Cleanup stale entries
+	s.cleanupStaleGitCache()
+}
 
+// cleanupStaleGitCache removes entries not accessed within the inactivity timeout
+func (s *CCInfoTimerService) cleanupStaleGitCache() {
 	s.mu.Lock()
-	s.gitInfo = info
-	s.mu.Unlock()
+	defer s.mu.Unlock()
 
-	slog.Debug("Git info updated",
-		slog.String("workingDir", workingDir),
-		slog.String("branch", info.Branch),
-		slog.Bool("dirty", info.Dirty))
+	for dir, entry := range s.gitCache {
+		if time.Since(entry.LastAccessed) > CCInfoInactivityTimeout {
+			delete(s.gitCache, dir)
+			slog.Debug("Git cache entry evicted",
+				slog.String("workingDir", dir))
+		}
+	}
 }
