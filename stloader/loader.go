@@ -20,7 +20,7 @@ var DefaultSymbols = []string{"⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "
 // Default configuration values
 const (
 	DefaultSpinInterval  = 200 * time.Millisecond
-	DefaultShineInterval = 32 * time.Millisecond
+	DefaultShineInterval = 80 * time.Millisecond
 )
 
 // LoaderConfig holds configuration options for the loader
