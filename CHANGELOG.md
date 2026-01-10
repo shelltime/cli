@@ -1,5 +1,15 @@
 # Changelog
 
+## [0.1.60](https://github.com/shelltime/cli/compare/v0.1.59...v0.1.60) (2026-01-10)
+
+
+### Bug Fixes
+
+* **daemon:** add per-CWD git info cache for cc statusline ([863689b](https://github.com/shelltime/cli/commit/863689b09add6b780ff7a257e7e8e15579a77149))
+* **daemon:** add per-CWD git info cache for cc statusline ([38a75d9](https://github.com/shelltime/cli/commit/38a75d99e4a751e9c509a4fd124d86649d9693b7))
+* **stloader:** slow down shine animation interval for better UX ([284460e](https://github.com/shelltime/cli/commit/284460e8a262d2dd815760cb619bbeae36f16928))
+* **stloader:** slow down shine animation interval for better UX ([1103fb3](https://github.com/shelltime/cli/commit/1103fb3d00e21f4671f66b2c560f05f44dc6c960))
+
 ## [0.1.59](https://github.com/shelltime/cli/compare/v0.1.58...v0.1.59) (2026-01-06)
 
 
