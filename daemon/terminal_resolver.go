@@ -7,54 +7,57 @@ import (
 	"strings"
 )
 
-// Known terminal emulator process names
-var knownTerminals = map[string]bool{
+// Known terminal emulator process names (lowercase for case-insensitive matching)
+var knownTerminals = []string{
 	// macOS
-	"Terminal":        true,
-	"iTerm2":          true,
-	"Alacritty":       true,
-	"alacritty":       true,
-	"kitty":           true,
-	"WezTerm":         true,
-	"wezterm":         true,
-	"wezterm-gui":     true,
-	"Hyper":           true,
-	"Tabby":           true,
-	"Warp":            true,
-	"Ghostty":         true,
-	"ghostty":         true,
+	"terminal",
+	"iterm2",
+	"alacritty",
+	"kitty",
+	"wezterm",
+	"hyper",
+	"tabby",
+	"warp",
+	"ghostty",
 	// Linux
-	"gnome-terminal":  true,
-	"gnome-terminal-": true, // gnome-terminal-server
-	"konsole":         true,
-	"xfce4-terminal":  true,
-	"xterm":           true,
-	"urxvt":           true,
-	"rxvt":            true,
-	"terminator":      true,
-	"tilix":           true,
-	"st":              true,
-	"foot":            true,
-	"footclient":      true,
+	"gnome-terminal",
+	"konsole",
+	"xfce4-terminal",
+	"xterm",
+	"urxvt",
+	"rxvt",
+	"terminator",
+	"tilix",
+	"foot",
 	// IDE terminals
-	"code":            true,
-	"Code":            true,
-	"cursor":          true,
-	"Cursor":          true,
+	"code",
+	"cursor",
 }
 
-// Known terminal multiplexer process names
-var knownMultiplexers = map[string]bool{
-	"tmux":   true,
-	"screen": true,
-	"zellij": true,
+// Known terminal multiplexer process names (lowercase for case-insensitive matching)
+var knownMultiplexers = []string{
+	"tmux",
+	"screen",
+	"zellij",
 }
 
-// Known remote/container process names
-var knownRemote = map[string]bool{
-	"sshd":       true,
-	"docker":     true,
-	"containerd": true,
+// Known remote/container process names (lowercase for case-insensitive matching)
+var knownRemote = []string{
+	"sshd",
+	"docker",
+	"containerd",
+}
+
+// matchKnownName checks if processName contains any of the known names (case-insensitive)
+// Returns the matched known name if found, empty string otherwise
+func matchKnownName(processName string, knownNames []string) string {
+	lowerName := strings.ToLower(processName)
+	for _, known := range knownNames {
+		if strings.Contains(lowerName, known) {
+			return known
+		}
+	}
+	return ""
 }
 
 // ResolveTerminal walks up the process tree starting from ppid
@@ -81,18 +84,24 @@ func ResolveTerminal(ppid int) (terminal string, multiplexer string) {
 		}
 
 		// Check for multiplexers first (they're closer to the shell)
-		if multiplexer == "" && knownMultiplexers[processName] {
-			multiplexer = processName
+		if multiplexer == "" {
+			if matched := matchKnownName(processName, knownMultiplexers); matched != "" {
+				multiplexer = matched
+			}
 		}
 
 		// Check for terminals
-		if terminal == "" && knownTerminals[processName] {
-			terminal = processName
+		if terminal == "" {
+			if matched := matchKnownName(processName, knownTerminals); matched != "" {
+				terminal = matched
+			}
 		}
 
 		// Check for remote connections
-		if terminal == "" && knownRemote[processName] {
-			terminal = processName
+		if terminal == "" {
+			if matched := matchKnownName(processName, knownRemote); matched != "" {
+				terminal = matched
+			}
 		}
 
 		// If we found a terminal, we can stop
