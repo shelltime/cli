@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.61](https://github.com/shelltime/cli/compare/v0.1.60...v0.1.61) (2026-01-13)
+
+
+### Bug Fixes
+
+* **daemon:** improve terminal/multiplexer process name matching ([16cf5d9](https://github.com/shelltime/cli/commit/16cf5d98b2cc46f88d2be2cb8d809cda28a50ce6))
+
 ## [0.1.60](https://github.com/shelltime/cli/compare/v0.1.59...v0.1.60) (2026-01-10)
 
 
