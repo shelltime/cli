@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.65](https://github.com/shelltime/cli/compare/v0.1.64...v0.1.65) (2026-02-06)
+
+
+### Documentation
+
+* **commands:** add quota utilization section to CC statusline doc ([523d614](https://github.com/shelltime/cli/commit/523d61416a5d1b6c1dfe5fd72adaad8e96d287a6))
+
 ## [0.1.64](https://github.com/shelltime/cli/compare/v0.1.63...v0.1.64) (2026-02-06)
 
 
