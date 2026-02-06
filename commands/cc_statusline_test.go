@@ -150,7 +150,7 @@ func (s *CCStatuslineTestSuite) TestGetDaemonInfo_UsesDefaultSocketPath() {
 // formatStatuslineOutput Tests
 
 func (s *CCStatuslineTestSuite) TestFormatStatuslineOutput_AllValues() {
-	output := formatStatuslineOutput("claude-opus-4", 1.23, 4.56, 3661, 75.0, "main", false)
+	output := formatStatuslineOutput("claude-opus-4", 1.23, 4.56, 3661, 75.0, "main", false, nil, nil)
 
 	// Should contain all components
 	assert.Contains(s.T(), output, "🌿 main")
@@ -162,7 +162,7 @@ func (s *CCStatuslineTestSuite) TestFormatStatuslineOutput_AllValues() {
 }
 
 func (s *CCStatuslineTestSuite) TestFormatStatuslineOutput_WithDirtyBranch() {
-	output := formatStatuslineOutput("claude-opus-4", 1.23, 4.56, 3661, 75.0, "feature/test", true)
+	output := formatStatuslineOutput("claude-opus-4", 1.23, 4.56, 3661, 75.0, "feature/test", true, nil, nil)
 
 	// Should contain branch with asterisk for dirty
 	assert.Contains(s.T(), output, "🌿 feature/test*")
@@ -170,7 +170,7 @@ func (s *CCStatuslineTestSuite) TestFormatStatuslineOutput_WithDirtyBranch() {
 }
 
 func (s *CCStatuslineTestSuite) TestFormatStatuslineOutput_NoBranch() {
-	output := formatStatuslineOutput("claude-opus-4", 1.23, 4.56, 3661, 75.0, "", false)
+	output := formatStatuslineOutput("claude-opus-4", 1.23, 4.56, 3661, 75.0, "", false, nil, nil)
 
 	// Should show "-" for no branch
 	assert.Contains(s.T(), output, "🌿 -")
@@ -178,7 +178,7 @@ func (s *CCStatuslineTestSuite) TestFormatStatuslineOutput_NoBranch() {
 }
 
 func (s *CCStatuslineTestSuite) TestFormatStatuslineOutput_ZeroDailyCost() {
-	output := formatStatuslineOutput("claude-sonnet", 0.50, 0, 300, 50.0, "main", false)
+	output := formatStatuslineOutput("claude-sonnet", 0.50, 0, 300, 50.0, "main", false, nil, nil)
 
 	// Should show "-" for zero daily cost
 	assert.Contains(s.T(), output, "📊 -")
@@ -186,14 +186,14 @@ func (s *CCStatuslineTestSuite) TestFormatStatuslineOutput_ZeroDailyCost() {
 }
 
 func (s *CCStatuslineTestSuite) TestFormatStatuslineOutput_ZeroSessionSeconds() {
-	output := formatStatuslineOutput("claude-sonnet", 0.50, 1.0, 0, 50.0, "main", false)
+	output := formatStatuslineOutput("claude-sonnet", 0.50, 1.0, 0, 50.0, "main", false, nil, nil)
 
 	// Should show "-" for zero session seconds
 	assert.Contains(s.T(), output, "⏱️ -")
 }
 
 func (s *CCStatuslineTestSuite) TestFormatStatuslineOutput_HighContextPercentage() {
-	output := formatStatuslineOutput("test-model", 1.0, 1.0, 60, 85.0, "main", false)
+	output := formatStatuslineOutput("test-model", 1.0, 1.0, 60, 85.0, "main", false, nil, nil)
 
 	// Should contain the percentage (color codes may vary)
 	assert.Contains(s.T(), output, "85%")
@@ -201,7 +201,7 @@ func (s *CCStatuslineTestSuite) TestFormatStatuslineOutput_HighContextPercentage
 }
 
 func (s *CCStatuslineTestSuite) TestFormatStatuslineOutput_LowContextPercentage() {
-	output := formatStatuslineOutput("test-model", 1.0, 1.0, 45, 25.0, "main", false)
+	output := formatStatuslineOutput("test-model", 1.0, 1.0, 45, 25.0, "main", false, nil, nil)
 
 	// Should contain the percentage
 	assert.Contains(s.T(), output, "25%")
@@ -273,6 +273,115 @@ func (s *CCStatuslineTestSuite) TestCalculateContextPercent_WithoutCurrentUsage(
 
 	// (30000 + 20000) / 100000 * 100 = 50%
 	assert.Equal(s.T(), float64(50), percent)
+}
+
+// formatQuotaPart Tests
+
+func (s *CCStatuslineTestSuite) TestFormatQuotaPart_NilValues() {
+	result := formatQuotaPart(nil, nil)
+	assert.Contains(s.T(), result, "🚦 -")
+}
+
+func (s *CCStatuslineTestSuite) TestFormatQuotaPart_OnlyFiveHourNil() {
+	sd := 0.23
+	result := formatQuotaPart(nil, &sd)
+	assert.Contains(s.T(), result, "🚦 -")
+}
+
+func (s *CCStatuslineTestSuite) TestFormatQuotaPart_LowUtilization() {
+	fh := 0.10
+	sd := 0.20
+	result := formatQuotaPart(&fh, &sd)
+	assert.Contains(s.T(), result, "5h:10%")
+	assert.Contains(s.T(), result, "7d:20%")
+}
+
+func (s *CCStatuslineTestSuite) TestFormatQuotaPart_MediumUtilization() {
+	fh := 0.55
+	sd := 0.30
+	result := formatQuotaPart(&fh, &sd)
+	assert.Contains(s.T(), result, "5h:55%")
+	assert.Contains(s.T(), result, "7d:30%")
+}
+
+func (s *CCStatuslineTestSuite) TestFormatQuotaPart_HighUtilization() {
+	fh := 0.45
+	sd := 0.85
+	result := formatQuotaPart(&fh, &sd)
+	assert.Contains(s.T(), result, "5h:45%")
+	assert.Contains(s.T(), result, "7d:85%")
+}
+
+func (s *CCStatuslineTestSuite) TestFormatQuotaPart_ContainsLink() {
+	// Nil case
+	result := formatQuotaPart(nil, nil)
+	assert.Contains(s.T(), result, "claude.ai/settings/usage")
+	assert.Contains(s.T(), result, "\033]8;;")
+
+	// With values
+	fh := 0.45
+	sd := 0.23
+	result = formatQuotaPart(&fh, &sd)
+	assert.Contains(s.T(), result, "claude.ai/settings/usage")
+	assert.Contains(s.T(), result, "\033]8;;")
+	assert.Contains(s.T(), result, "5h:45%")
+	assert.Contains(s.T(), result, "7d:23%")
+}
+
+func (s *CCStatuslineTestSuite) TestFormatStatuslineOutput_WithQuota() {
+	fh := 0.45
+	sd := 0.23
+	output := formatStatuslineOutput("claude-opus-4", 1.23, 4.56, 3661, 75.0, "main", false, &fh, &sd)
+
+	assert.Contains(s.T(), output, "5h:45%")
+	assert.Contains(s.T(), output, "7d:23%")
+	assert.Contains(s.T(), output, "🚦")
+}
+
+func (s *CCStatuslineTestSuite) TestFormatStatuslineOutput_WithoutQuota() {
+	output := formatStatuslineOutput("claude-opus-4", 1.23, 4.56, 3661, 75.0, "main", false, nil, nil)
+
+	assert.Contains(s.T(), output, "🚦 -")
+}
+
+func (s *CCStatuslineTestSuite) TestGetDaemonInfo_PropagatesRateLimitFields() {
+	listener, err := net.Listen("unix", s.socketPath)
+	assert.NoError(s.T(), err)
+	s.listener = listener
+
+	fh := 0.45
+	sd := 0.23
+	go func() {
+		conn, _ := listener.Accept()
+		defer conn.Close()
+
+		var msg daemon.SocketMessage
+		json.NewDecoder(conn).Decode(&msg)
+
+		response := daemon.CCInfoResponse{
+			TotalCostUSD:        1.23,
+			TotalSessionSeconds: 100,
+			TimeRange:           "today",
+			CachedAt:            time.Now(),
+			GitBranch:           "main",
+			FiveHourUtilization: &fh,
+			SevenDayUtilization: &sd,
+		}
+		json.NewEncoder(conn).Encode(response)
+	}()
+
+	time.Sleep(10 * time.Millisecond)
+
+	config := model.ShellTimeConfig{
+		SocketPath: s.socketPath,
+	}
+
+	result := getDaemonInfoWithFallback(context.Background(), config, "/some/path")
+
+	assert.NotNil(s.T(), result.FiveHourUtilization)
+	assert.NotNil(s.T(), result.SevenDayUtilization)
+	assert.Equal(s.T(), 0.45, *result.FiveHourUtilization)
+	assert.Equal(s.T(), 0.23, *result.SevenDayUtilization)
 }
 
 func TestCCStatuslineTestSuite(t *testing.T) {

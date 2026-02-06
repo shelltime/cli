@@ -4,6 +4,7 @@ import (
 	"context"
 	"log/slog"
 	"path/filepath"
+	"runtime"
 	"sync"
 	"time"
 
@@ -46,16 +47,20 @@ type CCInfoTimerService struct {
 
 	// Git info cache (per working directory)
 	gitCache map[string]*GitCacheEntry
+
+	// Anthropic rate limit cache
+	rateLimitCache *anthropicRateLimitCache
 }
 
 // NewCCInfoTimerService creates a new CC info timer service
 func NewCCInfoTimerService(config *model.ShellTimeConfig) *CCInfoTimerService {
 	return &CCInfoTimerService{
-		config:       config,
-		cache:        make(map[CCInfoTimeRange]CCInfoCache),
-		activeRanges: make(map[CCInfoTimeRange]bool),
-		gitCache:     make(map[string]*GitCacheEntry),
-		stopChan:     make(chan struct{}),
+		config:         config,
+		cache:          make(map[CCInfoTimeRange]CCInfoCache),
+		activeRanges:   make(map[CCInfoTimeRange]bool),
+		gitCache:       make(map[string]*GitCacheEntry),
+		rateLimitCache: &anthropicRateLimitCache{},
+		stopChan:       make(chan struct{}),
 	}
 }
 
@@ -129,11 +134,17 @@ func (s *CCInfoTimerService) stopTimer() {
 	s.ticker.Stop()
 	s.timerRunning = false
 
-	// Clear active ranges and git cache when stopping
+	// Clear active ranges, git cache, and rate limit cache when stopping
 	s.mu.Lock()
 	s.activeRanges = make(map[CCInfoTimeRange]bool)
 	s.gitCache = make(map[string]*GitCacheEntry)
 	s.mu.Unlock()
+
+	s.rateLimitCache.mu.Lock()
+	s.rateLimitCache.usage = nil
+	s.rateLimitCache.fetchedAt = time.Time{}
+	s.rateLimitCache.lastAttemptAt = time.Time{}
+	s.rateLimitCache.mu.Unlock()
 
 	slog.Info("CC info timer stopped due to inactivity")
 }
@@ -145,6 +156,7 @@ func (s *CCInfoTimerService) timerLoop() {
 	// Fetch immediately on start
 	s.fetchActiveRanges(context.Background())
 	s.fetchGitInfo()
+	go s.fetchRateLimit(context.Background())
 
 	for {
 		select {
@@ -158,6 +170,7 @@ func (s *CCInfoTimerService) timerLoop() {
 			}
 			s.fetchActiveRanges(context.Background())
 			s.fetchGitInfo()
+			go s.fetchRateLimit(context.Background())
 
 		case <-s.stopChan:
 			return
@@ -353,4 +366,63 @@ func (s *CCInfoTimerService) cleanupStaleGitCache() {
 				slog.String("workingDir", dir))
 		}
 	}
+}
+
+// fetchRateLimit fetches Anthropic rate limit data if cache is stale.
+// Only runs on macOS where Keychain access is available.
+func (s *CCInfoTimerService) fetchRateLimit(ctx context.Context) {
+	if runtime.GOOS != "darwin" {
+		return
+	}
+
+	// Check cache TTL under read lock - skip if data is fresh or we attempted recently
+	s.rateLimitCache.mu.RLock()
+	sinceLastFetch := time.Since(s.rateLimitCache.fetchedAt)
+	sinceLastAttempt := time.Since(s.rateLimitCache.lastAttemptAt)
+	s.rateLimitCache.mu.RUnlock()
+
+	if sinceLastFetch < anthropicUsageCacheTTL || sinceLastAttempt < anthropicUsageCacheTTL {
+		return
+	}
+
+	// Record attempt time before fetching to avoid retrying on every tick
+	s.rateLimitCache.mu.Lock()
+	s.rateLimitCache.lastAttemptAt = time.Now()
+	s.rateLimitCache.mu.Unlock()
+
+	// Read token fresh from Keychain (not cached)
+	token, err := fetchClaudeCodeOAuthToken()
+	if err != nil || token == "" {
+		slog.Debug("Failed to get Claude Code OAuth token", slog.Any("err", err))
+		return
+	}
+
+	usage, err := fetchAnthropicUsage(ctx, token)
+	if err != nil {
+		slog.Warn("Failed to fetch Anthropic usage", slog.Any("err", err))
+		return
+	}
+
+	s.rateLimitCache.mu.Lock()
+	s.rateLimitCache.usage = usage
+	s.rateLimitCache.fetchedAt = time.Now()
+	s.rateLimitCache.mu.Unlock()
+
+	slog.Debug("Anthropic rate limit updated",
+		slog.Float64("5h", usage.FiveHourUtilization),
+		slog.Float64("7d", usage.SevenDayUtilization))
+}
+
+// GetCachedRateLimit returns a copy of the cached rate limit data, or nil if not available.
+func (s *CCInfoTimerService) GetCachedRateLimit() *AnthropicRateLimitData {
+	s.rateLimitCache.mu.RLock()
+	defer s.rateLimitCache.mu.RUnlock()
+
+	if s.rateLimitCache.usage == nil {
+		return nil
+	}
+
+	// Return a copy
+	copy := *s.rateLimitCache.usage
+	return &copy
 }
