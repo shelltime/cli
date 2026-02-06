@@ -312,6 +312,22 @@ func (s *CCStatuslineTestSuite) TestFormatQuotaPart_HighUtilization() {
 	assert.Contains(s.T(), result, "7d:85%")
 }
 
+func (s *CCStatuslineTestSuite) TestFormatQuotaPart_ContainsLink() {
+	// Nil case
+	result := formatQuotaPart(nil, nil)
+	assert.Contains(s.T(), result, "claude.ai/settings/usage")
+	assert.Contains(s.T(), result, "\033]8;;")
+
+	// With values
+	fh := 0.45
+	sd := 0.23
+	result = formatQuotaPart(&fh, &sd)
+	assert.Contains(s.T(), result, "claude.ai/settings/usage")
+	assert.Contains(s.T(), result, "\033]8;;")
+	assert.Contains(s.T(), result, "5h:45%")
+	assert.Contains(s.T(), result, "7d:23%")
+}
+
 func (s *CCStatuslineTestSuite) TestFormatStatuslineOutput_WithQuota() {
 	fh := 0.45
 	sd := 0.23

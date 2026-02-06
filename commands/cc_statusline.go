@@ -16,6 +16,12 @@ import (
 	"github.com/urfave/cli/v2"
 )
 
+const claudeUsageURL = "https://claude.ai/settings/usage"
+
+func wrapOSC8Link(url, text string) string {
+	return fmt.Sprintf("\033]8;;%s\033\\%s\033]8;;\033\\", url, text)
+}
+
 var CCStatuslineCommand = &cli.Command{
 	Name:   "statusline",
 	Usage:  "Output statusline for Claude Code (reads JSON from stdin)",
@@ -178,7 +184,7 @@ func formatStatuslineOutput(modelName string, sessionCost, dailyCost float64, se
 // Color is based on the max utilization of both buckets.
 func formatQuotaPart(fiveHourUtil, sevenDayUtil *float64) string {
 	if fiveHourUtil == nil || sevenDayUtil == nil {
-		return color.Gray.Sprint("🚦 -")
+		return wrapOSC8Link(claudeUsageURL, color.Gray.Sprint("🚦 -"))
 	}
 
 	fh := *fiveHourUtil * 100
@@ -191,18 +197,21 @@ func formatQuotaPart(fiveHourUtil, sevenDayUtil *float64) string {
 		maxUtil = sd
 	}
 
+	var colored string
 	switch {
 	case maxUtil >= 80:
-		return color.Red.Sprint(text)
+		colored = color.Red.Sprint(text)
 	case maxUtil >= 50:
-		return color.Yellow.Sprint(text)
+		colored = color.Yellow.Sprint(text)
 	default:
-		return color.Green.Sprint(text)
+		colored = color.Green.Sprint(text)
 	}
+	return wrapOSC8Link(claudeUsageURL, colored)
 }
 
 func outputFallback() {
-	fmt.Println(color.Gray.Sprint("🌿 - | 🤖 - | 💰 - | 📊 - | 🚦 - | ⏱️ - | 📈 -%"))
+	quotaPart := wrapOSC8Link(claudeUsageURL, "🚦 -")
+	fmt.Println(color.Gray.Sprint("🌿 - | 🤖 - | 💰 - | 📊 - | " + quotaPart + " | ⏱️ - | 📈 -%"))
 }
 
 // formatSessionDuration formats seconds into a human-readable duration
