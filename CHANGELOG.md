@@ -1,5 +1,21 @@
 # Changelog
 
+## [0.1.62](https://github.com/shelltime/cli/compare/v0.1.61...v0.1.62) (2026-02-06)
+
+
+### Features
+
+* **commands:** add clickable link to quota section in cc statusline ([682d05a](https://github.com/shelltime/cli/commit/682d05a6d0b3fdddd80245daa0545f3b63ab6c07))
+* **commands:** make daily cost clickable in cc statusline ([17031dd](https://github.com/shelltime/cli/commit/17031dd424b5a9956a3d6fece964faf9525b377e))
+* **commands:** make daily cost clickable in cc statusline ([0ab5086](https://github.com/shelltime/cli/commit/0ab50860d03062d6111a9131b08dac0cedf142cf))
+* **daemon:** add Anthropic rate limit quota to cc statusline ([ee1737c](https://github.com/shelltime/cli/commit/ee1737c82b4e25bfe7af493ec03c0bc18fb2f0ce))
+* **daemon:** add Anthropic rate limit quota to cc statusline ([fa73748](https://github.com/shelltime/cli/commit/fa73748f553015eb876500c1f3198abded453fee))
+
+
+### Miscellaneous Chores
+
+* release 0.1.62 ([38813d1](https://github.com/shelltime/cli/commit/38813d117b659384050baf0c01b184fd28ac9af6))
+
 ## [0.1.61](https://github.com/shelltime/cli/compare/v0.1.60...v0.1.61) (2026-01-13)
 
 
