@@ -193,8 +193,8 @@ func formatQuotaPart(fiveHourUtil, sevenDayUtil *float64) string {
 		return wrapOSC8Link(claudeUsageURL, color.Gray.Sprint("🚦 -"))
 	}
 
-	fh := *fiveHourUtil * 100
-	sd := *sevenDayUtil * 100
+	fh := *fiveHourUtil
+	sd := *sevenDayUtil
 
 	text := fmt.Sprintf("🚦 5h:%.0f%% 7d:%.0f%%", fh, sd)
 

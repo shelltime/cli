@@ -45,7 +45,12 @@ type keychainCredentials struct {
 }
 
 type keychainOAuthEntry struct {
-	AccessToken string `json:"accessToken"`
+	AccessToken      string   `json:"accessToken"`
+	RefreshToken     string   `json:"refreshToken"`
+	ExpiresAt        int64    `json:"expiresAt"`
+	Scopes           []string `json:"scopes"`
+	SubscriptionType any      `json:"subscriptionType"`
+	RateLimitTier    any      `json:"rateLimitTier"`
 }
 
 // fetchClaudeCodeOAuthToken reads the OAuth token from macOS Keychain.
