@@ -289,24 +289,24 @@ func (s *CCStatuslineTestSuite) TestFormatQuotaPart_OnlyFiveHourNil() {
 }
 
 func (s *CCStatuslineTestSuite) TestFormatQuotaPart_LowUtilization() {
-	fh := 0.10
-	sd := 0.20
+	fh := 10.0
+	sd := 20.0
 	result := formatQuotaPart(&fh, &sd)
 	assert.Contains(s.T(), result, "5h:10%")
 	assert.Contains(s.T(), result, "7d:20%")
 }
 
 func (s *CCStatuslineTestSuite) TestFormatQuotaPart_MediumUtilization() {
-	fh := 0.55
-	sd := 0.30
+	fh := 55.0
+	sd := 30.0
 	result := formatQuotaPart(&fh, &sd)
 	assert.Contains(s.T(), result, "5h:55%")
 	assert.Contains(s.T(), result, "7d:30%")
 }
 
 func (s *CCStatuslineTestSuite) TestFormatQuotaPart_HighUtilization() {
-	fh := 0.45
-	sd := 0.85
+	fh := 45.0
+	sd := 85.0
 	result := formatQuotaPart(&fh, &sd)
 	assert.Contains(s.T(), result, "5h:45%")
 	assert.Contains(s.T(), result, "7d:85%")
@@ -319,8 +319,8 @@ func (s *CCStatuslineTestSuite) TestFormatQuotaPart_ContainsLink() {
 	assert.Contains(s.T(), result, "\033]8;;")
 
 	// With values
-	fh := 0.45
-	sd := 0.23
+	fh := 45.0
+	sd := 23.0
 	result = formatQuotaPart(&fh, &sd)
 	assert.Contains(s.T(), result, "claude.ai/settings/usage")
 	assert.Contains(s.T(), result, "\033]8;;")
@@ -329,8 +329,8 @@ func (s *CCStatuslineTestSuite) TestFormatQuotaPart_ContainsLink() {
 }
 
 func (s *CCStatuslineTestSuite) TestFormatStatuslineOutput_WithQuota() {
-	fh := 0.45
-	sd := 0.23
+	fh := 45.0
+	sd := 23.0
 	output := formatStatuslineOutput("claude-opus-4", 1.23, 4.56, 3661, 75.0, "main", false, &fh, &sd, "", "")
 
 	assert.Contains(s.T(), output, "5h:45%")
@@ -349,8 +349,8 @@ func (s *CCStatuslineTestSuite) TestGetDaemonInfo_PropagatesRateLimitFields() {
 	assert.NoError(s.T(), err)
 	s.listener = listener
 
-	fh := 0.45
-	sd := 0.23
+	fh := 45.0
+	sd := 23.0
 	go func() {
 		conn, _ := listener.Accept()
 		defer conn.Close()
@@ -380,8 +380,8 @@ func (s *CCStatuslineTestSuite) TestGetDaemonInfo_PropagatesRateLimitFields() {
 
 	assert.NotNil(s.T(), result.FiveHourUtilization)
 	assert.NotNil(s.T(), result.SevenDayUtilization)
-	assert.Equal(s.T(), 0.45, *result.FiveHourUtilization)
-	assert.Equal(s.T(), 0.23, *result.SevenDayUtilization)
+	assert.Equal(s.T(), 45.0, *result.FiveHourUtilization)
+	assert.Equal(s.T(), 23.0, *result.SevenDayUtilization)
 }
 
 func TestCCStatuslineTestSuite(t *testing.T) {
