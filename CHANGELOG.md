@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.64](https://github.com/shelltime/cli/compare/v0.1.63...v0.1.64) (2026-02-06)
+
+
+### Bug Fixes
+
+* **commands:** use percentage-scale values in cc statusline tests ([9a3964e](https://github.com/shelltime/cli/commit/9a3964e54cb471116ab36350c65a0e4cb5a4690f))
+
 ## [0.1.63](https://github.com/shelltime/cli/compare/v0.1.62...v0.1.63) (2026-02-06)
 
 
