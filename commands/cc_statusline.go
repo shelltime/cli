@@ -36,6 +36,8 @@ type ccStatuslineResult struct {
 	GitDirty            bool
 	FiveHourUtilization *float64
 	SevenDayUtilization *float64
+	UserLogin           string
+	WebEndpoint         string
 }
 
 func commandCCStatusline(c *cli.Context) error {
@@ -68,7 +70,7 @@ func commandCCStatusline(c *cli.Context) error {
 	}
 
 	// Format and output
-	output := formatStatuslineOutput(data.Model.DisplayName, data.Cost.TotalCostUSD, result.Cost, result.SessionSeconds, contextPercent, result.GitBranch, result.GitDirty, result.FiveHourUtilization, result.SevenDayUtilization)
+	output := formatStatuslineOutput(data.Model.DisplayName, data.Cost.TotalCostUSD, result.Cost, result.SessionSeconds, contextPercent, result.GitBranch, result.GitDirty, result.FiveHourUtilization, result.SevenDayUtilization, result.UserLogin, result.WebEndpoint)
 	fmt.Println(output)
 
 	return nil
@@ -124,7 +126,7 @@ func calculateContextPercent(cw model.CCStatuslineContextWindow) float64 {
 	return float64(currentTokens) / float64(cw.ContextWindowSize) * 100
 }
 
-func formatStatuslineOutput(modelName string, sessionCost, dailyCost float64, sessionSeconds int, contextPercent float64, gitBranch string, gitDirty bool, fiveHourUtil, sevenDayUtil *float64) string {
+func formatStatuslineOutput(modelName string, sessionCost, dailyCost float64, sessionSeconds int, contextPercent float64, gitBranch string, gitDirty bool, fiveHourUtil, sevenDayUtil *float64, userLogin, webEndpoint string) string {
 	var parts []string
 
 	// Git info FIRST (green)
@@ -146,9 +148,13 @@ func formatStatuslineOutput(modelName string, sessionCost, dailyCost float64, se
 	sessionStr := color.Cyan.Sprintf("💰 $%.2f", sessionCost)
 	parts = append(parts, sessionStr)
 
-	// Daily cost (yellow)
+	// Daily cost (yellow) - clickable link to coding agent page when user login is available
 	if dailyCost > 0 {
 		dailyStr := color.Yellow.Sprintf("📊 $%.2f", dailyCost)
+		if userLogin != "" && webEndpoint != "" {
+			url := fmt.Sprintf("%s/users/%s/coding-agent/claude-code", webEndpoint, userLogin)
+			dailyStr = wrapOSC8Link(url, dailyStr)
+		}
 		parts = append(parts, dailyStr)
 	} else {
 		parts = append(parts, color.Gray.Sprint("📊 -"))
@@ -248,6 +254,8 @@ func getDaemonInfoWithFallback(ctx context.Context, config model.ShellTimeConfig
 				GitDirty:            resp.GitDirty,
 				FiveHourUtilization: resp.FiveHourUtilization,
 				SevenDayUtilization: resp.SevenDayUtilization,
+				UserLogin:           resp.UserLogin,
+				WebEndpoint:         config.WebEndpoint,
 			}
 		}
 	}
