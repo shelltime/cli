@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.63](https://github.com/shelltime/cli/compare/v0.1.62...v0.1.63) (2026-02-06)
+
+
+### Bug Fixes
+
+* **commands:** correct quota percentage display in cc statusline ([6505dfb](https://github.com/shelltime/cli/commit/6505dfb3087d2df34455d38e29a2ad8950899317))
+
 ## [0.1.62](https://github.com/shelltime/cli/compare/v0.1.61...v0.1.62) (2026-02-06)
 
 
