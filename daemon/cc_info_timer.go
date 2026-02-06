@@ -50,6 +50,10 @@ type CCInfoTimerService struct {
 
 	// Anthropic rate limit cache
 	rateLimitCache *anthropicRateLimitCache
+
+	// User profile cache (permanent for daemon lifetime)
+	userLogin        string
+	userLoginFetched bool
 }
 
 // NewCCInfoTimerService creates a new CC info timer service
@@ -157,6 +161,7 @@ func (s *CCInfoTimerService) timerLoop() {
 	s.fetchActiveRanges(context.Background())
 	s.fetchGitInfo()
 	go s.fetchRateLimit(context.Background())
+	go s.fetchUserProfile(context.Background())
 
 	for {
 		select {
@@ -411,6 +416,41 @@ func (s *CCInfoTimerService) fetchRateLimit(ctx context.Context) {
 	slog.Debug("Anthropic rate limit updated",
 		slog.Float64("5h", usage.FiveHourUtilization),
 		slog.Float64("7d", usage.SevenDayUtilization))
+}
+
+// GetCachedUserLogin returns the cached user login, or empty string if not yet fetched.
+func (s *CCInfoTimerService) GetCachedUserLogin() string {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.userLogin
+}
+
+// fetchUserProfile fetches the current user's login once per daemon lifetime.
+func (s *CCInfoTimerService) fetchUserProfile(ctx context.Context) {
+	if s.config.Token == "" {
+		return
+	}
+
+	s.mu.RLock()
+	fetched := s.userLoginFetched
+	s.mu.RUnlock()
+
+	if fetched {
+		return
+	}
+
+	profile, err := model.FetchCurrentUserProfile(ctx, *s.config)
+	if err != nil {
+		slog.Warn("Failed to fetch user profile", slog.Any("err", err))
+		return
+	}
+
+	s.mu.Lock()
+	s.userLogin = profile.FetchUser.Login
+	s.userLoginFetched = true
+	s.mu.Unlock()
+
+	slog.Debug("User profile fetched", slog.String("login", profile.FetchUser.Login))
 }
 
 // GetCachedRateLimit returns a copy of the cached rate limit data, or nil if not available.
