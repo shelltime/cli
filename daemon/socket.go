@@ -43,6 +43,8 @@ type CCInfoResponse struct {
 	CachedAt            time.Time `json:"cachedAt"`
 	GitBranch           string    `json:"gitBranch"`
 	GitDirty            bool      `json:"gitDirty"`
+	FiveHourUtilization *float64  `json:"fiveHourUtilization,omitempty"`
+	SevenDayUtilization *float64  `json:"sevenDayUtilization,omitempty"`
 }
 
 // StatusResponse contains daemon status information
@@ -226,6 +228,12 @@ func (p *SocketHandler) handleCCInfo(conn net.Conn, msg SocketMessage) {
 		CachedAt:            cache.FetchedAt,
 		GitBranch:           gitInfo.Branch,
 		GitDirty:            gitInfo.Dirty,
+	}
+
+	// Populate rate limit fields if available
+	if rl := p.ccInfoTimer.GetCachedRateLimit(); rl != nil {
+		response.FiveHourUtilization = &rl.FiveHourUtilization
+		response.SevenDayUtilization = &rl.SevenDayUtilization
 	}
 
 	encoder := json.NewEncoder(conn)

@@ -327,6 +327,83 @@ func (s *CCInfoClientTestSuite) TestRequestCCInfo_SendsCorrectMessage() {
 	assert.Equal(s.T(), CCInfoTimeRangeWeek, req.TimeRange)
 }
 
+func (s *CCInfoHandlerTestSuite) TestHandleCCInfo_IncludesRateLimitWhenCached() {
+	config := &model.ShellTimeConfig{
+		SocketPath: s.socketPath,
+	}
+
+	ch := NewGoChannel(PubSubConfig{OutputChannelBuffer: 10}, nil)
+	defer ch.Close()
+	handler := NewSocketHandler(config, ch)
+
+	// Pre-populate rate limit cache
+	handler.ccInfoTimer.rateLimitCache.mu.Lock()
+	handler.ccInfoTimer.rateLimitCache.usage = &AnthropicRateLimitData{
+		FiveHourUtilization: 0.45,
+		SevenDayUtilization: 0.23,
+	}
+	handler.ccInfoTimer.rateLimitCache.fetchedAt = time.Now()
+	handler.ccInfoTimer.rateLimitCache.mu.Unlock()
+
+	serverConn, clientConn := net.Pipe()
+	defer serverConn.Close()
+	defer clientConn.Close()
+
+	msg := SocketMessage{
+		Type: SocketMessageTypeCCInfo,
+		Payload: map[string]interface{}{
+			"timeRange": "today",
+		},
+	}
+
+	go func() {
+		handler.handleCCInfo(serverConn, msg)
+	}()
+
+	var response CCInfoResponse
+	decoder := json.NewDecoder(clientConn)
+	err := decoder.Decode(&response)
+
+	assert.NoError(s.T(), err)
+	assert.NotNil(s.T(), response.FiveHourUtilization)
+	assert.NotNil(s.T(), response.SevenDayUtilization)
+	assert.Equal(s.T(), 0.45, *response.FiveHourUtilization)
+	assert.Equal(s.T(), 0.23, *response.SevenDayUtilization)
+}
+
+func (s *CCInfoHandlerTestSuite) TestHandleCCInfo_OmitsRateLimitWhenNotCached() {
+	config := &model.ShellTimeConfig{
+		SocketPath: s.socketPath,
+	}
+
+	ch := NewGoChannel(PubSubConfig{OutputChannelBuffer: 10}, nil)
+	defer ch.Close()
+	handler := NewSocketHandler(config, ch)
+
+	serverConn, clientConn := net.Pipe()
+	defer serverConn.Close()
+	defer clientConn.Close()
+
+	msg := SocketMessage{
+		Type: SocketMessageTypeCCInfo,
+		Payload: map[string]interface{}{
+			"timeRange": "today",
+		},
+	}
+
+	go func() {
+		handler.handleCCInfo(serverConn, msg)
+	}()
+
+	var response CCInfoResponse
+	decoder := json.NewDecoder(clientConn)
+	err := decoder.Decode(&response)
+
+	assert.NoError(s.T(), err)
+	assert.Nil(s.T(), response.FiveHourUtilization)
+	assert.Nil(s.T(), response.SevenDayUtilization)
+}
+
 func TestCCInfoHandlerTestSuite(t *testing.T) {
 	suite.Run(t, new(CCInfoHandlerTestSuite))
 }

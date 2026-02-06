@@ -24,10 +24,12 @@ var CCStatuslineCommand = &cli.Command{
 
 // ccStatuslineResult combines daily stats with git info from daemon
 type ccStatuslineResult struct {
-	Cost           float64
-	SessionSeconds int
-	GitBranch      string
-	GitDirty       bool
+	Cost                float64
+	SessionSeconds      int
+	GitBranch           string
+	GitDirty            bool
+	FiveHourUtilization *float64
+	SevenDayUtilization *float64
 }
 
 func commandCCStatusline(c *cli.Context) error {
@@ -60,7 +62,7 @@ func commandCCStatusline(c *cli.Context) error {
 	}
 
 	// Format and output
-	output := formatStatuslineOutput(data.Model.DisplayName, data.Cost.TotalCostUSD, result.Cost, result.SessionSeconds, contextPercent, result.GitBranch, result.GitDirty)
+	output := formatStatuslineOutput(data.Model.DisplayName, data.Cost.TotalCostUSD, result.Cost, result.SessionSeconds, contextPercent, result.GitBranch, result.GitDirty, result.FiveHourUtilization, result.SevenDayUtilization)
 	fmt.Println(output)
 
 	return nil
@@ -116,7 +118,7 @@ func calculateContextPercent(cw model.CCStatuslineContextWindow) float64 {
 	return float64(currentTokens) / float64(cw.ContextWindowSize) * 100
 }
 
-func formatStatuslineOutput(modelName string, sessionCost, dailyCost float64, sessionSeconds int, contextPercent float64, gitBranch string, gitDirty bool) string {
+func formatStatuslineOutput(modelName string, sessionCost, dailyCost float64, sessionSeconds int, contextPercent float64, gitBranch string, gitDirty bool, fiveHourUtil, sevenDayUtil *float64) string {
 	var parts []string
 
 	// Git info FIRST (green)
@@ -146,6 +148,9 @@ func formatStatuslineOutput(modelName string, sessionCost, dailyCost float64, se
 		parts = append(parts, color.Gray.Sprint("📊 -"))
 	}
 
+	// Quota utilization
+	parts = append(parts, formatQuotaPart(fiveHourUtil, sevenDayUtil))
+
 	// AI agent time (magenta)
 	if sessionSeconds > 0 {
 		timeStr := color.Magenta.Sprintf("⏱️ %s", formatSessionDuration(sessionSeconds))
@@ -169,8 +174,35 @@ func formatStatuslineOutput(modelName string, sessionCost, dailyCost float64, se
 	return strings.Join(parts, " | ")
 }
 
+// formatQuotaPart formats the rate limit quota section of the statusline.
+// Color is based on the max utilization of both buckets.
+func formatQuotaPart(fiveHourUtil, sevenDayUtil *float64) string {
+	if fiveHourUtil == nil || sevenDayUtil == nil {
+		return color.Gray.Sprint("🚦 -")
+	}
+
+	fh := *fiveHourUtil * 100
+	sd := *sevenDayUtil * 100
+
+	text := fmt.Sprintf("🚦 5h:%.0f%% 7d:%.0f%%", fh, sd)
+
+	maxUtil := fh
+	if sd > maxUtil {
+		maxUtil = sd
+	}
+
+	switch {
+	case maxUtil >= 80:
+		return color.Red.Sprint(text)
+	case maxUtil >= 50:
+		return color.Yellow.Sprint(text)
+	default:
+		return color.Green.Sprint(text)
+	}
+}
+
 func outputFallback() {
-	fmt.Println(color.Gray.Sprint("🌿 - | 🤖 - | 💰 - | 📊 - | ⏱️ - | 📈 -%"))
+	fmt.Println(color.Gray.Sprint("🌿 - | 🤖 - | 💰 - | 📊 - | 🚦 - | ⏱️ - | 📈 -%"))
 }
 
 // formatSessionDuration formats seconds into a human-readable duration
@@ -201,10 +233,12 @@ func getDaemonInfoWithFallback(ctx context.Context, config model.ShellTimeConfig
 		resp, err := daemon.RequestCCInfo(socketPath, daemon.CCInfoTimeRangeToday, workingDir, 50*time.Millisecond)
 		if err == nil && resp != nil {
 			return ccStatuslineResult{
-				Cost:           resp.TotalCostUSD,
-				SessionSeconds: resp.TotalSessionSeconds,
-				GitBranch:      resp.GitBranch,
-				GitDirty:       resp.GitDirty,
+				Cost:                resp.TotalCostUSD,
+				SessionSeconds:      resp.TotalSessionSeconds,
+				GitBranch:           resp.GitBranch,
+				GitDirty:            resp.GitDirty,
+				FiveHourUtilization: resp.FiveHourUtilization,
+				SevenDayUtilization: resp.SevenDayUtilization,
 			}
 		}
 	}
