@@ -79,7 +79,7 @@ func main() {
 	app.Description = "shelltime.xyz CLI for track DevOps works"
 	app.Usage = "shelltime.xyz CLI for track DevOps works"
 	app.Version = version
-	app.Copyright = "Copyright (c) 2025 shelltime.xyz Team"
+	app.Copyright = "Copyright (c) 2026 shelltime.xyz Team"
 	app.Authors = []*cli.Author{
 		{
 			Name:  "shelltime.xyz Team",
