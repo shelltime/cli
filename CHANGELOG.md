@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.66](https://github.com/shelltime/cli/compare/v0.1.65...v0.1.66) (2026-02-10)
+
+
+### Bug Fixes
+
+* **cli:** update copyright year to 2026 ([6d6da0e](https://github.com/shelltime/cli/commit/6d6da0e6ea80453d742f9b1a09985998e5f1b6c4))
+
 ## [0.1.65](https://github.com/shelltime/cli/compare/v0.1.64...v0.1.65) (2026-02-10)
 
 
