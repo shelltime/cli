@@ -114,4 +114,4 @@ For full details, see [Claude Code Statusline Guide](docs/CC_STATUSLINE.md).
 
 ## License
 
-Copyright (c) 2025 ShellTime Team. All rights reserved.
+Copyright (c) 2026 ShellTime Team. All rights reserved.
