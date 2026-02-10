@@ -70,7 +70,7 @@ func commandCCStatusline(c *cli.Context) error {
 	}
 
 	// Format and output
-	output := formatStatuslineOutput(data.Model.DisplayName, data.Cost.TotalCostUSD, result.Cost, result.SessionSeconds, contextPercent, result.GitBranch, result.GitDirty, result.FiveHourUtilization, result.SevenDayUtilization, result.UserLogin, result.WebEndpoint)
+	output := formatStatuslineOutput(data.Model.DisplayName, data.Cost.TotalCostUSD, result.Cost, result.SessionSeconds, contextPercent, result.GitBranch, result.GitDirty, result.FiveHourUtilization, result.SevenDayUtilization, result.UserLogin, result.WebEndpoint, data.SessionID)
 	fmt.Println(output)
 
 	return nil
@@ -126,7 +126,7 @@ func calculateContextPercent(cw model.CCStatuslineContextWindow) float64 {
 	return float64(currentTokens) / float64(cw.ContextWindowSize) * 100
 }
 
-func formatStatuslineOutput(modelName string, sessionCost, dailyCost float64, sessionSeconds int, contextPercent float64, gitBranch string, gitDirty bool, fiveHourUtil, sevenDayUtil *float64, userLogin, webEndpoint string) string {
+func formatStatuslineOutput(modelName string, sessionCost, dailyCost float64, sessionSeconds int, contextPercent float64, gitBranch string, gitDirty bool, fiveHourUtil, sevenDayUtil *float64, userLogin, webEndpoint, sessionID string) string {
 	var parts []string
 
 	// Git info FIRST (green)
@@ -144,8 +144,12 @@ func formatStatuslineOutput(modelName string, sessionCost, dailyCost float64, se
 	modelStr := fmt.Sprintf("🤖 %s", modelName)
 	parts = append(parts, modelStr)
 
-	// Session cost (cyan)
+	// Session cost (cyan) - clickable link to session page when user login and session ID are available
 	sessionStr := color.Cyan.Sprintf("💰 $%.2f", sessionCost)
+	if userLogin != "" && webEndpoint != "" && sessionID != "" {
+		url := fmt.Sprintf("%s/users/%s/coding-agent/session/%s", webEndpoint, userLogin, sessionID)
+		sessionStr = wrapOSC8Link(url, sessionStr)
+	}
 	parts = append(parts, sessionStr)
 
 	// Daily cost (yellow) - clickable link to coding agent page when user login is available

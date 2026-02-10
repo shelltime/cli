@@ -3,6 +3,7 @@ package model
 // CCStatuslineInput represents the JSON input from Claude Code statusline
 type CCStatuslineInput struct {
 	HookEventName string                    `json:"hook_event_name"`
+	SessionID     string                    `json:"session_id"`
 	Model         CCStatuslineModel         `json:"model"`
 	Cost          CCStatuslineCost          `json:"cost"`
 	ContextWindow CCStatuslineContextWindow `json:"context_window"`
