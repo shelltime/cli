@@ -2,6 +2,7 @@
   "packages": {
     ".": {
       "release-type": "go",
+      "versioning": "always-bump-patch",
       "changelog-sections": [
         { "type": "feat", "section": "Features" },
         { "type": "fix", "section": "Bug Fixes" },
