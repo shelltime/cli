@@ -167,9 +167,13 @@ func formatStatuslineOutput(modelName string, sessionCost, dailyCost float64, se
 	// Quota utilization
 	parts = append(parts, formatQuotaPart(fiveHourUtil, sevenDayUtil))
 
-	// AI agent time (magenta)
+	// AI agent time (magenta) - clickable link to user profile
 	if sessionSeconds > 0 {
 		timeStr := color.Magenta.Sprintf("⏱️ %s", formatSessionDuration(sessionSeconds))
+		if userLogin != "" && webEndpoint != "" {
+			url := fmt.Sprintf("%s/users/%s", webEndpoint, userLogin)
+			timeStr = wrapOSC8Link(url, timeStr)
+		}
 		parts = append(parts, timeStr)
 	} else {
 		parts = append(parts, color.Gray.Sprint("⏱️ -"))

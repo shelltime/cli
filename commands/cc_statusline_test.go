@@ -354,6 +354,27 @@ func (s *CCStatuslineTestSuite) TestFormatStatuslineOutput_SessionCostWithoutLin
 	assert.NotContains(s.T(), output, "coding-agent/session/")
 }
 
+func (s *CCStatuslineTestSuite) TestFormatStatuslineOutput_TimeWithProfileLink() {
+	output := formatStatuslineOutput("claude-opus-4", 1.23, 4.56, 3661, 75.0, "main", false, nil, nil, "testuser", "https://shelltime.xyz", "session-abc123")
+
+	// Should contain OSC8 link wrapping time section to user profile
+	assert.Contains(s.T(), output, "shelltime.xyz/users/testuser")
+	assert.Contains(s.T(), output, "1h1m")
+}
+
+func (s *CCStatuslineTestSuite) TestFormatStatuslineOutput_TimeWithoutProfileLink() {
+	// No userLogin - should not have profile link on time
+	output := formatStatuslineOutput("claude-opus-4", 1.23, 4.56, 3661, 75.0, "main", false, nil, nil, "", "https://shelltime.xyz", "session-abc123")
+	assert.Contains(s.T(), output, "1h1m")
+	// The time section should not contain a link to users/ profile
+	// Count occurrences of "shelltime.xyz/users/" - should only be in session cost and daily cost links
+	assert.NotContains(s.T(), output, "shelltime.xyz/users//")
+
+	// No webEndpoint - should not have profile link on time
+	output = formatStatuslineOutput("claude-opus-4", 1.23, 4.56, 3661, 75.0, "main", false, nil, nil, "testuser", "", "session-abc123")
+	assert.Contains(s.T(), output, "1h1m")
+}
+
 func (s *CCStatuslineTestSuite) TestFormatStatuslineOutput_WithQuota() {
 	fh := 45.0
 	sd := 23.0
