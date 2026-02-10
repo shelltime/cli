@@ -1,5 +1,23 @@
 # Changelog
 
+## [0.1.65](https://github.com/shelltime/cli/compare/v0.1.64...v0.1.65) (2026-02-10)
+
+
+### Features
+
+* **cli:** add clickable link to session cost in cc statusline ([46b90b2](https://github.com/shelltime/cli/commit/46b90b29714c427f17f3813c44fdfc7bee8e28ad))
+* **cli:** add clickable profile link to time section in cc statusline ([dfe5346](https://github.com/shelltime/cli/commit/dfe53465b70965750ca953afe3352cb4ae79eec3))
+
+
+### Bug Fixes
+
+* **ci:** always bump patch version in release-please ([a79ca03](https://github.com/shelltime/cli/commit/a79ca036beaf70e3bc352bb13165ca9b895a0c8d))
+
+
+### Documentation
+
+* **commands:** add quota utilization section to CC statusline doc ([523d614](https://github.com/shelltime/cli/commit/523d61416a5d1b6c1dfe5fd72adaad8e96d287a6))
+
 ## [0.1.64](https://github.com/shelltime/cli/compare/v0.1.63...v0.1.64) (2026-02-06)
 
 
