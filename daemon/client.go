@@ -51,6 +51,25 @@ func SendLocalDataToSocket(
 	return nil
 }
 
+// SendSessionProject sends a session-to-project mapping to the daemon (fire-and-forget)
+func SendSessionProject(socketPath string, sessionID, projectPath string) {
+	conn, err := net.DialTimeout("unix", socketPath, 10*time.Millisecond)
+	if err != nil {
+		return
+	}
+	defer conn.Close()
+
+	msg := SocketMessage{
+		Type: SocketMessageTypeSessionProject,
+		Payload: SessionProjectRequest{
+			SessionID:   sessionID,
+			ProjectPath: projectPath,
+		},
+	}
+
+	json.NewEncoder(conn).Encode(msg)
+}
+
 // RequestCCInfo requests CC info (cost data and git info) from the daemon
 func RequestCCInfo(socketPath string, timeRange CCInfoTimeRange, workingDir string, timeout time.Duration) (*CCInfoResponse, error) {
 	conn, err := net.DialTimeout("unix", socketPath, timeout)
