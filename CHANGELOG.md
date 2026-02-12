@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.1.67](https://github.com/shelltime/cli/compare/v0.1.66...v0.1.67) (2026-02-12)
+
+
+### Features
+
+* **daemon:** send session-project path mapping to server ([d594338](https://github.com/shelltime/cli/commit/d594338edf4242f92aa63aef951ba65b7b928078))
+* **daemon:** send session-project path mapping to server ([d299bf4](https://github.com/shelltime/cli/commit/d299bf4692a6857d432118bea1ca8d3385b0bd49))
+
+
+### Bug Fixes
+
+* **cli:** hide quota section in statusline on Linux ([8f89d55](https://github.com/shelltime/cli/commit/8f89d55e4c48017b7b9b436cea3d6232a8ac51bd))
+* **model:** use camelCase for session-project JSON tags ([ed00083](https://github.com/shelltime/cli/commit/ed000835cb1a1616cf080017bc337176f416d6ec))
+* **model:** use camelCase for session-project JSON tags ([594210b](https://github.com/shelltime/cli/commit/594210ba2bd95326a24950a5815c5d2ae6fa90c3))
+
 ## [0.1.66](https://github.com/shelltime/cli/compare/v0.1.65...v0.1.66) (2026-02-10)
 
 
