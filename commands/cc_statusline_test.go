@@ -6,6 +6,7 @@ import (
 	"net"
 	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
 	"time"
 
@@ -380,15 +381,23 @@ func (s *CCStatuslineTestSuite) TestFormatStatuslineOutput_WithQuota() {
 	sd := 23.0
 	output := formatStatuslineOutput("claude-opus-4", 1.23, 4.56, 3661, 75.0, "main", false, &fh, &sd, "", "", "")
 
-	assert.Contains(s.T(), output, "5h:45%")
-	assert.Contains(s.T(), output, "7d:23%")
-	assert.Contains(s.T(), output, "🚦")
+	if runtime.GOOS == "darwin" {
+		assert.Contains(s.T(), output, "5h:45%")
+		assert.Contains(s.T(), output, "7d:23%")
+		assert.Contains(s.T(), output, "🚦")
+	} else {
+		assert.NotContains(s.T(), output, "🚦")
+	}
 }
 
 func (s *CCStatuslineTestSuite) TestFormatStatuslineOutput_WithoutQuota() {
 	output := formatStatuslineOutput("claude-opus-4", 1.23, 4.56, 3661, 75.0, "main", false, nil, nil, "", "", "")
 
-	assert.Contains(s.T(), output, "🚦 -")
+	if runtime.GOOS == "darwin" {
+		assert.Contains(s.T(), output, "🚦 -")
+	} else {
+		assert.NotContains(s.T(), output, "🚦")
+	}
 }
 
 func (s *CCStatuslineTestSuite) TestGetDaemonInfo_PropagatesRateLimitFields() {

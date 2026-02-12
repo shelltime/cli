@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"runtime"
 	"strings"
 	"time"
 
@@ -164,8 +165,10 @@ func formatStatuslineOutput(modelName string, sessionCost, dailyCost float64, se
 		parts = append(parts, color.Gray.Sprint("📊 -"))
 	}
 
-	// Quota utilization
-	parts = append(parts, formatQuotaPart(fiveHourUtil, sevenDayUtil))
+	// Quota utilization (macOS only - requires Keychain for OAuth token)
+	if runtime.GOOS == "darwin" {
+		parts = append(parts, formatQuotaPart(fiveHourUtil, sevenDayUtil))
+	}
 
 	// AI agent time (magenta) - clickable link to user profile
 	if sessionSeconds > 0 {
@@ -224,8 +227,12 @@ func formatQuotaPart(fiveHourUtil, sevenDayUtil *float64) string {
 }
 
 func outputFallback() {
-	quotaPart := wrapOSC8Link(claudeUsageURL, "🚦 -")
-	fmt.Println(color.Gray.Sprint("🌿 - | 🤖 - | 💰 - | 📊 - | " + quotaPart + " | ⏱️ - | 📈 -%"))
+	if runtime.GOOS == "darwin" {
+		quotaPart := wrapOSC8Link(claudeUsageURL, "🚦 -")
+		fmt.Println(color.Gray.Sprint("🌿 - | 🤖 - | 💰 - | 📊 - | " + quotaPart + " | ⏱️ - | 📈 -%"))
+	} else {
+		fmt.Println(color.Gray.Sprint("🌿 - | 🤖 - | 💰 - | 📊 - | ⏱️ - | 📈 -%"))
+	}
 }
 
 // formatSessionDuration formats seconds into a human-readable duration
