@@ -67,6 +67,24 @@ func commandCCStatusline(c *cli.Context) error {
 	var result ccStatuslineResult
 	config, err := configService.ReadConfigFile(ctx)
 	if err == nil {
+		// Send session-project mapping via daemon socket (fire-and-forget, ~1ms)
+		if data.SessionID != "" {
+			projectPath := ""
+			if data.Workspace != nil {
+				projectPath = data.Workspace.CurrentDir
+				if projectPath == "" {
+					projectPath = data.Workspace.ProjectDir
+				}
+			}
+			if projectPath != "" {
+				socketPath := config.SocketPath
+				if socketPath == "" {
+					socketPath = model.DefaultSocketPath
+				}
+				daemon.SendSessionProject(socketPath, data.SessionID, projectPath)
+			}
+		}
+
 		result = getDaemonInfoWithFallback(ctx, config, data.Cwd)
 	}
 

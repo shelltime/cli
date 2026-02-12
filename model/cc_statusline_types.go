@@ -9,6 +9,14 @@ type CCStatuslineInput struct {
 	ContextWindow CCStatuslineContextWindow `json:"context_window"`
 	Cwd           string                    `json:"cwd"`
 	Version       string                    `json:"version"`
+	SessionID     string                    `json:"session_id"`
+	Workspace     *CCStatuslineWorkspace    `json:"workspace"`
+}
+
+// CCStatuslineWorkspace represents workspace information from Claude Code
+type CCStatuslineWorkspace struct {
+	CurrentDir string `json:"current_dir"`
+	ProjectDir string `json:"project_dir"`
 }
 
 // CCStatuslineModel represents model information

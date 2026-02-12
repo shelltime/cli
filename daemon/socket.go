@@ -1,6 +1,7 @@
 package daemon
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"log/slog"
@@ -17,11 +18,17 @@ import (
 type SocketMessageType string
 
 const (
-	SocketMessageTypeSync      SocketMessageType = "sync"
-	SocketMessageTypeHeartbeat SocketMessageType = "heartbeat"
-	SocketMessageTypeStatus    SocketMessageType = "status"
-	SocketMessageTypeCCInfo    SocketMessageType = "cc_info"
+	SocketMessageTypeSync           SocketMessageType = "sync"
+	SocketMessageTypeHeartbeat      SocketMessageType = "heartbeat"
+	SocketMessageTypeStatus         SocketMessageType = "status"
+	SocketMessageTypeCCInfo         SocketMessageType = "cc_info"
+	SocketMessageTypeSessionProject SocketMessageType = "session_project"
 )
+
+type SessionProjectRequest struct {
+	SessionID   string `json:"sessionId"`
+	ProjectPath string `json:"projectPath"`
+}
 
 type CCInfoTimeRange string
 
@@ -179,6 +186,15 @@ func (p *SocketHandler) handleConnection(conn net.Conn) {
 		encoder.Encode(map[string]string{"status": "ok"})
 	case SocketMessageTypeCCInfo:
 		p.handleCCInfo(conn, msg)
+	case SocketMessageTypeSessionProject:
+		if payload, ok := msg.Payload.(map[string]interface{}); ok {
+			sessionID, _ := payload["sessionId"].(string)
+			projectPath, _ := payload["projectPath"].(string)
+			if sessionID != "" && projectPath != "" {
+				go model.SendSessionProjectUpdate(context.Background(), *p.config, sessionID, projectPath)
+				slog.Debug("session_project update dispatched", slog.String("sessionId", sessionID))
+			}
+		}
 	default:
 		slog.Error("Unknown message type:", slog.String("messageType", string(msg.Type)))
 	}
