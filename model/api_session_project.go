@@ -7,8 +7,8 @@ import (
 )
 
 type sessionProjectRequest struct {
-	SessionID   string `json:"session_id"`
-	ProjectPath string `json:"project_path"`
+	SessionID   string `json:"sessionId"`
+	ProjectPath string `json:"projectPath"`
 }
 
 type sessionProjectResponse struct{}
