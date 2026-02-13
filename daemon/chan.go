@@ -2,7 +2,9 @@ package daemon
 
 import (
 	"context"
+	"fmt"
 	"sync"
+	"time"
 
 	"github.com/lithammer/shortuuid/v3"
 	"github.com/pkg/errors"
@@ -344,6 +346,9 @@ func (s *subscriber) sendMessageToSubscriber(msg *message.Message, logFields wat
 	ctx, cancelCtx := context.WithCancel(s.ctx)
 	defer cancelCtx()
 
+	const maxRetries = 3
+	retryCount := 0
+
 SendToSubscriber:
 	for {
 		// copy the message to prevent ack/nack propagation to other consumers
@@ -371,8 +376,20 @@ SendToSubscriber:
 			s.logger.Trace("Message acked", logFields)
 			return
 		case <-msgToSend.Nacked():
-			s.logger.Trace("Nack received, resending message", logFields)
-			continue SendToSubscriber
+			retryCount++
+			if retryCount >= maxRetries {
+				s.logger.Error("Max retries reached, dropping message", logFields)
+				return
+			}
+			backoff := time.Duration(100<<uint(retryCount-1)) * time.Millisecond
+			s.logger.Trace(fmt.Sprintf("Nack received, retrying after %s (%d/%d)", backoff, retryCount, maxRetries), logFields)
+			select {
+			case <-time.After(backoff):
+				continue SendToSubscriber
+			case <-s.closing:
+				s.logger.Trace("Closing during backoff, message discarded", logFields)
+				return
+			}
 		case <-s.closing:
 			s.logger.Trace("Closing, message discarded", logFields)
 			return

@@ -1,8 +1,13 @@
 package daemon
 
 import (
-	"github.com/go-git/go-git/v5"
+	"context"
+	"os/exec"
+	"strings"
+	"time"
 )
+
+const gitCmdTimeout = 2 * time.Second
 
 // GitInfo contains git repository information
 type GitInfo struct {
@@ -12,34 +17,31 @@ type GitInfo struct {
 }
 
 // GetGitInfo returns git branch and dirty status for a directory.
-// It walks up the directory tree to find the git repository root.
+// It uses the native git CLI which is significantly faster and more memory-efficient
+// than the pure-Go go-git implementation, especially on large repositories.
 func GetGitInfo(workingDir string) GitInfo {
 	if workingDir == "" {
 		return GitInfo{}
 	}
 
-	repo, err := git.PlainOpenWithOptions(workingDir, &git.PlainOpenOptions{
-		DetectDotGit: true, // Walk up to find .git
-	})
-	if err != nil {
-		return GitInfo{} // Not a git repo
+	ctx, cancel := context.WithTimeout(context.Background(), gitCmdTimeout)
+	defer cancel()
+
+	// Check if this is a git repo
+	if err := exec.CommandContext(ctx, "git", "-C", workingDir, "rev-parse", "--git-dir").Run(); err != nil {
+		return GitInfo{}
 	}
 
 	info := GitInfo{IsRepo: true}
 
 	// Get branch name from HEAD
-	head, err := repo.Head()
-	if err == nil {
-		info.Branch = head.Name().Short()
+	if out, err := exec.CommandContext(ctx, "git", "-C", workingDir, "rev-parse", "--abbrev-ref", "HEAD").Output(); err == nil {
+		info.Branch = strings.TrimSpace(string(out))
 	}
 
-	// Check dirty status by examining worktree status
-	worktree, err := repo.Worktree()
-	if err == nil {
-		status, err := worktree.Status()
-		if err == nil {
-			info.Dirty = !status.IsClean()
-		}
+	// Check dirty status via porcelain output (empty = clean)
+	if out, err := exec.CommandContext(ctx, "git", "-C", workingDir, "status", "--porcelain").Output(); err == nil {
+		info.Dirty = len(strings.TrimSpace(string(out))) > 0
 	}
 
 	return info

@@ -127,21 +127,22 @@ func (p *SocketHandler) Stop() {
 
 func (p *SocketHandler) acceptConnections() {
 	for {
-		select {
-		case <-p.stopChan:
-			return
-		default:
-			conn, err := p.listener.Accept()
-			if err != nil {
-				continue
+		conn, err := p.listener.Accept()
+		if err != nil {
+			select {
+			case <-p.stopChan:
+				return
+			default:
 			}
-			go p.handleConnection(conn)
+			continue
 		}
+		go p.handleConnection(conn)
 	}
 }
 
 func (p *SocketHandler) handleConnection(conn net.Conn) {
 	defer conn.Close()
+	conn.SetDeadline(time.Now().Add(5 * time.Second))
 	decoder := json.NewDecoder(conn)
 	var msg SocketMessage
 	if err := decoder.Decode(&msg); err != nil {
