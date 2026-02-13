@@ -88,14 +88,17 @@ Add to your Claude Code settings (`~/.claude/settings.json`):
 The status line will display:
 
 ```
-🤖 Opus | 💰 $0.12 | 📊 $3.45 | 📈 45%
+🌿 main* | 🤖 Opus | 💰 $0.12 | 📊 $3.45 | 🚦 5h:23% 7d:12% | ⏱️ 5m30s | 📈 45%
 ```
 
 | Section | Description |
 |---------|-------------|
+| 🌿 Git Branch | Current branch name (`*` if dirty) |
 | 🤖 Model | Current model name |
-| 💰 Session | Current session cost |
-| 📊 Today | Today's total cost (requires daemon + OTEL) |
+| 💰 Session | Current session cost (clickable link to session detail) |
+| 📊 Daily | Today's total cost (clickable link to coding agent page) |
+| 🚦 Quota | Anthropic API quota utilization (macOS only, clickable link to usage settings) |
+| ⏱️ Time | AI agent session duration (clickable link to user profile) |
 | 📈 Context | Context window usage % |
 
 For full details, see [Claude Code Statusline Guide](docs/CC_STATUSLINE.md).
