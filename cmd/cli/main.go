@@ -19,9 +19,6 @@ var (
 	commit     = "none"
 	date       = "unknown"
 	uptraceDsn = ""
-
-	ppEndpoint = ""
-	ppToken    = ""
 )
 
 func main() {
@@ -64,14 +61,9 @@ func main() {
 	model.InjectVar(version)
 	commands.InjectVar(version, configService)
 
-	// Initialize AI service if configured
-	if ppEndpoint != "" && ppToken != "" {
-		aiService := model.NewAIService(model.AIServiceConfig{
-			Endpoint:  ppEndpoint,
-			Token:     ppToken,
-			Timeout:   60 * time.Second,
-			UserToken: cfg.Token,
-		})
+	// Initialize AI service if user has a token configured
+	if cfg.Token != "" {
+		aiService := model.NewAIService()
 		commands.InjectAIService(aiService)
 	}
 	app := cli.NewApp()
