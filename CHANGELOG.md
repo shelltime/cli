@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.68](https://github.com/shelltime/cli/compare/v0.1.67...v0.1.68) (2026-02-13)
+
+
+### Bug Fixes
+
+* **model:** remove duplicate SessionID field in CCStatuslineInput ([e82e815](https://github.com/shelltime/cli/commit/e82e815389cf898be02d10d1a93f08489fecfd9f))
+
 ## [0.1.67](https://github.com/shelltime/cli/compare/v0.1.66...v0.1.67) (2026-02-12)
 
 
