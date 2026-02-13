@@ -34,18 +34,30 @@ func commandQuery(c *cli.Context) error {
 
 	// Check if AI service is initialized
 	if aiService == nil {
-		color.Red.Println("❌ AI service is not configured")
+		color.Red.Println("AI service is not configured")
 		return fmt.Errorf("AI service is not available")
 	}
 
 	// Get the query from command arguments
 	args := c.Args().Slice()
 	if len(args) == 0 {
-		color.Red.Println("❌ Please provide a query")
+		color.Red.Println("Please provide a query")
 		return fmt.Errorf("query is required")
 	}
 
 	query := strings.Join(args, " ")
+
+	// Read config to get endpoint/token
+	cfg, err := configService.ReadConfigFile(ctx)
+	if err != nil {
+		color.Red.Printf("Failed to read config: %v\n", err)
+		return fmt.Errorf("failed to read config: %w", err)
+	}
+
+	endpoint := model.Endpoint{
+		APIEndpoint: cfg.APIEndpoint,
+		Token:       cfg.Token,
+	}
 
 	// Get system context
 	systemContext, err := getSystemContext(query)
@@ -59,34 +71,40 @@ func commandQuery(c *cli.Context) error {
 		BaseColor:     stloader.RGB{R: 100, G: 180, B: 255},
 	})
 	l.Start()
-	defer l.Stop()
 
-	// skip userId for now
-	userId := ""
+	var result strings.Builder
+	firstToken := true
 
-	// Query the AI
-	newCommand, err := aiService.QueryCommand(ctx, systemContext, userId)
-	if err != nil {
+	// Stream the AI response
+	err = aiService.QueryCommandStream(ctx, systemContext, endpoint, func(token string) {
+		if firstToken {
+			l.Stop()
+			color.Green.Printf("Suggested command:\n")
+			firstToken = false
+		}
+		fmt.Print(token)
+		result.WriteString(token)
+	})
+
+	if firstToken {
+		// No tokens received, stop loader
 		l.Stop()
-		color.Red.Printf("❌ Failed to query AI: %v\n", err)
+	}
+
+	if err != nil {
+		if !firstToken {
+			fmt.Println()
+		}
+		color.Red.Printf("Failed to query AI: %v\n", err)
 		return err
 	}
 
-	l.Stop()
+	// Print newline after streaming
+	fmt.Println()
 
-	// Trim the command
-	newCommand = strings.TrimSpace(newCommand)
+	newCommand := strings.TrimSpace(result.String())
 
 	// Check auto-run configuration
-	cfg, err := configService.ReadConfigFile(ctx)
-	if err != nil {
-		slog.Warn("Failed to read config for auto-run check", slog.Any("err", err))
-		// If can't read config, just display the command
-		displayCommand(newCommand)
-		return nil
-	}
-
-	// Check if AI auto-run is configured
 	if cfg.AI != nil && (cfg.AI.Agent.View || cfg.AI.Agent.Edit || cfg.AI.Agent.Delete) {
 		// Classify the command
 		actionType := model.ClassifyCommand(newCommand)
@@ -105,9 +123,7 @@ func commandQuery(c *cli.Context) error {
 		if canAutoRun {
 			// For delete commands, add an extra confirmation
 			if actionType == model.ActionDelete {
-				color.Green.Printf("💡 Suggested command:\n")
-				color.Cyan.Printf("%s\n\n", newCommand)
-				color.Yellow.Printf("⚠️  This is a DELETE command. Are you sure you want to run it? (y/N): ")
+				color.Yellow.Printf("This is a DELETE command. Are you sure you want to run it? (y/N): ")
 
 				var response string
 				fmt.Scanln(&response)
@@ -116,26 +132,20 @@ func commandQuery(c *cli.Context) error {
 					return nil
 				}
 			} else {
-				// Display the command and auto-run it
-				color.Green.Printf("💡 Auto-running command:\n")
-				color.Cyan.Printf("%s\n\n", newCommand)
+				color.Green.Printf("Auto-running command...\n")
 			}
 
 			// Execute the command
 			return executeCommand(ctx, newCommand)
 		} else {
-			// Display command with info about why it's not auto-running
-			displayCommand(newCommand)
 			if shouldShowTips(cfg) && actionType != model.ActionOther {
-				color.Yellow.Printf("\n💡 Tip: This is a %s command. Enable 'ai.agent.%s' in your config to auto-run it.\n",
+				color.Yellow.Printf("\nTip: This is a %s command. Enable 'ai.agent.%s' in your config to auto-run it.\n",
 					actionType, actionType)
 			}
 		}
 	} else {
-		// No auto-run configured, display the command and tip
-		displayCommand(newCommand)
 		if shouldShowTips(cfg) {
-			color.Yellow.Printf("\n💡 Tip: You can enable AI auto-run in your config file:\n")
+			color.Yellow.Printf("\nTip: You can enable AI auto-run in your config file:\n")
 			color.Yellow.Printf("   [ai.agent]\n")
 			color.Yellow.Printf("   view = true    # Auto-run view commands\n")
 			color.Yellow.Printf("   edit = true    # Auto-run edit commands\n")
@@ -144,11 +154,6 @@ func commandQuery(c *cli.Context) error {
 	}
 
 	return nil
-}
-
-func displayCommand(command string) {
-	color.Green.Printf("💡 Suggested command:\n")
-	color.Cyan.Printf("%s\n", command)
 }
 
 func shouldShowTips(cfg model.ShellTimeConfig) bool {
@@ -176,14 +181,14 @@ func executeCommand(ctx context.Context, command string) error {
 
 	// Run the command
 	if err := cmd.Run(); err != nil {
-		color.Red.Printf("\n❌ Command failed: %v\n", err)
+		color.Red.Printf("\nCommand failed: %v\n", err)
 		return err
 	}
 
 	return nil
 }
 
-func getSystemContext(query string) (model.PPPromptGuessNextPromptVariables, error) {
+func getSystemContext(query string) (model.CommandSuggestVariables, error) {
 	// Get shell information
 	shell := os.Getenv("SHELL")
 	if shell == "" {
@@ -198,7 +203,7 @@ func getSystemContext(query string) (model.PPPromptGuessNextPromptVariables, err
 	// Get OS information
 	osInfo := runtime.GOOS
 
-	return model.PPPromptGuessNextPromptVariables{
+	return model.CommandSuggestVariables{
 		Shell: shell,
 		Os:    osInfo,
 		Query: query,

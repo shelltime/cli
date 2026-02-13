@@ -91,15 +91,22 @@ func (s *queryTestSuite) TestQueryCommandNoArguments() {
 
 func (s *queryTestSuite) TestQueryCommandSuccess() {
 	// Setup mocks
-	expectedCommand := "ls -la"
 	query := "list all files with details"
 
-	// Mock AI service
-	s.mockAI.On("QueryCommand", mock.Anything, mock.Anything, "").Return(expectedCommand, nil)
-
-	// Mock config service - no auto-run
-	mockedConfig := model.ShellTimeConfig{}
+	// Mock config service - called first for endpoint
+	mockedConfig := model.ShellTimeConfig{
+		APIEndpoint: "https://api.shelltime.xyz",
+		Token:       "test-token",
+	}
 	s.mockConfig.On("ReadConfigFile", mock.Anything).Return(mockedConfig, nil)
+
+	// Mock AI service streaming
+	s.mockAI.On("QueryCommandStream", mock.Anything, mock.Anything, mock.Anything, mock.Anything).
+		Run(func(args mock.Arguments) {
+			onToken := args.Get(3).(func(token string))
+			onToken("ls ")
+			onToken("-la")
+		}).Return(nil)
 
 	command := []string{
 		"shelltime-test",
@@ -112,19 +119,24 @@ func (s *queryTestSuite) TestQueryCommandSuccess() {
 }
 
 func (s *queryTestSuite) TestQueryCommandWithMultipleArgs() {
-	// Setup mocks
-	expectedCommand := "find . -name '*.go' -type f"
 	queryParts := []string{"find", "all", "go", "files"}
 	fullQuery := strings.Join(queryParts, " ")
 
-	// Mock AI service
-	s.mockAI.On("QueryCommand", mock.Anything, mock.MatchedBy(func(sc model.PPPromptGuessNextPromptVariables) bool {
-		return sc.Query == fullQuery
-	}), "").Return(expectedCommand, nil)
-
 	// Mock config service
-	mockedConfig := model.ShellTimeConfig{}
+	mockedConfig := model.ShellTimeConfig{
+		APIEndpoint: "https://api.shelltime.xyz",
+		Token:       "test-token",
+	}
 	s.mockConfig.On("ReadConfigFile", mock.Anything).Return(mockedConfig, nil)
+
+	// Mock AI service streaming
+	s.mockAI.On("QueryCommandStream", mock.Anything, mock.MatchedBy(func(sc model.CommandSuggestVariables) bool {
+		return sc.Query == fullQuery
+	}), mock.Anything, mock.Anything).
+		Run(func(args mock.Arguments) {
+			onToken := args.Get(3).(func(token string))
+			onToken("find . -name '*.go' -type f")
+		}).Return(nil)
 
 	command := append([]string{"shelltime-test", "query"}, queryParts...)
 
@@ -135,8 +147,16 @@ func (s *queryTestSuite) TestQueryCommandWithMultipleArgs() {
 func (s *queryTestSuite) TestQueryCommandAIError() {
 	query := "complex query"
 
+	// Mock config service
+	mockedConfig := model.ShellTimeConfig{
+		APIEndpoint: "https://api.shelltime.xyz",
+		Token:       "test-token",
+	}
+	s.mockConfig.On("ReadConfigFile", mock.Anything).Return(mockedConfig, nil)
+
 	// Mock AI service error
-	s.mockAI.On("QueryCommand", mock.Anything, mock.Anything, "").Return("", errors.New("AI service error"))
+	s.mockAI.On("QueryCommandStream", mock.Anything, mock.Anything, mock.Anything, mock.Anything).
+		Return(errors.New("AI service error"))
 
 	command := []string{
 		"shelltime-test",
@@ -150,14 +170,12 @@ func (s *queryTestSuite) TestQueryCommandAIError() {
 }
 
 func (s *queryTestSuite) TestQueryCommandWithAutoRunView() {
-	expectedCommand := "ls -la"
 	query := "list files"
-
-	// Mock AI service
-	s.mockAI.On("QueryCommand", mock.Anything, mock.Anything, "").Return(expectedCommand, nil)
 
 	// Mock config with auto-run enabled for view commands
 	mockedConfig := model.ShellTimeConfig{
+		APIEndpoint: "https://api.shelltime.xyz",
+		Token:       "test-token",
 		AI: &model.AIConfig{
 			Agent: model.AIAgentConfig{
 				View:   true,
@@ -168,31 +186,33 @@ func (s *queryTestSuite) TestQueryCommandWithAutoRunView() {
 	}
 	s.mockConfig.On("ReadConfigFile", mock.Anything).Return(mockedConfig, nil)
 
+	// Mock AI service streaming
+	s.mockAI.On("QueryCommandStream", mock.Anything, mock.Anything, mock.Anything, mock.Anything).
+		Run(func(args mock.Arguments) {
+			onToken := args.Get(3).(func(token string))
+			onToken("ls -la")
+		}).Return(nil)
+
 	command := []string{
 		"shelltime-test",
 		"query",
 		query,
 	}
 
-	// Note: The actual command execution would fail in test environment
-	// We're testing the flow up to the execution point
 	err := s.app.Run(command)
-	// The error here is expected as we can't actually execute the command in tests
 	s.Nil(err)
 }
 
 func (s *queryTestSuite) TestQueryCommandWithAutoRunEdit() {
-	expectedCommand := "sed -i 's/foo/bar/g' /tmp/file_query_command_191.txt"
-	query := "replace foo with bar in file.txt"
+	query := "write hello to file"
 	f, _ := os.Create("/tmp/file_query_command_191.txt")
 	f.Close()
 	defer os.Remove(f.Name())
 
-	// Mock AI service
-	s.mockAI.On("QueryCommand", mock.Anything, mock.Anything, "").Return(expectedCommand, nil)
-
 	// Mock config with auto-run enabled for edit commands
 	mockedConfig := model.ShellTimeConfig{
+		APIEndpoint: "https://api.shelltime.xyz",
+		Token:       "test-token",
 		AI: &model.AIConfig{
 			Agent: model.AIAgentConfig{
 				View:   false,
@@ -203,26 +223,30 @@ func (s *queryTestSuite) TestQueryCommandWithAutoRunEdit() {
 	}
 	s.mockConfig.On("ReadConfigFile", mock.Anything).Return(mockedConfig, nil)
 
+	// Mock AI service streaming - use tee which works cross-platform
+	s.mockAI.On("QueryCommandStream", mock.Anything, mock.Anything, mock.Anything, mock.Anything).
+		Run(func(args mock.Arguments) {
+			onToken := args.Get(3).(func(token string))
+			onToken("echo hello | tee /tmp/file_query_command_191.txt")
+		}).Return(nil)
+
 	command := []string{
 		"shelltime-test",
 		"query",
 		query,
 	}
 
-	// The command would be auto-executed if enabled, but will fail in test
 	err := s.app.Run(command)
 	s.Nil(err)
 }
 
 func (s *queryTestSuite) TestQueryCommandWithAutoRunDeleteDisabled() {
-	expectedCommand := "rm -rf /tmp/test"
 	query := "delete test directory"
-
-	// Mock AI service
-	s.mockAI.On("QueryCommand", mock.Anything, mock.Anything, "").Return(expectedCommand, nil)
 
 	// Mock config with auto-run disabled for delete commands
 	mockedConfig := model.ShellTimeConfig{
+		APIEndpoint: "https://api.shelltime.xyz",
+		Token:       "test-token",
 		AI: &model.AIConfig{
 			Agent: model.AIAgentConfig{
 				View:   true,
@@ -233,25 +257,27 @@ func (s *queryTestSuite) TestQueryCommandWithAutoRunDeleteDisabled() {
 	}
 	s.mockConfig.On("ReadConfigFile", mock.Anything).Return(mockedConfig, nil)
 
+	// Mock AI service streaming
+	s.mockAI.On("QueryCommandStream", mock.Anything, mock.Anything, mock.Anything, mock.Anything).
+		Run(func(args mock.Arguments) {
+			onToken := args.Get(3).(func(token string))
+			onToken("rm -rf /tmp/test")
+		}).Return(nil)
+
 	command := []string{
 		"shelltime-test",
 		"query",
 		query,
 	}
 
-	// Should not auto-run delete commands when disabled
 	err := s.app.Run(command)
 	assert.Nil(s.T(), err)
 }
 
 func (s *queryTestSuite) TestQueryCommandConfigReadError() {
-	expectedCommand := "echo 'test'"
 	query := "print test"
 
-	// Mock AI service
-	s.mockAI.On("QueryCommand", mock.Anything, mock.Anything, "").Return(expectedCommand, nil)
-
-	// Mock config service error - should fallback gracefully
+	// Mock config service error - now this should return an error from commandQuery
 	s.mockConfig.On("ReadConfigFile", mock.Anything).Return(model.ShellTimeConfig{}, errors.New("config read error"))
 
 	command := []string{
@@ -261,20 +287,26 @@ func (s *queryTestSuite) TestQueryCommandConfigReadError() {
 	}
 
 	err := s.app.Run(command)
-	assert.Nil(s.T(), err)
+	assert.NotNil(s.T(), err)
+	assert.Contains(s.T(), err.Error(), "failed to read config")
 }
 
 func (s *queryTestSuite) TestQueryCommandTrimWhitespace() {
-	expectedCommand := "  echo 'hello'  \n\t"
-	// trimmedCommand := "echo 'hello'"
 	query := "print hello"
 
-	// Mock AI service returning command with whitespace
-	s.mockAI.On("QueryCommand", mock.Anything, mock.Anything, "").Return(expectedCommand, nil)
-
 	// Mock config service
-	mockedConfig := model.ShellTimeConfig{}
+	mockedConfig := model.ShellTimeConfig{
+		APIEndpoint: "https://api.shelltime.xyz",
+		Token:       "test-token",
+	}
 	s.mockConfig.On("ReadConfigFile", mock.Anything).Return(mockedConfig, nil)
+
+	// Mock AI service returning command with whitespace via streaming
+	s.mockAI.On("QueryCommandStream", mock.Anything, mock.Anything, mock.Anything, mock.Anything).
+		Run(func(args mock.Arguments) {
+			onToken := args.Get(3).(func(token string))
+			onToken("  echo 'hello'  \n\t")
+		}).Return(nil)
 
 	command := []string{
 		"shelltime-test",
@@ -284,7 +316,6 @@ func (s *queryTestSuite) TestQueryCommandTrimWhitespace() {
 
 	err := s.app.Run(command)
 	assert.Nil(s.T(), err)
-	// The command should be trimmed before processing
 }
 
 func (s *queryTestSuite) TestGetSystemContext() {
@@ -317,15 +348,21 @@ func (s *queryTestSuite) TestGetSystemContext() {
 }
 
 func (s *queryTestSuite) TestQueryCommandWithAlias() {
-	expectedCommand := "ls"
 	query := "list"
 
-	// Mock AI service
-	s.mockAI.On("QueryCommand", mock.Anything, mock.Anything, "").Return(expectedCommand, nil)
-
 	// Mock config service
-	mockedConfig := model.ShellTimeConfig{}
+	mockedConfig := model.ShellTimeConfig{
+		APIEndpoint: "https://api.shelltime.xyz",
+		Token:       "test-token",
+	}
 	s.mockConfig.On("ReadConfigFile", mock.Anything).Return(mockedConfig, nil)
+
+	// Mock AI service streaming
+	s.mockAI.On("QueryCommandStream", mock.Anything, mock.Anything, mock.Anything, mock.Anything).
+		Run(func(args mock.Arguments) {
+			onToken := args.Get(3).(func(token string))
+			onToken("ls")
+		}).Return(nil)
 
 	// Test using the alias "q" instead of "query"
 	command := []string{
@@ -352,21 +389,19 @@ func (s *queryTestSuite) TestExecuteCommand() {
 }
 
 func (s *queryTestSuite) TestDisplayCommand() {
-	// This is a simple display function, just ensure it doesn't panic
+	// shouldShowTips is a simple function, just ensure it doesn't panic
 	assert.NotPanics(s.T(), func() {
-		displayCommand("test command")
+		shouldShowTips(model.ShellTimeConfig{})
 	})
 }
 
 func (s *queryTestSuite) TestQueryCommandAutoRunOtherType() {
-	expectedCommand := "some-complex-command --with-flags"
 	query := "do something complex"
-
-	// Mock AI service
-	s.mockAI.On("QueryCommand", mock.Anything, mock.Anything, "").Return(expectedCommand, nil)
 
 	// Mock config with auto-run enabled but command is "other" type
 	mockedConfig := model.ShellTimeConfig{
+		APIEndpoint: "https://api.shelltime.xyz",
+		Token:       "test-token",
 		AI: &model.AIConfig{
 			Agent: model.AIAgentConfig{
 				View:   true,
@@ -376,6 +411,13 @@ func (s *queryTestSuite) TestQueryCommandAutoRunOtherType() {
 		},
 	}
 	s.mockConfig.On("ReadConfigFile", mock.Anything).Return(mockedConfig, nil)
+
+	// Mock AI service streaming
+	s.mockAI.On("QueryCommandStream", mock.Anything, mock.Anything, mock.Anything, mock.Anything).
+		Run(func(args mock.Arguments) {
+			onToken := args.Get(3).(func(token string))
+			onToken("some-complex-command --with-flags")
+		}).Return(nil)
 
 	command := []string{
 		"shelltime-test",
@@ -391,12 +433,16 @@ func (s *queryTestSuite) TestQueryCommandAutoRunOtherType() {
 func (s *queryTestSuite) TestQueryCommandEmptyAIResponse() {
 	query := "do nothing"
 
-	// Mock AI service returning empty string
-	s.mockAI.On("QueryCommand", mock.Anything, mock.Anything, "").Return("", nil)
-
 	// Mock config service
-	mockedConfig := model.ShellTimeConfig{}
+	mockedConfig := model.ShellTimeConfig{
+		APIEndpoint: "https://api.shelltime.xyz",
+		Token:       "test-token",
+	}
 	s.mockConfig.On("ReadConfigFile", mock.Anything).Return(mockedConfig, nil)
+
+	// Mock AI service returning no tokens
+	s.mockAI.On("QueryCommandStream", mock.Anything, mock.Anything, mock.Anything, mock.Anything).
+		Return(nil)
 
 	command := []string{
 		"shelltime-test",

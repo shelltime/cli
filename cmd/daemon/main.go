@@ -22,9 +22,6 @@ var (
 	commit     = "none"
 	date       = "unknown"
 	uptraceDsn = ""
-
-	ppEndpoint = ""
-	ppToken    = ""
 )
 
 func main() {

@@ -1,65 +1,93 @@
 package model
 
 import (
+	"bufio"
+	"bytes"
 	"context"
+	"encoding/json"
+	"fmt"
+	"net/http"
+	"strings"
 	"time"
-
-	"github.com/PromptPal/go-sdk/promptpal"
 )
 
 type AIService interface {
-	QueryCommand(ctx context.Context, systemContext PPPromptGuessNextPromptVariables, userId string) (string, error)
+	QueryCommandStream(ctx context.Context, vars CommandSuggestVariables, endpoint Endpoint, onToken func(token string)) error
 }
 
-type AIServiceConfig struct {
-	Endpoint  string
-	Token     string
-	Timeout   time.Duration
-	UserToken string
+type CommandSuggestVariables struct {
+	Shell string `json:"shell"`
+	Os    string `json:"os"`
+	Query string `json:"query"`
 }
 
-type promptPalAIService struct {
-	client promptpal.PromptPalClient
+type sseAIService struct{}
+
+func NewAIService() AIService {
+	return &sseAIService{}
 }
 
-func NewAIService(config AIServiceConfig) AIService {
-	if config.Timeout == 0 {
-		config.Timeout = 1 * time.Minute
-	}
-
-	applyTokenFunc := func(ctx context.Context) (promptpal.ApplyTemporaryTokenResult, error) {
-		// Read the config to get the user's token
-		return promptpal.ApplyTemporaryTokenResult{
-			Token: "Bearer " + config.UserToken,
-		}, nil
-	}
-
-	clientOptions := promptpal.PromptPalClientOptions{
-		Timeout:             &config.Timeout,
-		ApplyTemporaryToken: &applyTokenFunc,
-	}
-
-	client := promptpal.NewPromptPalClient(config.Endpoint, config.Token, clientOptions)
-
-	return &promptPalAIService{
-		client: client,
-	}
-}
-
-func (s promptPalAIService) QueryCommand(
+func (s *sseAIService) QueryCommandStream(
 	ctx context.Context,
-	systemContext PPPromptGuessNextPromptVariables,
-	userId string,
-) (string, error) {
-	response, err := s.client.Execute(ctx, string(PPPromptGuessNextPrompt), PPPromptGuessNextPromptVariables{
-		Shell: systemContext.Shell,
-		Os:    systemContext.Os,
-		Query: systemContext.Query,
-	}, &userId)
-
+	vars CommandSuggestVariables,
+	endpoint Endpoint,
+	onToken func(token string),
+) error {
+	body, err := json.Marshal(vars)
 	if err != nil {
-		return "", err
+		return fmt.Errorf("failed to marshal request: %w", err)
 	}
 
-	return response.ResponseMessage, nil
+	apiURL := strings.TrimRight(endpoint.APIEndpoint, "/") + "/api/v1/ai/command-suggest"
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, apiURL, bytes.NewReader(body))
+	if err != nil {
+		return fmt.Errorf("failed to create request: %w", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Accept", "text/event-stream")
+	req.Header.Set("Authorization", "CLI "+endpoint.Token)
+
+	client := &http.Client{Timeout: 2 * time.Minute}
+	resp, err := client.Do(req)
+	if err != nil {
+		return fmt.Errorf("failed to send request: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("server returned status %d", resp.StatusCode)
+	}
+
+	scanner := bufio.NewScanner(resp.Body)
+	var isError bool
+	for scanner.Scan() {
+		line := scanner.Text()
+
+		if line == "event: error" {
+			isError = true
+			continue
+		}
+
+		if strings.HasPrefix(line, "data: ") {
+			data := line[len("data: "):]
+
+			if isError {
+				return fmt.Errorf("server error: %s", data)
+			}
+
+			if data == "[DONE]" {
+				return nil
+			}
+
+			onToken(data)
+			isError = false
+		}
+	}
+
+	if err := scanner.Err(); err != nil {
+		return fmt.Errorf("error reading stream: %w", err)
+	}
+
+	return nil
 }
