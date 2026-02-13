@@ -377,8 +377,8 @@ SendToSubscriber:
 			return
 		case <-msgToSend.Nacked():
 			retryCount++
-			if retryCount >= maxRetries {
-				s.logger.Error("Max retries reached, dropping message", logFields)
+			if retryCount > maxRetries {
+				s.logger.Error("Max retries reached, dropping message", errors.New("max retries reached"), logFields)
 				return
 			}
 			backoff := time.Duration(100<<uint(retryCount-1)) * time.Millisecond
