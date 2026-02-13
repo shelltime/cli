@@ -45,6 +45,9 @@ type CCInfoTimerService struct {
 	stopChan     chan struct{}
 	wg           sync.WaitGroup
 
+	// Guards concurrent fetchRateLimit goroutines
+	rateLimitFetchMu sync.Mutex
+
 	// Git info cache (per working directory)
 	gitCache map[string]*GitCacheEntry
 
@@ -160,7 +163,15 @@ func (s *CCInfoTimerService) timerLoop() {
 	// Fetch immediately on start
 	s.fetchActiveRanges(context.Background())
 	s.fetchGitInfo()
-	go s.fetchRateLimit(context.Background())
+	go func() {
+		if !s.rateLimitFetchMu.TryLock() {
+			return
+		}
+		defer s.rateLimitFetchMu.Unlock()
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+		s.fetchRateLimit(ctx)
+	}()
 	go s.fetchUserProfile(context.Background())
 
 	for {
@@ -175,7 +186,15 @@ func (s *CCInfoTimerService) timerLoop() {
 			}
 			s.fetchActiveRanges(context.Background())
 			s.fetchGitInfo()
-			go s.fetchRateLimit(context.Background())
+			go func() {
+				if !s.rateLimitFetchMu.TryLock() {
+					return
+				}
+				defer s.rateLimitFetchMu.Unlock()
+				ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+				defer cancel()
+				s.fetchRateLimit(ctx)
+			}()
 
 		case <-s.stopChan:
 			return
