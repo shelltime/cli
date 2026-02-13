@@ -10,6 +10,8 @@ ShellTime CLI is a Go-based command-line tool for tracking DevOps work. It consi
 
 ## Development Commands
 
+**Requires Go 1.25+**
+
 ### Building
 ```bash
 # Build the CLI binary
@@ -36,11 +38,18 @@ go test ./model/...
 go test -run TestHandlerName ./daemon/
 ```
 
+Tests use **testify** (assertions + suites). Suite-based tests use `suite.Suite` with `SetupTest`/`TearDownTest` lifecycle hooks (see `daemon/cc_info_handler_test.go` for example). Simple functions use table-driven tests.
+
 ### Code Generation
 ```bash
-# Generate mocks (uses .mockery.yml configuration)
+# Generate mocks (uses .mockery.yml configuration, Mockery v3)
 mockery
+
+# Generate PromptPal types (requires pp CLI and API token)
+pp g
 ```
+
+CI runs both `mockery` and `pp g` before tests. Generated files: `model/pp.types.g.go` (PromptPal types), `model/mock_*.go` (testify mocks for service interfaces).
 
 ### Linting
 ```bash
@@ -69,7 +78,16 @@ Injection happens in `cmd/*/main.go` via `commands.InjectVar()` and `commands.In
 1. **SocketHandler**: Unix domain socket server accepting JSON messages from CLI
 2. **GoChannel**: Watermill pub/sub for decoupled message processing
 3. **SocketTopicProcessor**: Consumes messages and routes to appropriate handlers
-4. **AICodeOtelServer** (optional): gRPC server implementing OTEL collector for AI coding CLI metrics/logs passthrough (Claude Code, Codex, etc.)
+
+Optional daemon services (feature-gated via config):
+- **CCInfoTimerService**: Lazy-fetch background timer for Claude Code statusline data (cost, quota, git info)
+- **SyncCircuitBreakerService**: Retry failed syncs with file-based persistence (`sync_pending.log`) and hourly recovery timer
+- **AICodeOtelServer**: gRPC OTEL collector for AI coding CLI metrics/logs (Claude Code, Codex)
+- **HeartbeatResyncService**: Periodic resync of failed heartbeats (30-min interval)
+- **CleanupTimerService**: Periodic log file cleanup (24-hour interval)
+- **CCUsageService**: Integration with ccusage CLI
+
+Services initialize in `cmd/daemon/main.go`: check enabled flag → create → start → defer stop. All run concurrently with graceful shutdown on SIGINT/SIGTERM.
 
 ### Data Flow
 1. Shell hooks capture commands → CLI stores locally (file-based buffer)
@@ -87,9 +105,24 @@ Injection happens in `cmd/*/main.go` via `commands.InjectVar()` and `commands.In
 
 Follow Conventional Commits with scope: `fix(daemon): ...`, `feat(cli): ...`, `refactor(model): ...`
 
+## Key Dependencies
+
+- **CLI Framework**: `urfave/cli/v2`
+- **Message Queue**: `ThreeDotsLabs/watermill` (in-process pub/sub for daemon)
+- **AI Integration**: `PromptPal/go-sdk` with generated types from `promptpal.yml`
+- **Telemetry**: `uptrace-go` for OTEL
+- **Config**: `pelletier/go-toml/v2`
+- **Git**: `go-git/v5` for branch/dirty detection
+- **gRPC**: OTEL collector protos for AICodeOtel server
+
+## Release
+
+Releases use Release-Please (always-bump-patch) + Goreleaser. macOS builds include code signing/notarization via Quill when credentials are present. CI config in `.github/workflows/`.
+
 ## Important Notes
 
 - Daemon is optional but recommended (<8ms latency vs ~100ms+ direct)
 - Encryption requires daemon mode and a token with encryption capability
 - Shell hooks are platform-specific (bash, zsh, fish) - test on target shells
+- CC statusline quota display is macOS-only (requires Keychain access to Claude Code OAuth token)
 - AICodeOtel feature enables AI coding CLI metrics/logs passthrough via gRPC (port 54027) - supports Claude Code, Codex, and other OTEL-compatible CLIs
