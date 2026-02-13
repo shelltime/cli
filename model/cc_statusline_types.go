@@ -9,7 +9,6 @@ type CCStatuslineInput struct {
 	ContextWindow CCStatuslineContextWindow `json:"context_window"`
 	Cwd           string                    `json:"cwd"`
 	Version       string                    `json:"version"`
-	SessionID     string                    `json:"session_id"`
 	Workspace     *CCStatuslineWorkspace    `json:"workspace"`
 }
 
