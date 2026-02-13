@@ -12,7 +12,7 @@ The `shelltime cc statusline` command provides a custom status line for Claude C
 - Today's total cost (from ShellTime API)
 - AI agent time (session duration)
 - Context window usage percentage
-- Anthropic API quota utilization (5-hour and 7-day windows)
+- Anthropic API quota utilization (5-hour and 7-day windows, macOS only)
 
 ## Quick Start
 
@@ -41,15 +41,28 @@ The status line will appear at the bottom of Claude Code:
 
 ## Output Format
 
-| Section | Emoji | Description | Color |
-|---------|-------|-------------|-------|
-| Git | 🌿 | Current branch name (`*` if dirty) | Green |
-| Model | 🤖 | Current model display name | Default |
-| Session | 💰 | Current session cost in USD | Cyan |
-| Today | 📊 | Today's total cost from API | Yellow |
-| Quota | 🚦 | Anthropic API quota utilization | Green/Yellow/Red |
-| Time | ⏱️ | AI agent session duration | Magenta |
-| Context | 📈 | Context window usage % | Green/Yellow/Red |
+| Section | Emoji | Description | Color | Clickable Link |
+|---------|-------|-------------|-------|----------------|
+| Git | 🌿 | Current branch name (`*` if dirty) | Green (Gray if unavailable) | — |
+| Model | 🤖 | Current model display name | Default | — |
+| Session | 💰 | Current session cost in USD | Cyan | Session detail page |
+| Daily | 📊 | Today's total cost from API | Yellow when > 0, Gray when 0 | Coding agent page |
+| Quota | 🚦 | Anthropic API quota utilization | Green/Yellow/Red (Gray if unavailable) | Claude usage settings (always linked) |
+| Time | ⏱️ | AI agent session duration | Magenta when > 0, Gray when 0 | User profile page |
+| Context | 📈 | Context window usage % | Green/Yellow/Red | — |
+
+### Clickable Links
+
+All cost and usage sections support terminal hyperlinks using the [OSC 8 protocol](https://gist.github.com/egmontkob/eb114294efbcd5adb1944c9f3cb5feda). Click on the section text in a supported terminal to open the corresponding page:
+
+| Section | Link Target |
+|---------|-------------|
+| 💰 Session Cost | `{webEndpoint}/users/{login}/coding-agent/session/{sessionID}` |
+| 📊 Daily Cost | `{webEndpoint}/users/{login}/coding-agent/claude-code` |
+| 🚦 Quota | `https://claude.ai/settings/usage` (always linked, even when showing `-`) |
+| ⏱️ Time | `{webEndpoint}/users/{login}` (user profile) |
+
+Session and Daily links require a configured ShellTime account (`userLogin` and `webEndpoint` from daemon). The Quota link is always active regardless of data availability.
 
 ### Git Status Indicator
 
@@ -68,6 +81,10 @@ The quota section displays your Anthropic API rate limit utilization across two 
 - `🚦 -` - Quota data unavailable (macOS only, requires Claude Code OAuth token)
 
 The percentage is clickable and links to your [Claude usage settings](https://claude.ai/settings/usage) page.
+
+### Platform Note
+
+On **Linux**, the quota section (`🚦`) is omitted entirely from the output — the statusline skips from Daily Cost to Time. On **macOS**, it is always shown (either with data or as `🚦 -`).
 
 ### Quota Color Coding
 
@@ -96,16 +113,22 @@ Color is based on the **maximum** utilization across both windows:
    - Model name from `model.display_name`
    - Session cost from `cost.total_cost_usd`
    - Context usage from `context_window`
-   - Working directory from `working_directory`
-3. **Git info** is fetched from the daemon (which caches it for performance)
-4. **Daily cost** is fetched from ShellTime GraphQL API (cached for 5 minutes)
-5. **Quota utilization** is fetched from Anthropic OAuth API by the daemon (cached for 10 minutes)
-6. **Output** is a single formatted line with ANSI colors
+   - Working directory from `cwd`
+   - Session ID from `session_id` (used for session cost link)
+   - Workspace info from `workspace` (used for session-project mapping)
+3. **Session-project mapping** is sent to the daemon as a fire-and-forget message (~1ms), associating the session ID with its project directory
+4. **Git info** is fetched from the daemon (which caches it for performance)
+5. **Daily cost** is fetched from ShellTime GraphQL API (cached for 5 minutes)
+6. **Quota utilization** is fetched from Anthropic OAuth API by the daemon (cached for 10 minutes)
+7. **Clickable links** are added to Session, Daily, Quota, and Time sections using OSC 8 terminal hyperlinks
+8. **Output** is a single formatted line with ANSI colors
 
 ### JSON Input (from Claude Code)
 
 ```json
 {
+  "hook_event_name": "StatusLine",
+  "session_id": "abc123-def456",
   "model": {
     "id": "claude-opus-4-1",
     "display_name": "Opus"
@@ -125,7 +148,12 @@ Color is based on the **maximum** utilization across both windows:
       "cache_read_input_tokens": 2000
     }
   },
-  "working_directory": "/home/user/projects/my-app"
+  "cwd": "/home/user/projects/my-app",
+  "version": "1.0.0",
+  "workspace": {
+    "current_dir": "/home/user/projects/my-app",
+    "project_dir": "/home/user/projects/my-app"
+  }
 }
 ```
 
@@ -171,7 +199,7 @@ If no token is configured, the daily cost will show as `-`.
 
 Requires **macOS** and the ShellTime daemon running. The daemon reads Claude Code's OAuth token from the macOS Keychain (service name: `Claude Code-credentials`) and queries the Anthropic usage API.
 
-- **macOS only** - Keychain access is required to retrieve the OAuth token
+- **macOS only** - Keychain access is required to retrieve the OAuth token; on Linux the quota section is omitted entirely
 - **Daemon required** - quota data is fetched and cached by the daemon's background timer
 - **No manual setup** - if you're logged into Claude Code on macOS, it works automatically
 
@@ -182,6 +210,8 @@ If quota data is unavailable, the section will show as `🚦 -`.
 ## Performance
 
 - **Hard timeout:** 100ms for entire operation
+- **Daemon request timeout:** 50ms for the daemon socket request (fast path)
+- **Session mapping:** ~1ms fire-and-forget to daemon
 - **API caching:** 5-minute TTL for daily cost, 10-minute TTL for quota utilization
 - **Git info caching:** Daemon fetches git info in background timer loop, not on-demand
 - **Quota caching:** Daemon fetches quota data asynchronously with rate-limit protection
@@ -212,7 +242,7 @@ If quota data is unavailable, the section will show as `🚦 -`.
 
 ### Quota shows `-`
 
-1. Ensure you're on **macOS** - quota display is only available on macOS
+1. Ensure you're on **macOS** - quota display is only available on macOS (omitted entirely on Linux)
 2. Verify you're logged into Claude Code (the OAuth token is stored in macOS Keychain)
 3. Ensure the daemon is running: `shelltime daemon status`
 4. Quota data is cached for 10 minutes - it may take a moment after daemon start
@@ -220,6 +250,10 @@ If quota data is unavailable, the section will show as `🚦 -`.
 ### Colors not displaying
 
 Your terminal may not support ANSI colors. Check terminal settings or try a different terminal emulator.
+
+### Links not clickable
+
+Your terminal must support the [OSC 8 hyperlink protocol](https://gist.github.com/egmontkob/eb114294efbcd5adb1944c9f3cb5feda). Most modern terminals (iTerm2, WezTerm, Windows Terminal, GNOME Terminal 3.26+) support it. Older terminals or multiplexers (tmux, screen) may not.
 
 ---
 
