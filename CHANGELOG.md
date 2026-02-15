@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.70](https://github.com/shelltime/cli/compare/v0.1.69...v0.1.70) (2026-02-15)
+
+
+### Bug Fixes
+
+* **ai:** remove verbose query result logging ([28d1ef3](https://github.com/shelltime/cli/commit/28d1ef3777d8d97b096f6a20120bd705aeafc920))
+
 ## [0.1.69](https://github.com/shelltime/cli/compare/v0.1.68...v0.1.69) (2026-02-15)
 
 
