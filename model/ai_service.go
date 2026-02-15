@@ -69,8 +69,8 @@ func (s *sseAIService) QueryCommandStream(
 			continue
 		}
 
-		if strings.HasPrefix(line, "data: ") {
-			data := line[len("data: "):]
+		if strings.HasPrefix(line, "data:") {
+			data := line[len("data:"):]
 
 			if isError {
 				return fmt.Errorf("server error: %s", data)
