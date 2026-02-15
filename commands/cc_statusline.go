@@ -89,7 +89,20 @@ func commandCCStatusline(c *cli.Context) error {
 	}
 
 	// Format and output
-	output := formatStatuslineOutput(data.Model.DisplayName, data.Cost.TotalCostUSD, result.Cost, result.SessionSeconds, contextPercent, result.GitBranch, result.GitDirty, result.FiveHourUtilization, result.SevenDayUtilization, result.UserLogin, result.WebEndpoint, data.SessionID)
+	output := formatStatuslineOutput(statuslineParams{
+		ModelName:      data.Model.DisplayName,
+		SessionCost:    data.Cost.TotalCostUSD,
+		DailyCost:      result.Cost,
+		SessionSeconds: result.SessionSeconds,
+		ContextPercent: contextPercent,
+		GitBranch:      result.GitBranch,
+		GitDirty:       result.GitDirty,
+		FiveHourUtil:   result.FiveHourUtilization,
+		SevenDayUtil:   result.SevenDayUtilization,
+		UserLogin:      result.UserLogin,
+		WebEndpoint:    result.WebEndpoint,
+		SessionID:      data.SessionID,
+	})
 	fmt.Println(output)
 
 	return nil
@@ -145,13 +158,28 @@ func calculateContextPercent(cw model.CCStatuslineContextWindow) float64 {
 	return float64(currentTokens) / float64(cw.ContextWindowSize) * 100
 }
 
-func formatStatuslineOutput(modelName string, sessionCost, dailyCost float64, sessionSeconds int, contextPercent float64, gitBranch string, gitDirty bool, fiveHourUtil, sevenDayUtil *float64, userLogin, webEndpoint, sessionID string) string {
+type statuslineParams struct {
+	ModelName      string
+	SessionCost    float64
+	DailyCost      float64
+	SessionSeconds int
+	ContextPercent float64
+	GitBranch      string
+	GitDirty       bool
+	FiveHourUtil   *float64
+	SevenDayUtil   *float64
+	UserLogin      string
+	WebEndpoint    string
+	SessionID      string
+}
+
+func formatStatuslineOutput(p statuslineParams) string {
 	var parts []string
 
 	// Git info FIRST (green)
-	if gitBranch != "" {
-		gitStr := gitBranch
-		if gitDirty {
+	if p.GitBranch != "" {
+		gitStr := p.GitBranch
+		if p.GitDirty {
 			gitStr += "*"
 		}
 		parts = append(parts, color.Green.Sprintf("🌿 %s", gitStr))
@@ -160,22 +188,22 @@ func formatStatuslineOutput(modelName string, sessionCost, dailyCost float64, se
 	}
 
 	// Model name
-	modelStr := fmt.Sprintf("🤖 %s", modelName)
+	modelStr := fmt.Sprintf("🤖 %s", p.ModelName)
 	parts = append(parts, modelStr)
 
 	// Session cost (cyan) - clickable link to session page when user login and session ID are available
-	sessionStr := color.Cyan.Sprintf("💰 $%.2f", sessionCost)
-	if userLogin != "" && webEndpoint != "" && sessionID != "" {
-		url := fmt.Sprintf("%s/users/%s/coding-agent/session/%s", webEndpoint, userLogin, sessionID)
+	sessionStr := color.Cyan.Sprintf("💰 $%.2f", p.SessionCost)
+	if p.UserLogin != "" && p.WebEndpoint != "" && p.SessionID != "" {
+		url := fmt.Sprintf("%s/users/%s/coding-agent/session/%s", p.WebEndpoint, p.UserLogin, p.SessionID)
 		sessionStr = wrapOSC8Link(url, sessionStr)
 	}
 	parts = append(parts, sessionStr)
 
 	// Daily cost (yellow) - clickable link to coding agent page when user login is available
-	if dailyCost > 0 {
-		dailyStr := color.Yellow.Sprintf("📊 $%.2f", dailyCost)
-		if userLogin != "" && webEndpoint != "" {
-			url := fmt.Sprintf("%s/users/%s/coding-agent/claude-code", webEndpoint, userLogin)
+	if p.DailyCost > 0 {
+		dailyStr := color.Yellow.Sprintf("📊 $%.2f", p.DailyCost)
+		if p.UserLogin != "" && p.WebEndpoint != "" {
+			url := fmt.Sprintf("%s/users/%s/coding-agent/claude-code", p.WebEndpoint, p.UserLogin)
 			dailyStr = wrapOSC8Link(url, dailyStr)
 		}
 		parts = append(parts, dailyStr)
@@ -185,14 +213,14 @@ func formatStatuslineOutput(modelName string, sessionCost, dailyCost float64, se
 
 	// Quota utilization (macOS only - requires Keychain for OAuth token)
 	if runtime.GOOS == "darwin" {
-		parts = append(parts, formatQuotaPart(fiveHourUtil, sevenDayUtil))
+		parts = append(parts, formatQuotaPart(p.FiveHourUtil, p.SevenDayUtil))
 	}
 
 	// AI agent time (magenta) - clickable link to user profile
-	if sessionSeconds > 0 {
-		timeStr := color.Magenta.Sprintf("⏱️ %s", formatSessionDuration(sessionSeconds))
-		if userLogin != "" && webEndpoint != "" {
-			url := fmt.Sprintf("%s/users/%s", webEndpoint, userLogin)
+	if p.SessionSeconds > 0 {
+		timeStr := color.Magenta.Sprintf("⏱️ %s", formatSessionDuration(p.SessionSeconds))
+		if p.UserLogin != "" && p.WebEndpoint != "" {
+			url := fmt.Sprintf("%s/users/%s", p.WebEndpoint, p.UserLogin)
 			timeStr = wrapOSC8Link(url, timeStr)
 		}
 		parts = append(parts, timeStr)
@@ -203,12 +231,12 @@ func formatStatuslineOutput(modelName string, sessionCost, dailyCost float64, se
 	// Context percentage with color coding
 	var contextStr string
 	switch {
-	case contextPercent >= 80:
-		contextStr = color.Red.Sprintf("📈 %.0f%%", contextPercent)
-	case contextPercent >= 50:
-		contextStr = color.Yellow.Sprintf("📈 %.0f%%", contextPercent)
+	case p.ContextPercent >= 80:
+		contextStr = color.Red.Sprintf("📈 %.0f%%", p.ContextPercent)
+	case p.ContextPercent >= 50:
+		contextStr = color.Yellow.Sprintf("📈 %.0f%%", p.ContextPercent)
 	default:
-		contextStr = color.Green.Sprintf("📈 %.0f%%", contextPercent)
+		contextStr = color.Green.Sprintf("📈 %.0f%%", p.ContextPercent)
 	}
 	parts = append(parts, contextStr)
 

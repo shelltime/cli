@@ -151,7 +151,14 @@ func (s *CCStatuslineTestSuite) TestGetDaemonInfo_UsesDefaultSocketPath() {
 // formatStatuslineOutput Tests
 
 func (s *CCStatuslineTestSuite) TestFormatStatuslineOutput_AllValues() {
-	output := formatStatuslineOutput("claude-opus-4", 1.23, 4.56, 3661, 75.0, "main", false, nil, nil, "", "", "")
+	output := formatStatuslineOutput(statuslineParams{
+		ModelName:      "claude-opus-4",
+		SessionCost:    1.23,
+		DailyCost:      4.56,
+		SessionSeconds: 3661,
+		ContextPercent: 75.0,
+		GitBranch:      "main",
+	})
 
 	// Should contain all components
 	assert.Contains(s.T(), output, "🌿 main")
@@ -163,7 +170,15 @@ func (s *CCStatuslineTestSuite) TestFormatStatuslineOutput_AllValues() {
 }
 
 func (s *CCStatuslineTestSuite) TestFormatStatuslineOutput_WithDirtyBranch() {
-	output := formatStatuslineOutput("claude-opus-4", 1.23, 4.56, 3661, 75.0, "feature/test", true, nil, nil, "", "", "")
+	output := formatStatuslineOutput(statuslineParams{
+		ModelName:      "claude-opus-4",
+		SessionCost:    1.23,
+		DailyCost:      4.56,
+		SessionSeconds: 3661,
+		ContextPercent: 75.0,
+		GitBranch:      "feature/test",
+		GitDirty:       true,
+	})
 
 	// Should contain branch with asterisk for dirty
 	assert.Contains(s.T(), output, "🌿 feature/test*")
@@ -171,7 +186,13 @@ func (s *CCStatuslineTestSuite) TestFormatStatuslineOutput_WithDirtyBranch() {
 }
 
 func (s *CCStatuslineTestSuite) TestFormatStatuslineOutput_NoBranch() {
-	output := formatStatuslineOutput("claude-opus-4", 1.23, 4.56, 3661, 75.0, "", false, nil, nil, "", "", "")
+	output := formatStatuslineOutput(statuslineParams{
+		ModelName:      "claude-opus-4",
+		SessionCost:    1.23,
+		DailyCost:      4.56,
+		SessionSeconds: 3661,
+		ContextPercent: 75.0,
+	})
 
 	// Should show "-" for no branch
 	assert.Contains(s.T(), output, "🌿 -")
@@ -179,7 +200,13 @@ func (s *CCStatuslineTestSuite) TestFormatStatuslineOutput_NoBranch() {
 }
 
 func (s *CCStatuslineTestSuite) TestFormatStatuslineOutput_ZeroDailyCost() {
-	output := formatStatuslineOutput("claude-sonnet", 0.50, 0, 300, 50.0, "main", false, nil, nil, "", "", "")
+	output := formatStatuslineOutput(statuslineParams{
+		ModelName:      "claude-sonnet",
+		SessionCost:    0.50,
+		SessionSeconds: 300,
+		ContextPercent: 50.0,
+		GitBranch:      "main",
+	})
 
 	// Should show "-" for zero daily cost
 	assert.Contains(s.T(), output, "📊 -")
@@ -187,14 +214,27 @@ func (s *CCStatuslineTestSuite) TestFormatStatuslineOutput_ZeroDailyCost() {
 }
 
 func (s *CCStatuslineTestSuite) TestFormatStatuslineOutput_ZeroSessionSeconds() {
-	output := formatStatuslineOutput("claude-sonnet", 0.50, 1.0, 0, 50.0, "main", false, nil, nil, "", "", "")
+	output := formatStatuslineOutput(statuslineParams{
+		ModelName:      "claude-sonnet",
+		SessionCost:    0.50,
+		DailyCost:      1.0,
+		ContextPercent: 50.0,
+		GitBranch:      "main",
+	})
 
 	// Should show "-" for zero session seconds
 	assert.Contains(s.T(), output, "⏱️ -")
 }
 
 func (s *CCStatuslineTestSuite) TestFormatStatuslineOutput_HighContextPercentage() {
-	output := formatStatuslineOutput("test-model", 1.0, 1.0, 60, 85.0, "main", false, nil, nil, "", "", "")
+	output := formatStatuslineOutput(statuslineParams{
+		ModelName:      "test-model",
+		SessionCost:    1.0,
+		DailyCost:      1.0,
+		SessionSeconds: 60,
+		ContextPercent: 85.0,
+		GitBranch:      "main",
+	})
 
 	// Should contain the percentage (color codes may vary)
 	assert.Contains(s.T(), output, "85%")
@@ -202,7 +242,14 @@ func (s *CCStatuslineTestSuite) TestFormatStatuslineOutput_HighContextPercentage
 }
 
 func (s *CCStatuslineTestSuite) TestFormatStatuslineOutput_LowContextPercentage() {
-	output := formatStatuslineOutput("test-model", 1.0, 1.0, 45, 25.0, "main", false, nil, nil, "", "", "")
+	output := formatStatuslineOutput(statuslineParams{
+		ModelName:      "test-model",
+		SessionCost:    1.0,
+		DailyCost:      1.0,
+		SessionSeconds: 45,
+		ContextPercent: 25.0,
+		GitBranch:      "main",
+	})
 
 	// Should contain the percentage
 	assert.Contains(s.T(), output, "25%")
@@ -330,7 +377,17 @@ func (s *CCStatuslineTestSuite) TestFormatQuotaPart_ContainsLink() {
 }
 
 func (s *CCStatuslineTestSuite) TestFormatStatuslineOutput_SessionCostWithLink() {
-	output := formatStatuslineOutput("claude-opus-4", 1.23, 4.56, 3661, 75.0, "main", false, nil, nil, "testuser", "https://shelltime.xyz", "session-abc123")
+	output := formatStatuslineOutput(statuslineParams{
+		ModelName:      "claude-opus-4",
+		SessionCost:    1.23,
+		DailyCost:      4.56,
+		SessionSeconds: 3661,
+		ContextPercent: 75.0,
+		GitBranch:      "main",
+		UserLogin:      "testuser",
+		WebEndpoint:    "https://shelltime.xyz",
+		SessionID:      "session-abc123",
+	})
 
 	// Should contain OSC8 link wrapping session cost
 	assert.Contains(s.T(), output, "shelltime.xyz/users/testuser/coding-agent/session/session-abc123")
@@ -340,23 +397,60 @@ func (s *CCStatuslineTestSuite) TestFormatStatuslineOutput_SessionCostWithLink()
 
 func (s *CCStatuslineTestSuite) TestFormatStatuslineOutput_SessionCostWithoutLink() {
 	// No userLogin - should not have link
-	output := formatStatuslineOutput("claude-opus-4", 1.23, 4.56, 3661, 75.0, "main", false, nil, nil, "", "https://shelltime.xyz", "session-abc123")
+	output := formatStatuslineOutput(statuslineParams{
+		ModelName:      "claude-opus-4",
+		SessionCost:    1.23,
+		DailyCost:      4.56,
+		SessionSeconds: 3661,
+		ContextPercent: 75.0,
+		GitBranch:      "main",
+		WebEndpoint:    "https://shelltime.xyz",
+		SessionID:      "session-abc123",
+	})
 	assert.Contains(s.T(), output, "$1.23")
 	assert.NotContains(s.T(), output, "coding-agent/session/")
 
 	// No sessionID - should not have link
-	output = formatStatuslineOutput("claude-opus-4", 1.23, 4.56, 3661, 75.0, "main", false, nil, nil, "testuser", "https://shelltime.xyz", "")
+	output = formatStatuslineOutput(statuslineParams{
+		ModelName:      "claude-opus-4",
+		SessionCost:    1.23,
+		DailyCost:      4.56,
+		SessionSeconds: 3661,
+		ContextPercent: 75.0,
+		GitBranch:      "main",
+		UserLogin:      "testuser",
+		WebEndpoint:    "https://shelltime.xyz",
+	})
 	assert.Contains(s.T(), output, "$1.23")
 	assert.NotContains(s.T(), output, "coding-agent/session/")
 
 	// No webEndpoint - should not have link
-	output = formatStatuslineOutput("claude-opus-4", 1.23, 4.56, 3661, 75.0, "main", false, nil, nil, "testuser", "", "session-abc123")
+	output = formatStatuslineOutput(statuslineParams{
+		ModelName:      "claude-opus-4",
+		SessionCost:    1.23,
+		DailyCost:      4.56,
+		SessionSeconds: 3661,
+		ContextPercent: 75.0,
+		GitBranch:      "main",
+		UserLogin:      "testuser",
+		SessionID:      "session-abc123",
+	})
 	assert.Contains(s.T(), output, "$1.23")
 	assert.NotContains(s.T(), output, "coding-agent/session/")
 }
 
 func (s *CCStatuslineTestSuite) TestFormatStatuslineOutput_TimeWithProfileLink() {
-	output := formatStatuslineOutput("claude-opus-4", 1.23, 4.56, 3661, 75.0, "main", false, nil, nil, "testuser", "https://shelltime.xyz", "session-abc123")
+	output := formatStatuslineOutput(statuslineParams{
+		ModelName:      "claude-opus-4",
+		SessionCost:    1.23,
+		DailyCost:      4.56,
+		SessionSeconds: 3661,
+		ContextPercent: 75.0,
+		GitBranch:      "main",
+		UserLogin:      "testuser",
+		WebEndpoint:    "https://shelltime.xyz",
+		SessionID:      "session-abc123",
+	})
 
 	// Should contain OSC8 link wrapping time section to user profile
 	assert.Contains(s.T(), output, "shelltime.xyz/users/testuser")
@@ -365,21 +459,48 @@ func (s *CCStatuslineTestSuite) TestFormatStatuslineOutput_TimeWithProfileLink()
 
 func (s *CCStatuslineTestSuite) TestFormatStatuslineOutput_TimeWithoutProfileLink() {
 	// No userLogin - should not have profile link on time
-	output := formatStatuslineOutput("claude-opus-4", 1.23, 4.56, 3661, 75.0, "main", false, nil, nil, "", "https://shelltime.xyz", "session-abc123")
+	output := formatStatuslineOutput(statuslineParams{
+		ModelName:      "claude-opus-4",
+		SessionCost:    1.23,
+		DailyCost:      4.56,
+		SessionSeconds: 3661,
+		ContextPercent: 75.0,
+		GitBranch:      "main",
+		WebEndpoint:    "https://shelltime.xyz",
+		SessionID:      "session-abc123",
+	})
 	assert.Contains(s.T(), output, "1h1m")
 	// The time section should not contain a link to users/ profile
 	// Count occurrences of "shelltime.xyz/users/" - should only be in session cost and daily cost links
 	assert.NotContains(s.T(), output, "shelltime.xyz/users//")
 
 	// No webEndpoint - should not have profile link on time
-	output = formatStatuslineOutput("claude-opus-4", 1.23, 4.56, 3661, 75.0, "main", false, nil, nil, "testuser", "", "session-abc123")
+	output = formatStatuslineOutput(statuslineParams{
+		ModelName:      "claude-opus-4",
+		SessionCost:    1.23,
+		DailyCost:      4.56,
+		SessionSeconds: 3661,
+		ContextPercent: 75.0,
+		GitBranch:      "main",
+		UserLogin:      "testuser",
+		SessionID:      "session-abc123",
+	})
 	assert.Contains(s.T(), output, "1h1m")
 }
 
 func (s *CCStatuslineTestSuite) TestFormatStatuslineOutput_WithQuota() {
 	fh := 45.0
 	sd := 23.0
-	output := formatStatuslineOutput("claude-opus-4", 1.23, 4.56, 3661, 75.0, "main", false, &fh, &sd, "", "", "")
+	output := formatStatuslineOutput(statuslineParams{
+		ModelName:      "claude-opus-4",
+		SessionCost:    1.23,
+		DailyCost:      4.56,
+		SessionSeconds: 3661,
+		ContextPercent: 75.0,
+		GitBranch:      "main",
+		FiveHourUtil:   &fh,
+		SevenDayUtil:   &sd,
+	})
 
 	if runtime.GOOS == "darwin" {
 		assert.Contains(s.T(), output, "5h:45%")
@@ -391,7 +512,14 @@ func (s *CCStatuslineTestSuite) TestFormatStatuslineOutput_WithQuota() {
 }
 
 func (s *CCStatuslineTestSuite) TestFormatStatuslineOutput_WithoutQuota() {
-	output := formatStatuslineOutput("claude-opus-4", 1.23, 4.56, 3661, 75.0, "main", false, nil, nil, "", "", "")
+	output := formatStatuslineOutput(statuslineParams{
+		ModelName:      "claude-opus-4",
+		SessionCost:    1.23,
+		DailyCost:      4.56,
+		SessionSeconds: 3661,
+		ContextPercent: 75.0,
+		GitBranch:      "main",
+	})
 
 	if runtime.GOOS == "darwin" {
 		assert.Contains(s.T(), output, "🚦 -")
