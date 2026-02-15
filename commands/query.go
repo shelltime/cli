@@ -101,7 +101,6 @@ func commandQuery(c *cli.Context) error {
 
 	// Print newline after streaming
 	fmt.Println()
-	slog.InfoContext(ctx, "query command", "command", result.String())
 
 	newCommand := strings.TrimSpace(result.String())
 
