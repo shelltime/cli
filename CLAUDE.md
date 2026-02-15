@@ -10,7 +10,7 @@ ShellTime CLI is a Go-based command-line tool for tracking DevOps work. It consi
 
 ## Development Commands
 
-**Requires Go 1.25+**
+**Requires Go 1.26+**
 
 ### Building
 ```bash
