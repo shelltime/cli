@@ -1,5 +1,40 @@
 # Changelog
 
+## [0.1.69](https://github.com/shelltime/cli/compare/v0.1.68...v0.1.69) (2026-02-15)
+
+
+### Features
+
+* **commands:** replace PromptPal with SSE streaming from server API ([acc0341](https://github.com/shelltime/cli/commit/acc03413622b6ef5d5ad00771158236a6d893806))
+* **commands:** replace PromptPal with SSE streaming from server API ([fe09d63](https://github.com/shelltime/cli/commit/fe09d6329811f6fd62e330caec3cfc394edf608f))
+
+
+### Bug Fixes
+
+* **ai:** handle SSE data prefix without space and add query logging ([48a7f80](https://github.com/shelltime/cli/commit/48a7f8002eb9e02520d376e0d14e453419392c8d))
+* **daemon:** correct retry limit and error logging in message handler ([dcea8f3](https://github.com/shelltime/cli/commit/dcea8f34a1f848b1f5be34609f57bb8fdb0b0321))
+* **daemon:** resolve CPU spin and memory bloat in daemon process ([2cfda03](https://github.com/shelltime/cli/commit/2cfda03924bdf073f559a52ee1ee58179d290559))
+
+
+### Code Refactoring
+
+* **commands:** replace 12 positional params with statuslineParams struct ([c06172c](https://github.com/shelltime/cli/commit/c06172c0d4198e6b58b8eeb2379c95d79a6b4ce8))
+* **commands:** replace positional params with statuslineParams struct ([566d5fd](https://github.com/shelltime/cli/commit/566d5fdd4b296288045eec672892a46116ab724d))
+
+
+### Documentation
+
+* **cc-statusline:** update docs for clickable links and new fields ([71a3574](https://github.com/shelltime/cli/commit/71a3574acc8cf9cf782bbae4599fd37d18bd7420))
+* **cc-statusline:** update docs for clickable links, session tracking, and new fields ([adb54df](https://github.com/shelltime/cli/commit/adb54df1773df95afec46a4ea02d5ea7e78d6b09))
+* **claude:** expand CLAUDE.md with Go version, testing patterns, daemon services, and dependencies ([214ffbc](https://github.com/shelltime/cli/commit/214ffbc270d174c0642340a6fb8b519d3b3f4c27))
+* **repo:** add AGENTS contributor guide ([6655bd9](https://github.com/shelltime/cli/commit/6655bd9d53985b6f9c2cd0464810d16d02d2403a))
+
+
+### Miscellaneous Chores
+
+* **ci:** upgrade Go 1.25 to 1.26 ([53761d1](https://github.com/shelltime/cli/commit/53761d1d2f233cd36a7f145b131015402143b272))
+* **ci:** upgrade Go 1.25 to 1.26 ([c92e68e](https://github.com/shelltime/cli/commit/c92e68ed5752e5481b1be6fb2fbc36ddaf5910e5))
+
 ## [0.1.68](https://github.com/shelltime/cli/compare/v0.1.67...v0.1.68) (2026-02-13)
 
 
