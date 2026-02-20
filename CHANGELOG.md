@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.71](https://github.com/shelltime/cli/compare/v0.1.70...v0.1.71) (2026-02-20)
+
+
+### Bug Fixes
+
+* **daemon:** prevent git index.lock conflicts during background polling ([3f94286](https://github.com/shelltime/cli/commit/3f9428640d6899cfa8f17e86c693a084a61611a2))
+
 ## [0.1.70](https://github.com/shelltime/cli/compare/v0.1.69...v0.1.70) (2026-02-15)
 
 
