@@ -6,6 +6,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"strings"
 	"time"
@@ -56,6 +57,13 @@ func (s *sseAIService) QueryCommandStream(
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
+		body, readErr := io.ReadAll(resp.Body)
+		if readErr == nil {
+			var errResp errorResponse
+			if jsonErr := json.Unmarshal(body, &errResp); jsonErr == nil && errResp.ErrorMessage != "" {
+				return fmt.Errorf("%s", errResp.ErrorMessage)
+			}
+		}
 		return fmt.Errorf("server returned status %d", resp.StatusCode)
 	}
 
