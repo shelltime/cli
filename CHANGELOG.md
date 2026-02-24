@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.1.72](https://github.com/shelltime/cli/compare/v0.1.71...v0.1.72) (2026-02-24)
+
+
+### Features
+
+* **daemon:** send Anthropic usage data to server ([b9b7a9e](https://github.com/shelltime/cli/commit/b9b7a9e008ec318d0d058e9561ed10708af920ec))
+* **daemon:** send Anthropic usage data to server for push notifications ([45f958a](https://github.com/shelltime/cli/commit/45f958ad23b198f43c2887d10341ee3914510a7c))
+
+
+### Bug Fixes
+
+* **model:** parse server error response body in query command ([99ad1dd](https://github.com/shelltime/cli/commit/99ad1dde687b761d496ba35ba013f55a7742a76a))
+
 ## [0.1.71](https://github.com/shelltime/cli/compare/v0.1.70...v0.1.71) (2026-02-20)
 
 
