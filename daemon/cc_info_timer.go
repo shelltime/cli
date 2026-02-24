@@ -432,6 +432,9 @@ func (s *CCInfoTimerService) fetchRateLimit(ctx context.Context) {
 	s.rateLimitCache.fetchedAt = time.Now()
 	s.rateLimitCache.mu.Unlock()
 
+	// Send usage data to server for push notification scheduling (fire-and-forget)
+	go s.sendAnthropicUsageToServer(ctx, usage)
+
 	slog.Debug("Anthropic rate limit updated",
 		slog.Float64("5h", usage.FiveHourUtilization),
 		slog.Float64("7d", usage.SevenDayUtilization))
@@ -470,6 +473,49 @@ func (s *CCInfoTimerService) fetchUserProfile(ctx context.Context) {
 	s.mu.Unlock()
 
 	slog.Debug("User profile fetched", slog.String("login", profile.FetchUser.Login))
+}
+
+// sendAnthropicUsageToServer sends the Anthropic usage data to the ShellTime server
+// for scheduling push notifications when rate limits reset.
+func (s *CCInfoTimerService) sendAnthropicUsageToServer(ctx context.Context, usage *AnthropicRateLimitData) {
+	if s.config.Token == "" {
+		return
+	}
+
+	type usageBucket struct {
+		Utilization float64 `json:"utilization"`
+		ResetsAt    string  `json:"resets_at"`
+	}
+	type usagePayload struct {
+		FiveHour usageBucket `json:"five_hour"`
+		SevenDay usageBucket `json:"seven_day"`
+	}
+
+	payload := usagePayload{
+		FiveHour: usageBucket{
+			Utilization: usage.FiveHourUtilization,
+			ResetsAt:    usage.FiveHourResetsAt,
+		},
+		SevenDay: usageBucket{
+			Utilization: usage.SevenDayUtilization,
+			ResetsAt:    usage.SevenDayResetsAt,
+		},
+	}
+
+	err := model.SendHTTPRequestJSON(model.HTTPRequestOptions[usagePayload, any]{
+		Context: ctx,
+		Endpoint: model.Endpoint{
+			Token:       s.config.Token,
+			APIEndpoint: s.config.APIEndpoint,
+		},
+		Method:  "POST",
+		Path:    "/api/v1/anthropic-usage",
+		Payload: payload,
+		Timeout: 5 * time.Second,
+	})
+	if err != nil {
+		slog.Warn("Failed to send anthropic usage to server", slog.Any("err", err))
+	}
 }
 
 // GetCachedRateLimit returns a copy of the cached rate limit data, or nil if not available.
