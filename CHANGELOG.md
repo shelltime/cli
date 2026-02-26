@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.1.73](https://github.com/shelltime/cli/compare/v0.1.72...v0.1.73) (2026-02-26)
+
+
+### Bug Fixes
+
+* **daemon:** add missing codex.tool_decision event mapping ([ecd5615](https://github.com/shelltime/cli/commit/ecd561584baa76e9c6f8d2399d044405b9618b1a))
+* **daemon:** use independent context for fire-and-forget anthropic usage goroutine ([790a426](https://github.com/shelltime/cli/commit/790a4269f778f74d9dcc7756ef7bc2c9052b2978))
+
 ## [0.1.72](https://github.com/shelltime/cli/compare/v0.1.71...v0.1.72) (2026-02-24)
 
 
