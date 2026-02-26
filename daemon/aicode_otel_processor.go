@@ -617,6 +617,8 @@ func mapEventName(name string, source string) string {
 		return model.AICodeEventApiRequest
 	case "codex.api_error":
 		return model.AICodeEventApiError
+	case "codex.tool_decision":
+		return model.AICodeEventToolDecision
 	case "codex.exec_command":
 		return model.AICodeEventExecCommand
 	case "codex.conversation_starts":

@@ -247,6 +247,7 @@ func TestMapEventName_Codex(t *testing.T) {
 		{"codex.tool_result", model.AICodeEventToolResult},
 		{"codex.api_request", model.AICodeEventApiRequest},
 		{"codex.api_error", model.AICodeEventApiError},
+		{"codex.tool_decision", model.AICodeEventToolDecision},
 		{"codex.exec_command", model.AICodeEventExecCommand},
 		{"codex.conversation_starts", model.AICodeEventConversationStarts},
 		{"codex.sse_event", model.AICodeEventSSEEvent},
