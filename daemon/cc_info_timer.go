@@ -433,7 +433,12 @@ func (s *CCInfoTimerService) fetchRateLimit(ctx context.Context) {
 	s.rateLimitCache.mu.Unlock()
 
 	// Send usage data to server for push notification scheduling (fire-and-forget)
-	go s.sendAnthropicUsageToServer(ctx, usage)
+	// Use a separate context so the goroutine isn't canceled when the caller returns.
+	go func() {
+		bgCtx, bgCancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer bgCancel()
+		s.sendAnthropicUsageToServer(bgCtx, usage)
+	}()
 
 	slog.Debug("Anthropic rate limit updated",
 		slog.Float64("5h", usage.FiveHourUtilization),
