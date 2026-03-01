@@ -7,7 +7,7 @@ import (
 
 var InitCommand *cli.Command = &cli.Command{
 	Name:  "init",
-	Usage: "Initialize shelltime: authenticate, install hooks, and start daemon",
+	Usage: "Initialize shelltime: authenticate, install hooks, start daemon, and configure AI code integrations",
 	Flags: []cli.Flag{
 		&cli.StringFlag{
 			Name:     "token",
@@ -35,6 +35,16 @@ func commandInit(c *cli.Context) error {
 	// Step 3: Install daemon service
 	if err := commandDaemonInstall(c); err != nil {
 		return err
+	}
+
+	// Step 4: Install Claude Code OTEL configuration
+	if err := commandCCInstall(c); err != nil {
+		color.Red.Printf("Failed to install Claude Code OTEL config: %v\n", err)
+	}
+
+	// Step 5: Install Codex OTEL configuration
+	if err := commandCodexInstall(c); err != nil {
+		color.Red.Printf("Failed to install Codex OTEL config: %v\n", err)
 	}
 
 	color.Green.Println("ShellTime is fully initialized and ready to use!")
