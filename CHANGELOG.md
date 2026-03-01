@@ -1,5 +1,21 @@
 # Changelog
 
+## [0.1.74](https://github.com/shelltime/cli/compare/v0.1.73...v0.1.74) (2026-03-01)
+
+
+### Features
+
+* **init:** auto-install CC and Codex OTEL configs during init ([add2029](https://github.com/shelltime/cli/commit/add20295f828893897c57eeb6df93130dc280854))
+* **init:** auto-install CC and Codex OTEL configs during init ([9492cd9](https://github.com/shelltime/cli/commit/9492cd9782e275627309747ef8a2979625353d61))
+* **model:** enable key features by default ([9970fc0](https://github.com/shelltime/cli/commit/9970fc0b5e35b3c6e30c2bd67e9002fa37739434))
+* **model:** enable key features by default in config ([6808479](https://github.com/shelltime/cli/commit/680847918f62f8447c103207f03208866501e568))
+
+
+### Bug Fixes
+
+* **daemon:** include debug context in OTEL metrics log ([0f989d4](https://github.com/shelltime/cli/commit/0f989d4cba70e2714fa1ea0488fc40afd8323c76))
+* **daemon:** include debug context in OTEL metrics log ([292b1cf](https://github.com/shelltime/cli/commit/292b1cf3a98cfdc32b1de429943b00b2ea12d623))
+
 ## [0.1.73](https://github.com/shelltime/cli/compare/v0.1.72...v0.1.73) (2026-02-26)
 
 
