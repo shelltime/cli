@@ -80,7 +80,7 @@ func (p *AICodeOtelProcessor) writeDebugFile(filename string, data interface{}) 
 
 // ProcessMetrics receives OTEL metrics and forwards to backend immediately
 func (p *AICodeOtelProcessor) ProcessMetrics(ctx context.Context, req *collmetricsv1.ExportMetricsServiceRequest) (*collmetricsv1.ExportMetricsServiceResponse, error) {
-	slog.Debug("AICodeOtel: Processing metrics request", "resourceMetricsCount", len(req.GetResourceMetrics()))
+	slog.Debug("AICodeOtel: Processing metrics request", "resourceMetricsCount", slog.Int("len", len(req.GetResourceMetrics())), slog.Bool("debug", p.debug))
 
 	if p.debug {
 		p.writeDebugFile("aicode-otel-debug-metrics.txt", req)
