@@ -115,17 +115,25 @@ var DefaultConfig = ShellTimeConfig{
 	FlushCount:  10,
 	// 2 weeks by default
 	GCTime:        14,
-	DataMasking:   nil,
+	DataMasking:   new(true),
 	Endpoints:     nil,
 	EnableMetrics: nil,
-	Encrypted:     nil,
+	Encrypted:     new(true),
 	AI:            DefaultAIConfig,
 	Exclude:       []string{},
-	CCUsage:       nil,
-	CCOtel:        nil, // deprecated
-	AICodeOtel:    nil,
-	CodeTracking:  nil,
-	LogCleanup:    nil,
+	CCUsage: new(CCUsage{
+		Enabled: new(true),
+	}),
+	CCOtel: nil,
+	AICodeOtel: new(AICodeOtel{
+		Enabled:  new(true),
+		GRPCPort: 54027,
+		Debug:    new(false),
+	}),
+	CodeTracking: new(CodeTracking{
+		Enabled: new(true),
+	}),
+	LogCleanup: nil,
 
 	SocketPath: DefaultSocketPath,
 }
