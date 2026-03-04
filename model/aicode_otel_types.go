@@ -15,6 +15,7 @@ type AICodeOtelRequest struct {
 type AICodeOtelResourceAttributes struct {
 	// Standard resource attributes
 	SessionID       string
+	EventKind       string
 	ConversationID  string // Codex uses conversation.id instead of session.id
 	UserAccountUUID string
 	OrganizationID  string

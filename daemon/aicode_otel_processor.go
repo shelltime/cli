@@ -227,6 +227,8 @@ func extractResourceAttributes(resource *resourcev1.Resource) *model.AICodeOtelR
 		// Standard resource attributes
 		case "session.id":
 			attrs.SessionID = value.GetStringValue()
+		case "event.kind":
+			attrs.EventKind = value.GetStringValue()
 		case "conversation.id":
 			attrs.ConversationID = value.GetStringValue()
 		case "app.version":
@@ -295,6 +297,7 @@ func applyResourceAttributesToMetric(metric *model.AICodeOtelMetric, attrs *mode
 func applyResourceAttributesToEvent(event *model.AICodeOtelEvent, attrs *model.AICodeOtelResourceAttributes) {
 	// Standard resource attributes
 	event.SessionID = attrs.SessionID
+	event.EventKind = attrs.EventKind
 	event.ConversationID = attrs.ConversationID
 	event.UserAccountUUID = attrs.UserAccountUUID
 	event.OrganizationID = attrs.OrganizationID

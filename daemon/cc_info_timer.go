@@ -146,7 +146,6 @@ func (s *CCInfoTimerService) stopTimer() {
 	s.activeRanges = make(map[CCInfoTimeRange]bool)
 	s.gitCache = make(map[string]*GitCacheEntry)
 	s.mu.Unlock()
-
 	s.rateLimitCache.mu.Lock()
 	s.rateLimitCache.usage = nil
 	s.rateLimitCache.fetchedAt = time.Time{}
