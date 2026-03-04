@@ -422,6 +422,8 @@ func (p *AICodeOtelProcessor) parseLogRecord(lr *logsv1.LogRecord, resourceAttrs
 		switch key {
 		case "event.name":
 			event.EventType = mapEventName(value.GetStringValue(), source)
+		case "event.kind":
+			event.EventKind = value.GetStringValue()
 		case "event.timestamp":
 			event.EventTimestamp = value.GetStringValue()
 		case "model":
