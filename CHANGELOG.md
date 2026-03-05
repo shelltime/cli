@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.1.75](https://github.com/shelltime/cli/compare/v0.1.74...v0.1.75) (2026-03-04)
+
+
+### Features
+
+* **daemon:** add event.kind resource attribute to OTEL processor ([4f29416](https://github.com/shelltime/cli/commit/4f2941612b85588de2df6b8f0a6545c6045c8c47))
+* **daemon:** parse event.kind from OTEL log record attributes ([e175b2b](https://github.com/shelltime/cli/commit/e175b2b9a4dfe68b0dc95c2aaaab5127fab8cae9))
+
 ## [0.1.74](https://github.com/shelltime/cli/compare/v0.1.73...v0.1.74) (2026-03-01)
 
 
