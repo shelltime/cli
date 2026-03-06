@@ -37,6 +37,7 @@ type ccStatuslineResult struct {
 	GitDirty            bool
 	FiveHourUtilization *float64
 	SevenDayUtilization *float64
+	QuotaError          string
 	UserLogin           string
 	WebEndpoint         string
 }
@@ -99,6 +100,7 @@ func commandCCStatusline(c *cli.Context) error {
 		GitDirty:       result.GitDirty,
 		FiveHourUtil:   result.FiveHourUtilization,
 		SevenDayUtil:   result.SevenDayUtilization,
+		QuotaError:     result.QuotaError,
 		UserLogin:      result.UserLogin,
 		WebEndpoint:    result.WebEndpoint,
 		SessionID:      data.SessionID,
@@ -168,6 +170,7 @@ type statuslineParams struct {
 	GitDirty       bool
 	FiveHourUtil   *float64
 	SevenDayUtil   *float64
+	QuotaError     string
 	UserLogin      string
 	WebEndpoint    string
 	SessionID      string
@@ -213,7 +216,7 @@ func formatStatuslineOutput(p statuslineParams) string {
 
 	// Quota utilization (macOS only - requires Keychain for OAuth token)
 	if runtime.GOOS == "darwin" {
-		parts = append(parts, formatQuotaPart(p.FiveHourUtil, p.SevenDayUtil))
+		parts = append(parts, formatQuotaPart(p.FiveHourUtil, p.SevenDayUtil, p.QuotaError))
 	}
 
 	// AI agent time (magenta) - clickable link to user profile
@@ -245,8 +248,11 @@ func formatStatuslineOutput(p statuslineParams) string {
 
 // formatQuotaPart formats the rate limit quota section of the statusline.
 // Color is based on the max utilization of both buckets.
-func formatQuotaPart(fiveHourUtil, sevenDayUtil *float64) string {
+func formatQuotaPart(fiveHourUtil, sevenDayUtil *float64, quotaError string) string {
 	if fiveHourUtil == nil || sevenDayUtil == nil {
+		if quotaError != "" {
+			return wrapOSC8Link(claudeUsageURL, color.Red.Sprintf("🚦 err:%s", quotaError))
+		}
 		return wrapOSC8Link(claudeUsageURL, color.Gray.Sprint("🚦 -"))
 	}
 
@@ -315,6 +321,7 @@ func getDaemonInfoWithFallback(ctx context.Context, config model.ShellTimeConfig
 				GitDirty:            resp.GitDirty,
 				FiveHourUtilization: resp.FiveHourUtilization,
 				SevenDayUtilization: resp.SevenDayUtilization,
+				QuotaError:          resp.QuotaError,
 				UserLogin:           resp.UserLogin,
 				WebEndpoint:         config.WebEndpoint,
 			}

@@ -26,6 +26,7 @@ type anthropicRateLimitCache struct {
 	usage         *AnthropicRateLimitData
 	fetchedAt     time.Time
 	lastAttemptAt time.Time
+	lastError     string // short error description for statusline display
 }
 
 // anthropicUsageResponse maps the Anthropic API response
