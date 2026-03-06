@@ -326,20 +326,20 @@ func (s *CCStatuslineTestSuite) TestCalculateContextPercent_WithoutCurrentUsage(
 // formatQuotaPart Tests
 
 func (s *CCStatuslineTestSuite) TestFormatQuotaPart_NilValues() {
-	result := formatQuotaPart(nil, nil)
+	result := formatQuotaPart(nil, nil, "")
 	assert.Contains(s.T(), result, "🚦 -")
 }
 
 func (s *CCStatuslineTestSuite) TestFormatQuotaPart_OnlyFiveHourNil() {
 	sd := 0.23
-	result := formatQuotaPart(nil, &sd)
+	result := formatQuotaPart(nil, &sd, "")
 	assert.Contains(s.T(), result, "🚦 -")
 }
 
 func (s *CCStatuslineTestSuite) TestFormatQuotaPart_LowUtilization() {
 	fh := 10.0
 	sd := 20.0
-	result := formatQuotaPart(&fh, &sd)
+	result := formatQuotaPart(&fh, &sd, "")
 	assert.Contains(s.T(), result, "5h:10%")
 	assert.Contains(s.T(), result, "7d:20%")
 }
@@ -347,7 +347,7 @@ func (s *CCStatuslineTestSuite) TestFormatQuotaPart_LowUtilization() {
 func (s *CCStatuslineTestSuite) TestFormatQuotaPart_MediumUtilization() {
 	fh := 55.0
 	sd := 30.0
-	result := formatQuotaPart(&fh, &sd)
+	result := formatQuotaPart(&fh, &sd, "")
 	assert.Contains(s.T(), result, "5h:55%")
 	assert.Contains(s.T(), result, "7d:30%")
 }
@@ -355,25 +355,45 @@ func (s *CCStatuslineTestSuite) TestFormatQuotaPart_MediumUtilization() {
 func (s *CCStatuslineTestSuite) TestFormatQuotaPart_HighUtilization() {
 	fh := 45.0
 	sd := 85.0
-	result := formatQuotaPart(&fh, &sd)
+	result := formatQuotaPart(&fh, &sd, "")
 	assert.Contains(s.T(), result, "5h:45%")
 	assert.Contains(s.T(), result, "7d:85%")
 }
 
 func (s *CCStatuslineTestSuite) TestFormatQuotaPart_ContainsLink() {
 	// Nil case
-	result := formatQuotaPart(nil, nil)
+	result := formatQuotaPart(nil, nil, "")
 	assert.Contains(s.T(), result, "claude.ai/settings/usage")
 	assert.Contains(s.T(), result, "\033]8;;")
 
 	// With values
 	fh := 45.0
 	sd := 23.0
-	result = formatQuotaPart(&fh, &sd)
+	result = formatQuotaPart(&fh, &sd, "")
 	assert.Contains(s.T(), result, "claude.ai/settings/usage")
 	assert.Contains(s.T(), result, "\033]8;;")
 	assert.Contains(s.T(), result, "5h:45%")
 	assert.Contains(s.T(), result, "7d:23%")
+}
+
+func (s *CCStatuslineTestSuite) TestFormatQuotaPart_WithError() {
+	result := formatQuotaPart(nil, nil, "oauth")
+	assert.Contains(s.T(), result, "🚦 err:oauth")
+	assert.Contains(s.T(), result, "claude.ai/settings/usage")
+}
+
+func (s *CCStatuslineTestSuite) TestFormatQuotaPart_WithAPIError() {
+	result := formatQuotaPart(nil, nil, "api:403")
+	assert.Contains(s.T(), result, "🚦 err:api:403")
+}
+
+func (s *CCStatuslineTestSuite) TestFormatQuotaPart_ErrorIgnoredWhenDataPresent() {
+	fh := 10.0
+	sd := 20.0
+	// When data is present, error should not appear (data takes priority)
+	result := formatQuotaPart(&fh, &sd, "oauth")
+	assert.Contains(s.T(), result, "5h:10%")
+	assert.NotContains(s.T(), result, "err:")
 }
 
 func (s *CCStatuslineTestSuite) TestFormatStatuslineOutput_SessionCostWithLink() {

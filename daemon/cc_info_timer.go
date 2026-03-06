@@ -2,6 +2,7 @@ package daemon
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
 	"path/filepath"
 	"runtime"
@@ -417,18 +418,25 @@ func (s *CCInfoTimerService) fetchRateLimit(ctx context.Context) {
 	token, err := fetchClaudeCodeOAuthToken()
 	if err != nil || token == "" {
 		slog.Debug("Failed to get Claude Code OAuth token", slog.Any("err", err))
+		s.rateLimitCache.mu.Lock()
+		s.rateLimitCache.lastError = "oauth"
+		s.rateLimitCache.mu.Unlock()
 		return
 	}
 
 	usage, err := fetchAnthropicUsage(ctx, token)
 	if err != nil {
 		slog.Warn("Failed to fetch Anthropic usage", slog.Any("err", err))
+		s.rateLimitCache.mu.Lock()
+		s.rateLimitCache.lastError = shortenAPIError(err)
+		s.rateLimitCache.mu.Unlock()
 		return
 	}
 
 	s.rateLimitCache.mu.Lock()
 	s.rateLimitCache.usage = usage
 	s.rateLimitCache.fetchedAt = time.Now()
+	s.rateLimitCache.lastError = ""
 	s.rateLimitCache.mu.Unlock()
 
 	// Send usage data to server for push notification scheduling (fire-and-forget)
@@ -534,4 +542,29 @@ func (s *CCInfoTimerService) GetCachedRateLimit() *AnthropicRateLimitData {
 	// Return a copy
 	copy := *s.rateLimitCache.usage
 	return &copy
+}
+
+// GetCachedRateLimitError returns the last error from rate limit fetching, or empty string if none.
+func (s *CCInfoTimerService) GetCachedRateLimitError() string {
+	s.rateLimitCache.mu.RLock()
+	defer s.rateLimitCache.mu.RUnlock()
+	return s.rateLimitCache.lastError
+}
+
+// shortenAPIError converts an Anthropic usage API error into a short string for statusline display.
+func shortenAPIError(err error) string {
+	msg := err.Error()
+
+	// Check for HTTP status code pattern
+	var status int
+	if _, scanErr := fmt.Sscanf(msg, "anthropic usage API returned status %d", &status); scanErr == nil {
+		return fmt.Sprintf("api:%d", status)
+	}
+
+	// Decode errors
+	if len(msg) >= 6 && msg[:6] == "failed" {
+		return "api:decode"
+	}
+
+	return "network"
 }

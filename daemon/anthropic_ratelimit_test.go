@@ -3,6 +3,7 @@ package daemon
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -99,6 +100,38 @@ func TestParseKeychainJSON_EmptyAccessToken(t *testing.T) {
 	assert.NoError(t, err)
 	assert.NotNil(t, creds.ClaudeAiOauth)
 	assert.Empty(t, creds.ClaudeAiOauth.AccessToken)
+}
+
+func TestShortenAPIError_HTTPStatus(t *testing.T) {
+	err := fmt.Errorf("anthropic usage API returned status %d", 403)
+	assert.Equal(t, "api:403", shortenAPIError(err))
+}
+
+func TestShortenAPIError_DecodeError(t *testing.T) {
+	err := fmt.Errorf("failed to decode usage response: unexpected EOF")
+	assert.Equal(t, "api:decode", shortenAPIError(err))
+}
+
+func TestShortenAPIError_NetworkError(t *testing.T) {
+	err := fmt.Errorf("dial tcp: connection refused")
+	assert.Equal(t, "network", shortenAPIError(err))
+}
+
+func TestGetCachedRateLimitError_Empty(t *testing.T) {
+	config := &model.ShellTimeConfig{}
+	service := NewCCInfoTimerService(config)
+	assert.Empty(t, service.GetCachedRateLimitError())
+}
+
+func TestGetCachedRateLimitError_WithError(t *testing.T) {
+	config := &model.ShellTimeConfig{}
+	service := NewCCInfoTimerService(config)
+
+	service.rateLimitCache.mu.Lock()
+	service.rateLimitCache.lastError = "oauth"
+	service.rateLimitCache.mu.Unlock()
+
+	assert.Equal(t, "oauth", service.GetCachedRateLimitError())
 }
 
 func TestAnthropicRateLimitCache_GetCachedRateLimit_Nil(t *testing.T) {

@@ -52,6 +52,7 @@ type CCInfoResponse struct {
 	GitDirty            bool      `json:"gitDirty"`
 	FiveHourUtilization *float64  `json:"fiveHourUtilization,omitempty"`
 	SevenDayUtilization *float64  `json:"sevenDayUtilization,omitempty"`
+	QuotaError          string    `json:"quotaError,omitempty"`
 	UserLogin           string    `json:"userLogin,omitempty"`
 }
 
@@ -249,10 +250,12 @@ func (p *SocketHandler) handleCCInfo(conn net.Conn, msg SocketMessage) {
 		UserLogin:           p.ccInfoTimer.GetCachedUserLogin(),
 	}
 
-	// Populate rate limit fields if available
+	// Populate rate limit fields if available, otherwise surface error
 	if rl := p.ccInfoTimer.GetCachedRateLimit(); rl != nil {
 		response.FiveHourUtilization = &rl.FiveHourUtilization
 		response.SevenDayUtilization = &rl.SevenDayUtilization
+	} else {
+		response.QuotaError = p.ccInfoTimer.GetCachedRateLimitError()
 	}
 
 	encoder := json.NewEncoder(conn)
