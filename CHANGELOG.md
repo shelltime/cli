@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.76](https://github.com/shelltime/cli/compare/v0.1.75...v0.1.76) (2026-03-06)
+
+
+### Bug Fixes
+
+* **cli:** surface OAuth and API errors in cc statusline quota display ([6702018](https://github.com/shelltime/cli/commit/67020183459f4bd163d09d508f6e0ca6060e8996)), closes [#250](https://github.com/shelltime/cli/issues/250)
+
 ## [0.1.75](https://github.com/shelltime/cli/compare/v0.1.74...v0.1.75) (2026-03-04)
 
 
