@@ -67,6 +67,7 @@ func GetAllAppsMap() map[DotfileAppName]DotfileApp {
 type DotfileApp interface {
 	Name() string
 	GetConfigPaths() []string
+	GetIncludeDirectives() []IncludeDirective
 	CollectDotfiles(ctx context.Context) ([]DotfileItem, error)
 	IsEqual(ctx context.Context, files map[string]string) (map[string]bool, error)
 	Backup(ctx context.Context, paths []string, isDryRun bool) error
@@ -76,6 +77,12 @@ type DotfileApp interface {
 // BaseApp provides common functionality for dotfile apps
 type BaseApp struct {
 	name string
+}
+
+// GetIncludeDirectives returns an empty slice by default.
+// Apps that support include directives should override this method.
+func (b *BaseApp) GetIncludeDirectives() []IncludeDirective {
+	return nil
 }
 
 func (b *BaseApp) expandPath(path string) (string, error) {
