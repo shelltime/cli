@@ -22,7 +22,22 @@ func (n *NvimApp) GetConfigPaths() []string {
 	}
 }
 
+func (n *NvimApp) GetIncludeDirectives() []IncludeDirective {
+	return []IncludeDirective{
+		{
+			OriginalPath:  "~/.vimrc",
+			ShelltimePath: "~/.vimrc.shelltime",
+			IncludeLine:   "if filereadable(expand('~/.vimrc.shelltime')) | source ~/.vimrc.shelltime | endif",
+			CheckString:   ".vimrc.shelltime",
+		},
+	}
+}
+
 func (n *NvimApp) CollectDotfiles(ctx context.Context) ([]DotfileItem, error) {
 	skipIgnored := true
-	return n.CollectFromPaths(ctx, n.Name(), n.GetConfigPaths(), &skipIgnored)
+	return n.CollectWithIncludeSupport(ctx, n.Name(), n.GetConfigPaths(), &skipIgnored, n.GetIncludeDirectives())
+}
+
+func (n *NvimApp) Save(ctx context.Context, files map[string]string, isDryRun bool) error {
+	return n.SaveWithIncludeSupport(ctx, files, isDryRun, n.GetIncludeDirectives())
 }

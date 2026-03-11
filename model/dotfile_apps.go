@@ -67,6 +67,7 @@ func GetAllAppsMap() map[DotfileAppName]DotfileApp {
 type DotfileApp interface {
 	Name() string
 	GetConfigPaths() []string
+	GetIncludeDirectives() []IncludeDirective
 	CollectDotfiles(ctx context.Context) ([]DotfileItem, error)
 	IsEqual(ctx context.Context, files map[string]string) (map[string]bool, error)
 	Backup(ctx context.Context, paths []string, isDryRun bool) error
@@ -76,6 +77,12 @@ type DotfileApp interface {
 // BaseApp provides common functionality for dotfile apps
 type BaseApp struct {
 	name string
+}
+
+// GetIncludeDirectives returns an empty slice by default.
+// Apps that support include directives should override this method.
+func (b *BaseApp) GetIncludeDirectives() []IncludeDirective {
+	return nil
 }
 
 func (b *BaseApp) expandPath(path string) (string, error) {
@@ -317,14 +324,35 @@ func (b *BaseApp) Save(ctx context.Context, files map[string]string, isDryRun bo
 
 		// Read existing content if file exists
 		var existingContent string
+		fileExists := false
 		if existingBytes, err := os.ReadFile(expandedPath); err == nil {
 			existingContent = string(existingBytes)
+			fileExists = true
 		} else if !os.IsNotExist(err) {
 			slog.Warn("Failed to read existing file", slog.String("path", expandedPath), slog.Any("err", err))
 			continue
 		}
 
 		if existingContent == newContent {
+			continue
+		}
+
+		// For new files, write directly without diff-merge
+		if !fileExists {
+			dir := filepath.Dir(expandedPath)
+			if err := os.MkdirAll(dir, 0755); err != nil {
+				slog.Warn("Failed to create directory", slog.String("dir", dir), slog.Any("err", err))
+				continue
+			}
+			if isDryRun {
+				fmt.Printf("\n📄 %s (new file):\n%s\n", expandedPath, newContent)
+				continue
+			}
+			if err := os.WriteFile(expandedPath, []byte(newContent), 0644); err != nil {
+				slog.Warn("Failed to save file", slog.String("path", expandedPath), slog.Any("err", err))
+			} else {
+				slog.Info("Saved new content", slog.String("path", expandedPath))
+			}
 			continue
 		}
 

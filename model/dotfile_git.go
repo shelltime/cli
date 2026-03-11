@@ -24,7 +24,28 @@ func (g *GitApp) GetConfigPaths() []string {
 	}
 }
 
+func (g *GitApp) GetIncludeDirectives() []IncludeDirective {
+	return []IncludeDirective{
+		{
+			OriginalPath:  "~/.gitconfig",
+			ShelltimePath: "~/.gitconfig.shelltime",
+			IncludeLine:   "[include]\n    path = ~/.gitconfig.shelltime",
+			CheckString:   ".gitconfig.shelltime",
+		},
+		{
+			OriginalPath:  "~/.config/git/config",
+			ShelltimePath: "~/.config/git/config.shelltime",
+			IncludeLine:   "[include]\n    path = ~/.config/git/config.shelltime",
+			CheckString:   "git/config.shelltime",
+		},
+	}
+}
+
 func (g *GitApp) CollectDotfiles(ctx context.Context) ([]DotfileItem, error) {
 	skipIgnored := true
-	return g.CollectFromPaths(ctx, g.Name(), g.GetConfigPaths(), &skipIgnored)
+	return g.CollectWithIncludeSupport(ctx, g.Name(), g.GetConfigPaths(), &skipIgnored, g.GetIncludeDirectives())
+}
+
+func (g *GitApp) Save(ctx context.Context, files map[string]string, isDryRun bool) error {
+	return g.SaveWithIncludeSupport(ctx, files, isDryRun, g.GetIncludeDirectives())
 }

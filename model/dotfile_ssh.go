@@ -21,7 +21,22 @@ func (s *SshApp) GetConfigPaths() []string {
 	}
 }
 
+func (s *SshApp) GetIncludeDirectives() []IncludeDirective {
+	return []IncludeDirective{
+		{
+			OriginalPath:  "~/.ssh/config",
+			ShelltimePath: "~/.ssh/config.shelltime",
+			IncludeLine:   "Include ~/.ssh/config.shelltime",
+			CheckString:   "config.shelltime",
+		},
+	}
+}
+
 func (s *SshApp) CollectDotfiles(ctx context.Context) ([]DotfileItem, error) {
 	skipIgnored := true
-	return s.CollectFromPaths(ctx, s.Name(), s.GetConfigPaths(), &skipIgnored)
+	return s.CollectWithIncludeSupport(ctx, s.Name(), s.GetConfigPaths(), &skipIgnored, s.GetIncludeDirectives())
+}
+
+func (s *SshApp) Save(ctx context.Context, files map[string]string, isDryRun bool) error {
+	return s.SaveWithIncludeSupport(ctx, files, isDryRun, s.GetIncludeDirectives())
 }

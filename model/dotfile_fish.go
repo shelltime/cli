@@ -23,7 +23,22 @@ func (f *FishApp) GetConfigPaths() []string {
 	}
 }
 
+func (f *FishApp) GetIncludeDirectives() []IncludeDirective {
+	return []IncludeDirective{
+		{
+			OriginalPath:  "~/.config/fish/config.fish",
+			ShelltimePath: "~/.config/fish/config.fish.shelltime",
+			IncludeLine:   "test -f ~/.config/fish/config.fish.shelltime; and source ~/.config/fish/config.fish.shelltime",
+			CheckString:   "config.fish.shelltime",
+		},
+	}
+}
+
 func (f *FishApp) CollectDotfiles(ctx context.Context) ([]DotfileItem, error) {
 	skipIgnored := true
-	return f.CollectFromPaths(ctx, f.Name(), f.GetConfigPaths(), &skipIgnored)
+	return f.CollectWithIncludeSupport(ctx, f.Name(), f.GetConfigPaths(), &skipIgnored, f.GetIncludeDirectives())
+}
+
+func (f *FishApp) Save(ctx context.Context, files map[string]string, isDryRun bool) error {
+	return f.SaveWithIncludeSupport(ctx, files, isDryRun, f.GetIncludeDirectives())
 }
