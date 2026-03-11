@@ -189,17 +189,39 @@ func (b *BaseApp) SaveWithIncludeSupport(ctx context.Context, files map[string]s
 		}
 	}
 
-	// For .shelltime files, ensure include line in the original config
-	for filePath := range files {
+	// Separate shelltime files (direct overwrite) from non-shelltime files (diff-merge)
+	nonShelltimeFiles := make(map[string]string)
+	for filePath, content := range files {
 		if directive, found := shelltimeMap[filePath]; found {
+			// Ensure include line in the original config
 			if err := b.ensureIncludeLineInFile(directive, isDryRun); err != nil {
 				slog.Warn("Failed to ensure include line", slog.String("path", filePath), slog.Any("err", err))
 			}
+			// Write .shelltime file directly (server-managed, no diff-merge)
+			expanded, err := b.expandPath(filePath)
+			if err != nil {
+				slog.Warn("Failed to expand path", slog.String("path", filePath), slog.Any("err", err))
+				continue
+			}
+			if isDryRun {
+				slog.Info("[DRY RUN] Would write shelltime file", slog.String("path", expanded))
+				continue
+			}
+			if err := writeFileWithDir(expanded, content); err != nil {
+				slog.Warn("Failed to write shelltime file", slog.String("path", expanded), slog.Any("err", err))
+			} else {
+				slog.Info("Saved new content", slog.String("path", expanded))
+			}
+		} else {
+			nonShelltimeFiles[filePath] = content
 		}
 	}
 
-	// Use base Save for actual file writing
-	return b.Save(ctx, files, isDryRun)
+	// Use base Save for non-shelltime files (diff-merge)
+	if len(nonShelltimeFiles) > 0 {
+		return b.Save(ctx, nonShelltimeFiles, isDryRun)
+	}
+	return nil
 }
 
 // writeFileWithDir writes content to a file, creating parent directories if needed.
