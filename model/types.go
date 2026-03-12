@@ -33,6 +33,14 @@ type AICodeOtel struct {
 	Debug    *bool `toml:"debug" yaml:"debug" json:"debug"`                                        // write raw JSON to debug files
 }
 
+// AICodeHooks configuration for hooks-based AI CLI tracking (Claude Code, Codex, Cursor)
+type AICodeHooks struct {
+	Enabled              *bool `toml:"enabled" yaml:"enabled" json:"enabled"`
+	BatchSize            int   `toml:"batchSize,omitempty" yaml:"batchSize,omitempty" json:"batchSize,omitempty"`
+	BatchIntervalSeconds int   `toml:"batchIntervalSeconds,omitempty" yaml:"batchIntervalSeconds,omitempty" json:"batchIntervalSeconds,omitempty"`
+	Debug                *bool `toml:"debug" yaml:"debug" json:"debug"`
+}
+
 // CodeTracking configuration for coding activity heartbeat tracking
 type CodeTracking struct {
 	Enabled     *bool  `toml:"enabled" yaml:"enabled" json:"enabled"`
@@ -88,6 +96,9 @@ type ShellTimeConfig struct {
 	// AICodeOtel configuration for OTEL-based AI CLI tracking (Claude Code, Codex, etc.)
 	AICodeOtel *AICodeOtel `toml:"aiCodeOtel" yaml:"aiCodeOtel" json:"aiCodeOtel"`
 
+	// AICodeHooks configuration for hooks-based AI CLI tracking (Claude Code, Codex, Cursor)
+	AICodeHooks *AICodeHooks `toml:"aiCodeHooks" yaml:"aiCodeHooks" json:"aiCodeHooks"`
+
 	// CodeTracking configuration for coding activity heartbeat tracking
 	CodeTracking *CodeTracking `toml:"codeTracking" yaml:"codeTracking" json:"codeTracking"`
 
@@ -130,6 +141,7 @@ var DefaultConfig = ShellTimeConfig{
 		GRPCPort: 54027,
 		Debug:    new(false),
 	}),
+	AICodeHooks: nil,
 	CodeTracking: new(CodeTracking{
 		Enabled: new(true),
 	}),

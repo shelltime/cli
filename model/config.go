@@ -162,6 +162,9 @@ func mergeConfig(base, local *ShellTimeConfig) {
 	if local.AICodeOtel != nil {
 		base.AICodeOtel = local.AICodeOtel
 	}
+	if local.AICodeHooks != nil {
+		base.AICodeHooks = local.AICodeHooks
+	}
 	if local.LogCleanup != nil {
 		base.LogCleanup = local.LogCleanup
 	}
@@ -278,6 +281,17 @@ func (cs *configService) ReadConfigFile(ctx context.Context, opts ...ReadConfigO
 	if config.AICodeOtel != nil && config.AICodeOtel.Debug != nil && *config.AICodeOtel.Debug {
 		config.AICodeOtel.Debug = &truthy
 	}
+
+	// Initialize AICodeHooks config with defaults if enabled
+	if config.AICodeHooks != nil {
+		if config.AICodeHooks.BatchSize == 0 {
+			config.AICodeHooks.BatchSize = 50
+		}
+		if config.AICodeHooks.BatchIntervalSeconds == 0 {
+			config.AICodeHooks.BatchIntervalSeconds = 5
+		}
+	}
+
 	if config.SocketPath == "" {
 		config.SocketPath = DefaultSocketPath
 	}
