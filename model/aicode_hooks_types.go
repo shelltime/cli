@@ -26,9 +26,12 @@ type AICodeHooksEventData struct {
 	AgentID        string         `json:"agentId,omitempty"`
 	AgentType      string         `json:"agentType,omitempty"`
 	LastMessage    string         `json:"lastMessage,omitempty"`
-	StopHookActive bool           `json:"stopHookActive,omitempty"`
-	TranscriptPath string         `json:"transcriptPath,omitempty"`
-	RawPayload     map[string]any `json:"rawPayload"`
+	StopHookActive      bool           `json:"stopHookActive,omitempty"`
+	NotificationType    string         `json:"notificationType,omitempty"`
+	NotificationMessage string         `json:"notificationMessage,omitempty"`
+	SessionEndReason    string         `json:"sessionEndReason,omitempty"`
+	TranscriptPath      string         `json:"transcriptPath,omitempty"`
+	RawPayload          map[string]any `json:"rawPayload"`
 }
 
 // AICodeHooksResponse is the response from POST /api/v1/cc/aicode-hooks

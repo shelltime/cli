@@ -125,6 +125,15 @@ func commandAICodeHooks(c *cli.Context) error {
 	if v, ok := rawPayload["stop_hook_active"].(bool); ok {
 		eventData.StopHookActive = v
 	}
+	if v, ok := rawPayload["notification_type"].(string); ok {
+		eventData.NotificationType = v
+	}
+	if v, ok := rawPayload["notification_message"].(string); ok {
+		eventData.NotificationMessage = v
+	}
+	if v, ok := rawPayload["session_end_reason"].(string); ok {
+		eventData.SessionEndReason = v
+	}
 	if v, ok := rawPayload["transcript_path"].(string); ok {
 		eventData.TranscriptPath = v
 	}
