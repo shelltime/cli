@@ -1,5 +1,22 @@
 # Changelog
 
+## [0.1.77](https://github.com/shelltime/cli/compare/v0.1.76...v0.1.77) (2026-03-13)
+
+
+### Features
+
+* **daemon:** add Linux support for Anthropic usage in CC statusline ([8fcbbbe](https://github.com/shelltime/cli/commit/8fcbbbeee442cb062688e198c3a992a8ba3aa4a7))
+
+
+### Bug Fixes
+
+* **model:** write .shelltime and new files directly instead of diff-merge ([7da4b4a](https://github.com/shelltime/cli/commit/7da4b4acf5ff9bf3aa66888d0c15f415267016d5))
+
+
+### Code Refactoring
+
+* **model:** add include directive support for dotfile management ([e60fd06](https://github.com/shelltime/cli/commit/e60fd0671397ca845899720ba6b892c80bb75165))
+
 ## [0.1.76](https://github.com/shelltime/cli/compare/v0.1.75...v0.1.76) (2026-03-06)
 
 
