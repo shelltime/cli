@@ -5,7 +5,9 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"os"
 	"os/exec"
+	"path/filepath"
 	"runtime"
 	"sync"
 	"time"
@@ -40,12 +42,12 @@ type anthropicUsageBucket struct {
 	ResetsAt    string  `json:"resets_at"`
 }
 
-// keychainCredentials maps the JSON stored in macOS Keychain for Claude Code
-type keychainCredentials struct {
-	ClaudeAiOauth *keychainOAuthEntry `json:"claudeAiOauth"`
+// claudeCodeCredentials maps the JSON stored in macOS Keychain or ~/.claude/.credentials.json
+type claudeCodeCredentials struct {
+	ClaudeAiOauth *claudeCodeOAuthEntry `json:"claudeAiOauth"`
 }
 
-type keychainOAuthEntry struct {
+type claudeCodeOAuthEntry struct {
 	AccessToken      string   `json:"accessToken"`
 	RefreshToken     string   `json:"refreshToken"`
 	ExpiresAt        int64    `json:"expiresAt"`
@@ -54,25 +56,55 @@ type keychainOAuthEntry struct {
 	RateLimitTier    any      `json:"rateLimitTier"`
 }
 
-// fetchClaudeCodeOAuthToken reads the OAuth token from macOS Keychain.
-// Returns ("", nil) on non-macOS platforms.
+// fetchClaudeCodeOAuthToken reads the OAuth token from the platform-specific credential store.
+// macOS: reads from Keychain via `security` command.
+// Linux: reads from ~/.claude/.credentials.json file.
+// Returns ("", nil) on unsupported platforms.
 func fetchClaudeCodeOAuthToken() (string, error) {
-	if runtime.GOOS != "darwin" {
+	switch runtime.GOOS {
+	case "darwin":
+		return fetchOAuthTokenFromKeychain()
+	case "linux":
+		return fetchOAuthTokenFromCredentialsFile()
+	default:
 		return "", nil
 	}
+}
 
+// fetchOAuthTokenFromKeychain reads the OAuth token from macOS Keychain.
+func fetchOAuthTokenFromKeychain() (string, error) {
 	out, err := exec.Command("security", "find-generic-password", "-s", "Claude Code-credentials", "-w").Output()
 	if err != nil {
 		return "", fmt.Errorf("keychain lookup failed: %w", err)
 	}
 
-	var creds keychainCredentials
-	if err := json.Unmarshal(out, &creds); err != nil {
-		return "", fmt.Errorf("failed to parse keychain JSON: %w", err)
+	return parseOAuthTokenFromJSON(out)
+}
+
+// fetchOAuthTokenFromCredentialsFile reads the OAuth token from ~/.claude/.credentials.json.
+func fetchOAuthTokenFromCredentialsFile() (string, error) {
+	homeDir, err := os.UserHomeDir()
+	if err != nil {
+		return "", fmt.Errorf("failed to get home directory: %w", err)
+	}
+
+	data, err := os.ReadFile(filepath.Join(homeDir, ".claude", ".credentials.json"))
+	if err != nil {
+		return "", fmt.Errorf("credentials file read failed: %w", err)
+	}
+
+	return parseOAuthTokenFromJSON(data)
+}
+
+// parseOAuthTokenFromJSON parses Claude Code credentials JSON and extracts the OAuth access token.
+func parseOAuthTokenFromJSON(data []byte) (string, error) {
+	var creds claudeCodeCredentials
+	if err := json.Unmarshal(data, &creds); err != nil {
+		return "", fmt.Errorf("failed to parse credentials JSON: %w", err)
 	}
 
 	if creds.ClaudeAiOauth == nil || creds.ClaudeAiOauth.AccessToken == "" {
-		return "", fmt.Errorf("no OAuth access token found in keychain")
+		return "", fmt.Errorf("no OAuth access token found in credentials")
 	}
 
 	return creds.ClaudeAiOauth.AccessToken, nil
