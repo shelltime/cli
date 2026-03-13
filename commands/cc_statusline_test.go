@@ -522,7 +522,7 @@ func (s *CCStatuslineTestSuite) TestFormatStatuslineOutput_WithQuota() {
 		SevenDayUtil:   &sd,
 	})
 
-	if runtime.GOOS == "darwin" {
+	if runtime.GOOS == "darwin" || runtime.GOOS == "linux" {
 		assert.Contains(s.T(), output, "5h:45%")
 		assert.Contains(s.T(), output, "7d:23%")
 		assert.Contains(s.T(), output, "🚦")
@@ -541,7 +541,7 @@ func (s *CCStatuslineTestSuite) TestFormatStatuslineOutput_WithoutQuota() {
 		GitBranch:      "main",
 	})
 
-	if runtime.GOOS == "darwin" {
+	if runtime.GOOS == "darwin" || runtime.GOOS == "linux" {
 		assert.Contains(s.T(), output, "🚦 -")
 	} else {
 		assert.NotContains(s.T(), output, "🚦")

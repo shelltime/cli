@@ -393,9 +393,9 @@ func (s *CCInfoTimerService) cleanupStaleGitCache() {
 }
 
 // fetchRateLimit fetches Anthropic rate limit data if cache is stale.
-// Only runs on macOS where Keychain access is available.
+// Supported on macOS (Keychain) and Linux (~/.claude/.credentials.json).
 func (s *CCInfoTimerService) fetchRateLimit(ctx context.Context) {
-	if runtime.GOOS != "darwin" {
+	if runtime.GOOS != "darwin" && runtime.GOOS != "linux" {
 		return
 	}
 

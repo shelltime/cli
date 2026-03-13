@@ -214,8 +214,8 @@ func formatStatuslineOutput(p statuslineParams) string {
 		parts = append(parts, color.Gray.Sprint("📊 -"))
 	}
 
-	// Quota utilization (macOS only - requires Keychain for OAuth token)
-	if runtime.GOOS == "darwin" {
+	// Quota utilization (macOS: Keychain, Linux: ~/.claude/.credentials.json)
+	if runtime.GOOS == "darwin" || runtime.GOOS == "linux" {
 		parts = append(parts, formatQuotaPart(p.FiveHourUtil, p.SevenDayUtil, p.QuotaError))
 	}
 
@@ -279,7 +279,7 @@ func formatQuotaPart(fiveHourUtil, sevenDayUtil *float64, quotaError string) str
 }
 
 func outputFallback() {
-	if runtime.GOOS == "darwin" {
+	if runtime.GOOS == "darwin" || runtime.GOOS == "linux" {
 		quotaPart := wrapOSC8Link(claudeUsageURL, "🚦 -")
 		fmt.Println(color.Gray.Sprint("🌿 - | 🤖 - | 💰 - | 📊 - | " + quotaPart + " | ⏱️ - | 📈 -%"))
 	} else {
