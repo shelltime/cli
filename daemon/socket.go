@@ -23,6 +23,7 @@ const (
 	SocketMessageTypeStatus         SocketMessageType = "status"
 	SocketMessageTypeCCInfo         SocketMessageType = "cc_info"
 	SocketMessageTypeSessionProject SocketMessageType = "session_project"
+	SocketMessageTypeAICodeHooks    SocketMessageType = "aicode_hooks"
 )
 
 type SessionProjectRequest struct {
@@ -196,6 +197,16 @@ func (p *SocketHandler) handleConnection(conn net.Conn) {
 				go model.SendSessionProjectUpdate(context.Background(), *p.config, sessionID, projectPath)
 				slog.Debug("session_project update dispatched", slog.String("sessionId", sessionID))
 			}
+		}
+	case SocketMessageTypeAICodeHooks:
+		buf, err := json.Marshal(msg)
+		if err != nil {
+			slog.Error("Error encoding aicode_hooks message", slog.Any("err", err))
+			return
+		}
+		chMsg := message.NewMessage(watermill.NewUUID(), buf)
+		if err := p.channel.Publish(AICodeHooksTopic, chMsg); err != nil {
+			slog.Error("Error publishing aicode_hooks topic", slog.Any("err", err))
 		}
 	default:
 		slog.Error("Unknown message type:", slog.String("messageType", string(msg.Type)))

@@ -137,6 +137,14 @@ func main() {
 		}
 	}
 
+	// AICode Hooks processor (hooks-based tracking)
+	if cfg.AICodeHooks != nil && cfg.AICodeHooks.Enabled != nil && *cfg.AICodeHooks.Enabled {
+		aicodeHooksProcessor := daemon.NewAICodeHooksProcessor(cfg)
+		aicodeHooksProcessor.Start(pubsub)
+		defer aicodeHooksProcessor.Stop()
+		slog.Info("AICodeHooks processor started")
+	}
+
 	// Start heartbeat resync service if codeTracking is enabled
 	if cfg.CodeTracking != nil && cfg.CodeTracking.Enabled != nil && *cfg.CodeTracking.Enabled {
 		heartbeatResyncService := daemon.NewHeartbeatResyncService(cfg)

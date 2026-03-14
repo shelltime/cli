@@ -70,6 +70,22 @@ func SendSessionProject(socketPath string, sessionID, projectPath string) {
 	json.NewEncoder(conn).Encode(msg)
 }
 
+// SendAICodeHooksToSocket sends an AI code hooks event to the daemon via socket (fire-and-forget)
+func SendAICodeHooksToSocket(socketPath string, eventData model.AICodeHooksEventData) error {
+	conn, err := net.DialTimeout("unix", socketPath, 100*time.Millisecond)
+	if err != nil {
+		return err
+	}
+	defer conn.Close()
+
+	msg := SocketMessage{
+		Type:    SocketMessageTypeAICodeHooks,
+		Payload: eventData,
+	}
+
+	return json.NewEncoder(conn).Encode(msg)
+}
+
 // RequestCCInfo requests CC info (cost data and git info) from the daemon
 func RequestCCInfo(socketPath string, timeRange CCInfoTimeRange, workingDir string, timeout time.Duration) (*CCInfoResponse, error) {
 	conn, err := net.DialTimeout("unix", socketPath, timeout)
