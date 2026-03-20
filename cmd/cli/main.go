@@ -103,6 +103,7 @@ func main() {
 		commands.SchemaCommand,
 		commands.GrepCommand,
 		commands.ConfigCommand,
+		commands.IosCommand,
 	}
 	err = app.Run(os.Args)
 	if err != nil {
