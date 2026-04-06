@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.1.78](https://github.com/shelltime/cli/compare/v0.1.77...v0.1.78) (2026-04-06)
+
+
+### Features
+
+* **cli:** add ios dl command for App Store download link ([c6dac1a](https://github.com/shelltime/cli/commit/c6dac1aaa2b045b18a8acbbfff22a26ad5867f60))
+* **cli:** add ios dl command for App Store download link ([3d1b4ad](https://github.com/shelltime/cli/commit/3d1b4adf562d76695451f99ba5b1b169f8b6cfe2))
+* **daemon:** add Codex usage rate limit fetching and reporting ([16df58b](https://github.com/shelltime/cli/commit/16df58bdd1cede20f51f63def2cf1576ac13272e))
+
 ## [0.1.77](https://github.com/shelltime/cli/compare/v0.1.76...v0.1.77) (2026-03-13)
 
 
