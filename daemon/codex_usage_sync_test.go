@@ -3,6 +3,7 @@ package daemon
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"sync/atomic"
@@ -97,6 +98,105 @@ func TestSyncCodexUsage_AuthError(t *testing.T) {
 	err := syncCodexUsage(context.Background(), cfg)
 	require.Error(t, err)
 	assert.ErrorIs(t, err, assert.AnError)
+}
+
+func TestSyncCodexUsage_InvalidTokenSkips(t *testing.T) {
+	t.Helper()
+
+	originalLoad := loadCodexAuthFunc
+	originalFetch := fetchCodexUsageFunc
+	defer func() {
+		loadCodexAuthFunc = originalLoad
+		fetchCodexUsageFunc = originalFetch
+	}()
+
+	loadCodexAuthFunc = func() (*codexAuthData, error) {
+		return &codexAuthData{AccessToken: "test-token"}, nil
+	}
+	fetchCodexUsageFunc = func(ctx context.Context, auth *codexAuthData) (*CodexRateLimitData, error) {
+		return nil, errCodexTokenInvalid
+	}
+
+	cfg := model.ShellTimeConfig{Token: "shelltime-token"}
+	err := syncCodexUsage(context.Background(), cfg)
+	require.Error(t, err)
+
+	reason, ok := CodexSyncSkipReason(err)
+	require.True(t, ok)
+	assert.Equal(t, "invalid_auth_token", reason)
+}
+
+func TestCodexInstallationStatus_MissingCodexDir(t *testing.T) {
+	originalExists := codexPathExistsFunc
+	defer func() {
+		codexPathExistsFunc = originalExists
+	}()
+
+	codexPathExistsFunc = func(path string) (bool, error) {
+		return false, nil
+	}
+
+	ok, err := CodexInstallationStatus()
+	assert.False(t, ok)
+	assert.ErrorIs(t, err, errCodexDirMissing)
+}
+
+func TestCodexInstallationStatus_MissingAuthFile(t *testing.T) {
+	originalExists := codexPathExistsFunc
+	defer func() {
+		codexPathExistsFunc = originalExists
+	}()
+
+	callCount := 0
+	codexPathExistsFunc = func(path string) (bool, error) {
+		callCount++
+		if callCount == 1 {
+			return true, nil
+		}
+		return false, nil
+	}
+
+	ok, err := CodexInstallationStatus()
+	assert.False(t, ok)
+	assert.ErrorIs(t, err, errCodexAuthFileMissing)
+}
+
+func TestCodexInstallationStatus_Ready(t *testing.T) {
+	originalExists := codexPathExistsFunc
+	defer func() {
+		codexPathExistsFunc = originalExists
+	}()
+
+	codexPathExistsFunc = func(path string) (bool, error) {
+		return true, nil
+	}
+
+	ok, err := CodexInstallationStatus()
+	require.NoError(t, err)
+	assert.True(t, ok)
+}
+
+func TestCodexSyncSkipReason(t *testing.T) {
+	testCases := []struct {
+		name     string
+		err      error
+		expected string
+		ok       bool
+	}{
+		{name: "missing dir", err: errCodexDirMissing, expected: "missing_codex_dir", ok: true},
+		{name: "missing auth file", err: errCodexAuthFileMissing, expected: "missing_auth_file", ok: true},
+		{name: "invalid auth", err: errCodexAuthInvalid, expected: "invalid_auth", ok: true},
+		{name: "invalid token", err: errCodexTokenInvalid, expected: "invalid_auth_token", ok: true},
+		{name: "other error", err: errors.New("boom"), expected: "", ok: false},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			reason, ok := CodexSyncSkipReason(tc.err)
+			assert.Equal(t, tc.ok, ok)
+			assert.Equal(t, tc.expected, reason)
+		})
+	}
 }
 
 func TestCodexUsageSyncService_StartRunsImmediatelyAndOnTicker(t *testing.T) {

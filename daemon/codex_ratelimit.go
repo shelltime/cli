@@ -3,6 +3,7 @@ package daemon
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"os"
@@ -16,6 +17,14 @@ const codexUsageCacheTTL = 10 * time.Minute
 var (
 	loadCodexAuthFunc   = loadCodexAuth
 	fetchCodexUsageFunc = fetchCodexUsage
+	codexPathExistsFunc = codexPathExists
+)
+
+var (
+	errCodexDirMissing      = errors.New("codex directory missing")
+	errCodexAuthFileMissing = errors.New("codex auth file missing")
+	errCodexAuthInvalid     = errors.New("codex auth invalid")
+	errCodexTokenInvalid    = errors.New("codex token invalid")
 )
 
 // CodexRateLimitData holds the parsed rate limit data from the Codex API
@@ -63,15 +72,79 @@ type codexIDTokenClaims struct {
 	AccountID string `json:"accountId"`
 }
 
-// loadCodexAuth reads the Codex authentication data from ~/.codex/auth.json.
-func loadCodexAuth() (*codexAuthData, error) {
+func codexConfigDirPath() (string, error) {
 	homeDir, err := os.UserHomeDir()
 	if err != nil {
-		return nil, fmt.Errorf("failed to get home directory: %w", err)
+		return "", fmt.Errorf("failed to get home directory: %w", err)
 	}
 
-	data, err := os.ReadFile(filepath.Join(homeDir, ".codex", "auth.json"))
+	return filepath.Join(homeDir, ".codex"), nil
+}
+
+func codexAuthFilePath() (string, error) {
+	dir, err := codexConfigDirPath()
 	if err != nil {
+		return "", err
+	}
+
+	return filepath.Join(dir, "auth.json"), nil
+}
+
+func codexPathExists(path string) (bool, error) {
+	_, err := os.Stat(path)
+	if err == nil {
+		return true, nil
+	}
+	if errors.Is(err, os.ErrNotExist) {
+		return false, nil
+	}
+	return false, err
+}
+
+func codexInstallationStatus() (bool, error) {
+	dirPath, err := codexConfigDirPath()
+	if err != nil {
+		return false, err
+	}
+	exists, err := codexPathExistsFunc(dirPath)
+	if err != nil {
+		return false, err
+	}
+	if !exists {
+		return false, errCodexDirMissing
+	}
+
+	authPath, err := codexAuthFilePath()
+	if err != nil {
+		return false, err
+	}
+	exists, err = codexPathExistsFunc(authPath)
+	if err != nil {
+		return false, err
+	}
+	if !exists {
+		return false, errCodexAuthFileMissing
+	}
+
+	return true, nil
+}
+
+func CodexInstallationStatus() (bool, error) {
+	return codexInstallationStatus()
+}
+
+// loadCodexAuth reads the Codex authentication data from ~/.codex/auth.json.
+func loadCodexAuth() (*codexAuthData, error) {
+	authPath, err := codexAuthFilePath()
+	if err != nil {
+		return nil, err
+	}
+
+	data, err := os.ReadFile(authPath)
+	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return nil, errCodexAuthFileMissing
+		}
 		return nil, fmt.Errorf("codex auth file read failed: %w", err)
 	}
 
@@ -81,7 +154,7 @@ func loadCodexAuth() (*codexAuthData, error) {
 	}
 
 	if auth.TokenData == nil || auth.TokenData.AccessToken == "" {
-		return nil, fmt.Errorf("no access token found in codex auth")
+		return nil, errCodexAuthInvalid
 	}
 
 	accountID := ""
@@ -133,6 +206,9 @@ func fetchCodexUsage(ctx context.Context, auth *codexAuthData) (*CodexRateLimitD
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
+		if resp.StatusCode == http.StatusUnauthorized || resp.StatusCode == http.StatusForbidden {
+			return nil, errCodexTokenInvalid
+		}
 		return nil, fmt.Errorf("codex usage API returned status %d", resp.StatusCode)
 	}
 
@@ -171,4 +247,19 @@ func shortenCodexAPIError(err error) string {
 	}
 
 	return "network"
+}
+
+func CodexSyncSkipReason(err error) (string, bool) {
+	switch {
+	case errors.Is(err, errCodexDirMissing):
+		return "missing_codex_dir", true
+	case errors.Is(err, errCodexAuthFileMissing):
+		return "missing_auth_file", true
+	case errors.Is(err, errCodexAuthInvalid):
+		return "invalid_auth", true
+	case errors.Is(err, errCodexTokenInvalid):
+		return "invalid_auth_token", true
+	default:
+		return "", false
+	}
 }

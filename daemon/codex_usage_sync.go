@@ -2,7 +2,6 @@ package daemon
 
 import (
 	"context"
-	"fmt"
 	"log/slog"
 	"sync"
 	"time"
@@ -70,6 +69,10 @@ func (s *CodexUsageSyncService) sync() {
 	}
 
 	if err := syncCodexUsage(context.Background(), s.config); err != nil {
+		if reason, ok := CodexSyncSkipReason(err); ok {
+			slog.Info("Skipping codex usage sync", slog.String("reason", reason))
+			return
+		}
 		slog.Warn("Failed to sync codex usage", slog.Any("err", err))
 	}
 }
@@ -83,11 +86,11 @@ func syncCodexUsage(ctx context.Context, config model.ShellTimeConfig) error {
 	defer cancel()
 
 	auth, err := loadCodexAuthFunc()
-	if err != nil || auth == nil {
-		if err == nil && auth == nil {
-			err = fmt.Errorf("codex auth unavailable")
-		}
+	if err != nil {
 		return err
+	}
+	if auth == nil {
+		return errCodexAuthInvalid
 	}
 
 	usage, err := fetchCodexUsageFunc(runCtx, auth)
