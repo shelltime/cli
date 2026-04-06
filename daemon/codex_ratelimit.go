@@ -57,19 +57,16 @@ type codexAuthData struct {
 
 // codexAuthJSON maps the full ~/.codex/auth.json structure
 type codexAuthJSON struct {
-	AuthMode  string              `json:"authMode"`
-	APIKey    *string             `json:"apiKey"`
-	TokenData *codexAuthTokenData `json:"tokenData"`
+	OpenAIAPIKey *string         `json:"OPENAI_API_KEY"`
+	Tokens       *codexTokenData `json:"tokens"`
+	LastRefresh  string          `json:"last_refresh"`
 }
 
-type codexAuthTokenData struct {
-	AccessToken   string              `json:"accessToken"`
-	RefreshToken  string              `json:"refreshToken"`
-	IDTokenClaims *codexIDTokenClaims `json:"idTokenClaims"`
-}
-
-type codexIDTokenClaims struct {
-	AccountID string `json:"accountId"`
+type codexTokenData struct {
+	IDToken      string `json:"id_token"`
+	AccessToken  string `json:"access_token"`
+	RefreshToken string `json:"refresh_token"`
+	AccountID    string `json:"account_id"`
 }
 
 func codexConfigDirPath() (string, error) {
@@ -153,18 +150,13 @@ func loadCodexAuth() (*codexAuthData, error) {
 		return nil, fmt.Errorf("failed to parse codex auth JSON: %w", err)
 	}
 
-	if auth.TokenData == nil || auth.TokenData.AccessToken == "" {
+	if auth.Tokens == nil || auth.Tokens.AccessToken == "" {
 		return nil, errCodexAuthInvalid
 	}
 
-	accountID := ""
-	if auth.TokenData.IDTokenClaims != nil {
-		accountID = auth.TokenData.IDTokenClaims.AccountID
-	}
-
 	return &codexAuthData{
-		AccessToken: auth.TokenData.AccessToken,
-		AccountID:   accountID,
+		AccessToken: auth.Tokens.AccessToken,
+		AccountID:   auth.Tokens.AccountID,
 	}, nil
 }
 
