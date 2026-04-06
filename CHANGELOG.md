@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.1.79](https://github.com/shelltime/cli/compare/v0.1.78...v0.1.79) (2026-04-06)
+
+
+### Bug Fixes
+
+* **daemon:** decouple codex usage sync from cc statusline ([77cd44b](https://github.com/shelltime/cli/commit/77cd44be2e2e9a66ccbaba4f5fbc95207056099f))
+* **daemon:** skip codex sync when auth is unavailable ([d1b334b](https://github.com/shelltime/cli/commit/d1b334b2f1dd5ab863c374a23a343ad3a6fe90da))
+
+
+### Documentation
+
+* refresh README and AGENTS guidance ([4072a5b](https://github.com/shelltime/cli/commit/4072a5b3d9c18f2d94054b313c15ae53c8b86fae))
+
 ## [0.1.78](https://github.com/shelltime/cli/compare/v0.1.77...v0.1.78) (2026-04-06)
 
 
