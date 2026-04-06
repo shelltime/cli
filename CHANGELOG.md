@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.1.81](https://github.com/shelltime/cli/compare/v0.1.80...v0.1.81) (2026-04-06)
+
+
+### Bug Fixes
+
+* **daemon:** migrate codex usage API to chatgpt.com/backend-api/wham/usage ([12cbb1f](https://github.com/shelltime/cli/commit/12cbb1fe54c0607c50227223a3786dc2a586d65a))
+* **daemon:** migrate codex usage API to wham endpoint ([67b3886](https://github.com/shelltime/cli/commit/67b38867939ccf456b3a9b52e59be970230f697e))
+
 ## [0.1.80](https://github.com/shelltime/cli/compare/v0.1.79...v0.1.80) (2026-04-06)
 
 
