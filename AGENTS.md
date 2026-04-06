@@ -1,44 +1,70 @@
 # Repository Guidelines
 
-## Project Structure & Module Organization
-This is a Go monorepo for the ShellTime CLI and daemon.
-- `cmd/cli/main.go`: CLI entrypoint (`shelltime`)
-- `cmd/daemon/main.go`: daemon entrypoint (`shelltime-daemon`)
-- `commands/`: CLI command implementations (for example `sync.go`, `doctor.go`, `daemon.install.go`)
-- `daemon/`: background services, socket handling, sync processors, OTEL handlers
-- `model/`: core domain logic (config, API clients, crypto, shell integrations)
-- `docs/`: user-facing docs (`CONFIG.md`, `CC_STATUSLINE.md`)
-- `fixtures/`: test fixtures
+## Project Identity
+This repo is the ShellTime CLI and daemon. Public-facing docs, command examples, and product references should use `ShellTime` and `shelltime.xyz`.
 
-Keep new code in the existing package boundary; avoid mixing CLI wiring, daemon internals, and model logic.
+Code and imports currently use the module path `github.com/malamtime/cli`. Do not "fix" ShellTime branding in docs just because the module path says `malamtime`; the mismatch is intentional in the current repo state.
+
+## Project Structure & Package Boundaries
+This is a Go monorepo for the ShellTime CLI and daemon.
+
+- `cmd/cli/main.go`: CLI entrypoint for `shelltime`
+- `cmd/daemon/main.go`: daemon entrypoint for `shelltime-daemon`
+- `commands/`: CLI command definitions and user-facing command behavior
+- `daemon/`: background services, socket handling, processors, and OTEL handlers
+- `model/`: config, API clients, shell integrations, crypto, and shared domain logic
+- `docs/`: user-facing docs such as `CONFIG.md` and `CC_STATUSLINE.md`
+- `fixtures/`: reusable test fixtures
+
+Keep new code inside the existing package boundary. Do not mix CLI wiring, daemon internals, and model logic in the same package.
 
 ## Build, Test, and Development Commands
+
 - `go build -o shelltime ./cmd/cli/main.go`: build the CLI binary
 - `go build -o shelltime-daemon ./cmd/daemon/main.go`: build the daemon binary
-- `go test -timeout 3m -coverprofile=coverage.txt -covermode=atomic ./...`: run full test suite with coverage (matches CI)
-- `go test ./commands/...` (or `./daemon/...`, `./model/...`): package-level tests
-- `go test -run TestName ./daemon/`: run a single test
-- `go fmt ./... && go vet ./...`: format and static checks
-- `mockery`: regenerate mocks (configured by `.mockery.yml`)
-- `pp g`: regenerate PromptPal-generated types before tests/releases
+- `go test -timeout 3m -coverprofile=coverage.txt -covermode=atomic ./...`: run the full suite with coverage
+- `go test ./commands/...`: run command-package tests
+- `go test ./daemon/...`: run daemon-package tests
+- `go test ./model/...`: run model-package tests
+- `go test -run TestName ./daemon/`: run a targeted daemon test
+- `go fmt ./...`: format Go code
+- `go vet ./...`: run static analysis
+- `mockery`: regenerate mocks when interfaces change
+- `pp g`: regenerate PromptPal-generated artifacts when relevant
+
+Use Go 1.26, as declared in `go.mod`.
 
 ## Coding Style & Naming Conventions
-Use standard Go conventions and keep code `gofmt`-clean (tabs, canonical spacing/import grouping).
-- File naming: lowercase with underscores or dotted qualifiers (for example `daemon.install.go`, `api.base.go`)
-- Tests: `*_test.go` files with clear `TestXxx` names
-- Commits and scopes should reflect touched package areas (`commands`, `daemon`, `model`, `docs`)
+Use standard Go conventions and keep code `gofmt`-clean.
 
-## Testing Guidelines
-Testing uses Go `testing` plus `testify`.
+- File naming: lowercase with underscores or dotted qualifiers such as `daemon.install.go` or `api.base.go`
+- Tests: `*_test.go` with clear `TestXxx` names
 - Prefer table-driven tests for pure logic
-- Use suite-based tests (`suite.Suite`, `SetupTest`, `TearDownTest`) for stateful daemon flows
-- Keep fixtures in `fixtures/` when payloads are reused
-- Ensure `go test -timeout 3m -coverprofile=coverage.txt -covermode=atomic ./...` passes before opening PRs
+- Use `testify` suites for stateful daemon flows
+- Keep comments brief and only where they reduce real ambiguity
+
+## Testing Guidance
+
+- Put reusable payloads and fixtures under `fixtures/`
+- Prefer package-level test runs while iterating, then run the full suite before finishing
+- Ensure `go test -timeout 3m -coverprofile=coverage.txt -covermode=atomic ./...` passes before opening a PR or cutting a release
+
+## Documentation Maintenance
+When command behavior, setup flow, config formats, or integrations change, update the docs in the same change.
+
+- `README.md`: concise user-facing overview, install/setup flow, current command surface, and links
+- `docs/CONFIG.md`: detailed config semantics, file locations, defaults, and OTEL settings
+- `docs/CC_STATUSLINE.md`: Claude Code statusline behavior, formatting, and platform notes
+- `AGENTS.md`: contributor and agent workflow guidance for this repo
+
+Do not leave `README.md` advertising commands that no longer exist, and do not document new commands only in code.
 
 ## Commit & Pull Request Guidelines
-History follows Conventional Commits with scope, e.g. `fix(daemon): ...`, `feat(commands): ...`, `refactor(model): ...`.
-- Write focused commits with one behavioral change each
-- PRs should include: concise summary, why the change is needed, and test evidence
-- Link related issues when applicable
-- If behavior/output changes, include CLI examples or screenshots
-- Regenerate artifacts (`pp g`, `mockery`) when relevant so CI stays green
+History follows Conventional Commits with scope, for example:
+
+- `fix(daemon): ...`
+- `feat(commands): ...`
+- `refactor(model): ...`
+- `docs(readme): ...`
+
+Keep commits focused on one behavioral change. PRs should include a short summary, why the change is needed, and test evidence. Link related issues when applicable. If behavior or output changes, include CLI examples or screenshots. Regenerate artifacts such as `pp g` and `mockery` when needed so CI remains green.
