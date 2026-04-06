@@ -148,6 +148,25 @@ func main() {
 		}
 	}
 
+	codexInstalled, err := daemon.CodexInstallationStatus()
+	if err != nil {
+		if reason, ok := daemon.CodexSyncSkipReason(err); ok {
+			slog.Info("Skipping Codex usage sync service startup", slog.String("reason", reason))
+		} else {
+			slog.Error("Failed to check Codex installation status", slog.Any("err", err))
+		}
+	} else if !codexInstalled {
+		slog.Info("Skipping Codex usage sync service startup", slog.String("reason", "codex_not_configured"))
+	} else {
+		codexUsageSyncService := daemon.NewCodexUsageSyncService(cfg)
+		if err := codexUsageSyncService.Start(ctx); err != nil {
+			slog.Error("Failed to start Codex usage sync service", slog.Any("err", err))
+		} else {
+			slog.Info("Codex usage sync service started")
+			defer codexUsageSyncService.Stop()
+		}
+	}
+
 	// Create processor instance
 	processor := daemon.NewSocketHandler(&cfg, pubsub)
 
