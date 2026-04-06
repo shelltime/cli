@@ -160,34 +160,35 @@ func loadCodexAuth() (*codexAuthData, error) {
 	}, nil
 }
 
-// codexUsageResponse maps the Codex usage API response
-type codexUsageResponse struct {
-	RateLimits codexRateLimitSnapshot `json:"rateLimits"`
+// whamUsageResponse maps the response from chatgpt.com/backend-api/wham/usage
+type whamUsageResponse struct {
+	PlanType            string                 `json:"plan_type"`
+	RateLimit           *whamRateLimitCategory `json:"rate_limit"`
+	CodeReviewRateLimit *whamRateLimitCategory `json:"code_review_rate_limit"`
 }
 
-type codexRateLimitSnapshot struct {
-	Plan             string                    `json:"plan"`
-	RateLimitWindows []codexRateLimitWindowRaw `json:"rateLimitWindows"`
+type whamRateLimitCategory struct {
+	Allowed         bool                `json:"allowed"`
+	LimitReached    bool                `json:"limit_reached"`
+	PrimaryWindow   *whamRateLimitWindow `json:"primary_window"`
+	SecondaryWindow *whamRateLimitWindow `json:"secondary_window"`
 }
 
-type codexRateLimitWindowRaw struct {
-	LimitID               string  `json:"limitId"`
-	UsagePercentage       float64 `json:"usagePercentage"`
-	ResetAt               int64   `json:"resetAt"`
-	WindowDurationMinutes int     `json:"windowDurationMinutes"`
+type whamRateLimitWindow struct {
+	UsedPercent        int   `json:"used_percent"`
+	LimitWindowSeconds int   `json:"limit_window_seconds"`
+	ResetAfterSeconds  int   `json:"reset_after_seconds"`
+	ResetAt            int64 `json:"reset_at"`
 }
 
 // fetchCodexUsage calls the Codex usage API and returns rate limit data.
 func fetchCodexUsage(ctx context.Context, auth *codexAuthData) (*CodexRateLimitData, error) {
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, "https://api.openai.com/api/codex/usage", nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, "https://chatgpt.com/backend-api/wham/usage", nil)
 	if err != nil {
 		return nil, err
 	}
 
 	req.Header.Set("Authorization", "Bearer "+auth.AccessToken)
-	if auth.AccountID != "" {
-		req.Header.Set("ChatGPT-Account-Id", auth.AccountID)
-	}
 	req.Header.Set("User-Agent", "shelltime-daemon")
 
 	client := &http.Client{Timeout: 5 * time.Second}
@@ -204,25 +205,44 @@ func fetchCodexUsage(ctx context.Context, auth *codexAuthData) (*CodexRateLimitD
 		return nil, fmt.Errorf("codex usage API returned status %d", resp.StatusCode)
 	}
 
-	var usage codexUsageResponse
+	var usage whamUsageResponse
 	if err := json.NewDecoder(resp.Body).Decode(&usage); err != nil {
 		return nil, fmt.Errorf("failed to decode codex usage response: %w", err)
 	}
 
-	windows := make([]CodexRateLimitWindow, len(usage.RateLimits.RateLimitWindows))
-	for i, w := range usage.RateLimits.RateLimitWindows {
-		windows[i] = CodexRateLimitWindow{
-			LimitID:               w.LimitID,
-			UsagePercentage:       w.UsagePercentage,
-			ResetAt:               w.ResetAt,
-			WindowDurationMinutes: w.WindowDurationMinutes,
+	var windows []CodexRateLimitWindow
+	type categoryEntry struct {
+		name     string
+		category *whamRateLimitCategory
+	}
+	for _, cat := range []categoryEntry{
+		{"rate_limit", usage.RateLimit},
+		{"code_review_rate_limit", usage.CodeReviewRateLimit},
+	} {
+		if cat.category == nil {
+			continue
+		}
+		if w := cat.category.PrimaryWindow; w != nil {
+			windows = append(windows, mapWhamWindow(cat.name, "primary", w))
+		}
+		if w := cat.category.SecondaryWindow; w != nil {
+			windows = append(windows, mapWhamWindow(cat.name, "secondary", w))
 		}
 	}
 
 	return &CodexRateLimitData{
-		Plan:    usage.RateLimits.Plan,
+		Plan:    usage.PlanType,
 		Windows: windows,
 	}, nil
+}
+
+func mapWhamWindow(category, position string, w *whamRateLimitWindow) CodexRateLimitWindow {
+	return CodexRateLimitWindow{
+		LimitID:               category + ":" + position,
+		UsagePercentage:       float64(w.UsedPercent),
+		ResetAt:               w.ResetAt,
+		WindowDurationMinutes: w.LimitWindowSeconds / 60,
+	}
 }
 
 // shortenCodexAPIError converts a Codex usage API error into a short string for statusline display.
