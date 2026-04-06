@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.1.80](https://github.com/shelltime/cli/compare/v0.1.79...v0.1.80) (2026-04-06)
+
+
+### Bug Fixes
+
+* **daemon:** update codex auth.json parsing to match actual file format ([9576253](https://github.com/shelltime/cli/commit/95762530a9efb8313903762c2426b213b3bcf199))
+* **daemon:** update codex auth.json parsing to match actual file format ([bbb68b6](https://github.com/shelltime/cli/commit/bbb68b67066806e7babc72e9a705be04fbd389a9))
+
 ## [0.1.79](https://github.com/shelltime/cli/compare/v0.1.78...v0.1.79) (2026-04-06)
 
 
