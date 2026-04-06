@@ -148,6 +148,14 @@ func main() {
 		}
 	}
 
+	codexUsageSyncService := daemon.NewCodexUsageSyncService(cfg)
+	if err := codexUsageSyncService.Start(ctx); err != nil {
+		slog.Error("Failed to start Codex usage sync service", slog.Any("err", err))
+	} else {
+		slog.Info("Codex usage sync service started")
+		defer codexUsageSyncService.Stop()
+	}
+
 	// Create processor instance
 	processor := daemon.NewSocketHandler(&cfg, pubsub)
 

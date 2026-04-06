@@ -13,6 +13,11 @@ import (
 
 const codexUsageCacheTTL = 10 * time.Minute
 
+var (
+	loadCodexAuthFunc   = loadCodexAuth
+	fetchCodexUsageFunc = fetchCodexUsage
+)
+
 // CodexRateLimitData holds the parsed rate limit data from the Codex API
 type CodexRateLimitData struct {
 	Plan    string

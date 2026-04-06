@@ -55,9 +55,6 @@ type CCInfoTimerService struct {
 	// Anthropic rate limit cache
 	rateLimitCache *anthropicRateLimitCache
 
-	// Codex rate limit cache
-	codexRateLimitCache *codexRateLimitCache
-
 	// User profile cache (permanent for daemon lifetime)
 	userLogin        string
 	userLoginFetched bool
@@ -70,8 +67,7 @@ func NewCCInfoTimerService(config *model.ShellTimeConfig) *CCInfoTimerService {
 		cache:          make(map[CCInfoTimeRange]CCInfoCache),
 		activeRanges:   make(map[CCInfoTimeRange]bool),
 		gitCache:       make(map[string]*GitCacheEntry),
-		rateLimitCache:      &anthropicRateLimitCache{},
-		codexRateLimitCache: &codexRateLimitCache{},
+		rateLimitCache: &anthropicRateLimitCache{},
 		stopChan:       make(chan struct{}),
 	}
 }
@@ -156,11 +152,6 @@ func (s *CCInfoTimerService) stopTimer() {
 	s.rateLimitCache.fetchedAt = time.Time{}
 	s.rateLimitCache.lastAttemptAt = time.Time{}
 	s.rateLimitCache.mu.Unlock()
-	s.codexRateLimitCache.mu.Lock()
-	s.codexRateLimitCache.usage = nil
-	s.codexRateLimitCache.fetchedAt = time.Time{}
-	s.codexRateLimitCache.lastAttemptAt = time.Time{}
-	s.codexRateLimitCache.mu.Unlock()
 
 	slog.Info("CC info timer stopped due to inactivity")
 }
@@ -180,7 +171,6 @@ func (s *CCInfoTimerService) timerLoop() {
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer cancel()
 		s.fetchRateLimit(ctx)
-		s.fetchCodexRateLimit(ctx)
 	}()
 	go s.fetchUserProfile(context.Background())
 
@@ -204,7 +194,6 @@ func (s *CCInfoTimerService) timerLoop() {
 				ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 				defer cancel()
 				s.fetchRateLimit(ctx)
-				s.fetchCodexRateLimit(ctx)
 			}()
 
 		case <-s.stopChan:
@@ -560,138 +549,6 @@ func (s *CCInfoTimerService) GetCachedRateLimitError() string {
 	s.rateLimitCache.mu.RLock()
 	defer s.rateLimitCache.mu.RUnlock()
 	return s.rateLimitCache.lastError
-}
-
-// fetchCodexRateLimit fetches Codex rate limit data if cache is stale.
-func (s *CCInfoTimerService) fetchCodexRateLimit(ctx context.Context) {
-	if runtime.GOOS != "darwin" && runtime.GOOS != "linux" {
-		return
-	}
-
-	// Check cache TTL under read lock
-	s.codexRateLimitCache.mu.RLock()
-	sinceLastFetch := time.Since(s.codexRateLimitCache.fetchedAt)
-	sinceLastAttempt := time.Since(s.codexRateLimitCache.lastAttemptAt)
-	s.codexRateLimitCache.mu.RUnlock()
-
-	if sinceLastFetch < codexUsageCacheTTL || sinceLastAttempt < codexUsageCacheTTL {
-		return
-	}
-
-	// Record attempt time
-	s.codexRateLimitCache.mu.Lock()
-	s.codexRateLimitCache.lastAttemptAt = time.Now()
-	s.codexRateLimitCache.mu.Unlock()
-
-	auth, err := loadCodexAuth()
-	if err != nil || auth == nil {
-		slog.Debug("Failed to load Codex auth", slog.Any("err", err))
-		s.codexRateLimitCache.mu.Lock()
-		s.codexRateLimitCache.lastError = "auth"
-		s.codexRateLimitCache.mu.Unlock()
-		return
-	}
-
-	usage, err := fetchCodexUsage(ctx, auth)
-	if err != nil {
-		slog.Warn("Failed to fetch Codex usage", slog.Any("err", err))
-		s.codexRateLimitCache.mu.Lock()
-		s.codexRateLimitCache.lastError = shortenCodexAPIError(err)
-		s.codexRateLimitCache.mu.Unlock()
-		return
-	}
-
-	s.codexRateLimitCache.mu.Lock()
-	s.codexRateLimitCache.usage = usage
-	s.codexRateLimitCache.fetchedAt = time.Now()
-	s.codexRateLimitCache.lastError = ""
-	s.codexRateLimitCache.mu.Unlock()
-
-	// Send usage data to server (fire-and-forget)
-	go func() {
-		bgCtx, bgCancel := context.WithTimeout(context.Background(), 10*time.Second)
-		defer bgCancel()
-		s.sendCodexUsageToServer(bgCtx, usage)
-	}()
-
-	slog.Debug("Codex rate limit updated",
-		slog.String("plan", usage.Plan),
-		slog.Int("windows", len(usage.Windows)))
-}
-
-// sendCodexUsageToServer sends Codex usage data to the ShellTime server
-// for scheduling push notifications when rate limits reset.
-func (s *CCInfoTimerService) sendCodexUsageToServer(ctx context.Context, usage *CodexRateLimitData) {
-	if s.config.Token == "" {
-		return
-	}
-
-	type usageWindow struct {
-		LimitID               string  `json:"limit_id"`
-		UsagePercentage       float64 `json:"usage_percentage"`
-		ResetsAt              string  `json:"resets_at"`
-		WindowDurationMinutes int     `json:"window_duration_minutes"`
-	}
-	type usagePayload struct {
-		Plan    string        `json:"plan"`
-		Windows []usageWindow `json:"windows"`
-	}
-
-	windows := make([]usageWindow, len(usage.Windows))
-	for i, w := range usage.Windows {
-		windows[i] = usageWindow{
-			LimitID:               w.LimitID,
-			UsagePercentage:       w.UsagePercentage,
-			ResetsAt:              time.Unix(w.ResetAt, 0).UTC().Format(time.RFC3339),
-			WindowDurationMinutes: w.WindowDurationMinutes,
-		}
-	}
-
-	payload := usagePayload{
-		Plan:    usage.Plan,
-		Windows: windows,
-	}
-
-	err := model.SendHTTPRequestJSON(model.HTTPRequestOptions[usagePayload, any]{
-		Context: ctx,
-		Endpoint: model.Endpoint{
-			Token:       s.config.Token,
-			APIEndpoint: s.config.APIEndpoint,
-		},
-		Method:  "POST",
-		Path:    "/api/v1/codex-usage",
-		Payload: payload,
-		Timeout: 5 * time.Second,
-	})
-	if err != nil {
-		slog.Warn("Failed to send codex usage to server", slog.Any("err", err))
-	}
-}
-
-// GetCachedCodexRateLimit returns a copy of the cached Codex rate limit data, or nil if not available.
-func (s *CCInfoTimerService) GetCachedCodexRateLimit() *CodexRateLimitData {
-	s.codexRateLimitCache.mu.RLock()
-	defer s.codexRateLimitCache.mu.RUnlock()
-
-	if s.codexRateLimitCache.usage == nil {
-		return nil
-	}
-
-	// Return a copy
-	copy := *s.codexRateLimitCache.usage
-	windowsCopy := make([]CodexRateLimitWindow, len(copy.Windows))
-	for i, w := range copy.Windows {
-		windowsCopy[i] = w
-	}
-	copy.Windows = windowsCopy
-	return &copy
-}
-
-// GetCachedCodexRateLimitError returns the last error from Codex rate limit fetching, or empty string if none.
-func (s *CCInfoTimerService) GetCachedCodexRateLimitError() string {
-	s.codexRateLimitCache.mu.RLock()
-	defer s.codexRateLimitCache.mu.RUnlock()
-	return s.codexRateLimitCache.lastError
 }
 
 // shortenAPIError converts an Anthropic usage API error into a short string for statusline display.
