@@ -162,9 +162,10 @@ func loadCodexAuth() (*codexAuthData, error) {
 
 // whamUsageResponse maps the response from chatgpt.com/backend-api/wham/usage
 type whamUsageResponse struct {
-	PlanType            string                 `json:"plan_type"`
-	RateLimit           *whamRateLimitCategory `json:"rate_limit"`
-	CodeReviewRateLimit *whamRateLimitCategory `json:"code_review_rate_limit"`
+	PlanType             string                                `json:"plan_type"`
+	RateLimit            *whamRateLimitCategory                `json:"rate_limit"`
+	CodeReviewRateLimit  *whamRateLimitCategory                `json:"code_review_rate_limit"`
+	AdditionalRateLimits map[string]*whamRateLimitCategory     `json:"additional_rate_limits"`
 }
 
 type whamRateLimitCategory struct {
@@ -227,6 +228,18 @@ func fetchCodexUsage(ctx context.Context, auth *codexAuthData) (*CodexRateLimitD
 		}
 		if w := cat.category.SecondaryWindow; w != nil {
 			windows = append(windows, mapWhamWindow(cat.name, "secondary", w))
+		}
+	}
+
+	for name, cat := range usage.AdditionalRateLimits {
+		if cat == nil {
+			continue
+		}
+		if w := cat.PrimaryWindow; w != nil {
+			windows = append(windows, mapWhamWindow(name, "primary", w))
+		}
+		if w := cat.SecondaryWindow; w != nil {
+			windows = append(windows, mapWhamWindow(name, "secondary", w))
 		}
 	}
 
