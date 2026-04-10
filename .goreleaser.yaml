@@ -136,3 +136,34 @@ notarize:
         key_id: "{{.Env.QUILL_NOTARY_KEY_ID}}"
         key: "{{.Env.QUILL_NOTARY_KEY}}"
         wait: true
+brews:
+  - name: shelltime
+    ids:
+      - mt-common
+      - mac
+    repository:
+      owner: shelltime
+      name: homebrew-tap
+      token: "{{ .Env.HOMEBREW_TAP_GITHUB_TOKEN }}"
+    directory: Formula
+    homepage: "https://shelltime.xyz"
+    description: "Track and analyze your shell usage - ShellTime CLI"
+    license: "MIT"
+    commit_author:
+      name: shelltime-bot
+      email: bot@shelltime.xyz
+    install: |
+      bin.install "shelltime"
+      bin.install "shelltime-daemon"
+    test: |
+      system "#{bin}/shelltime", "--version"
+    caveats: |
+      To get started with ShellTime, run:
+        shelltime init
+
+      Or set up manually:
+        shelltime auth
+        shelltime hooks install
+        shelltime daemon install
+
+      For more info, visit https://shelltime.xyz
