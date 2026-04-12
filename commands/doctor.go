@@ -91,7 +91,7 @@ func commandDoctor(c *cli.Context) error {
 
 	// 5. Check daemon process
 	printSectionHeader("Daemon Process")
-	daemonInstaller, err := model.NewDaemonInstaller("", "")
+	daemonInstaller, err := model.NewDaemonInstaller("", "", "")
 	if err != nil {
 		printError(fmt.Sprintf("Error checking daemon installer: %v", err))
 		return err

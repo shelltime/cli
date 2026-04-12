@@ -28,7 +28,7 @@ func commandDaemonUninstall(c *cli.Context) error {
 	baseFolder := filepath.Join(currentUser.HomeDir, ".shelltime")
 	username := currentUser.Username
 
-	installer, err := model.NewDaemonInstaller(baseFolder, username)
+	installer, err := model.NewDaemonInstaller(baseFolder, username, "")
 	if err != nil {
 		return err
 	}

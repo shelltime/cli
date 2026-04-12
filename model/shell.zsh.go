@@ -38,6 +38,11 @@ func (s *ZshHookService) ShellName() string {
 }
 
 func (s *ZshHookService) Install() error {
+	hookFilePath := os.ExpandEnv(fmt.Sprintf("$HOME/%s/hooks/zsh.zsh", COMMAND_BASE_STORAGE_FOLDER))
+	if err := ensureHookFile(hookFilePath, EmbeddedZshHook); err != nil {
+		return fmt.Errorf("failed to ensure zsh hook file: %w", err)
+	}
+
 	if _, err := os.Stat(s.configPath); os.IsNotExist(err) {
 		return fmt.Errorf("zsh config file not found at %s. Please run 'shelltime hooks install'", s.configPath)
 	}

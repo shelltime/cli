@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
 	"strings"
 	"time"
 )
@@ -16,6 +17,22 @@ type ShellHookService interface {
 	Check() error
 	Uninstall() error
 	ShellName() string
+}
+
+// ensureHookFile writes the embedded hook script to disk if it doesn't already exist.
+// This allows Homebrew-installed users to get hook files without the curl installer.
+func ensureHookFile(hookFilePath string, embeddedContent []byte) error {
+	if _, err := os.Stat(hookFilePath); err == nil {
+		return nil // already exists
+	}
+	hookDir := filepath.Dir(hookFilePath)
+	if err := os.MkdirAll(hookDir, 0755); err != nil {
+		return fmt.Errorf("failed to create hooks directory: %w", err)
+	}
+	if err := os.WriteFile(hookFilePath, embeddedContent, 0644); err != nil {
+		return fmt.Errorf("failed to write hook file: %w", err)
+	}
+	return nil
 }
 
 // Common utilities for hook services

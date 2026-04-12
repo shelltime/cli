@@ -18,12 +18,12 @@ type DaemonInstaller interface {
 }
 
 // Factory function to create appropriate installer based on OS
-func NewDaemonInstaller(baseFolder, username string) (DaemonInstaller, error) {
+func NewDaemonInstaller(baseFolder, username, daemonBinPath string) (DaemonInstaller, error) {
 	switch runtime.GOOS {
 	case "linux":
-		return NewLinuxDaemonInstaller(baseFolder, username), nil
+		return NewLinuxDaemonInstaller(baseFolder, username, daemonBinPath), nil
 	case "darwin":
-		return NewMacDaemonInstaller(baseFolder, username), nil
+		return NewMacDaemonInstaller(baseFolder, username, daemonBinPath), nil
 	default:
 		return nil, fmt.Errorf("unsupported operating system: %s", runtime.GOOS)
 	}

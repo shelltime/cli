@@ -3,6 +3,7 @@ package commands
 import (
 	"fmt"
 	"os"
+	"os/exec"
 
 	"github.com/gookit/color"
 	"github.com/malamtime/cli/model"
@@ -17,9 +18,12 @@ var HooksInstallCommand = &cli.Command{
 
 func commandHooksInstall(c *cli.Context) error {
 	binFolder := os.ExpandEnv(fmt.Sprintf("$HOME/%s/bin", model.COMMAND_BASE_STORAGE_FOLDER))
-	if _, err := os.Stat(binFolder); os.IsNotExist(err) {
-		color.Red.Println("📁 cannot find bin folder at", binFolder)
-		color.Red.Println("Please run 'curl -sSL https://raw.githubusercontent.com/malamtime/installation/master/install.bash | bash' first")
+	_, binFolderErr := os.Stat(binFolder)
+	_, lookPathErr := exec.LookPath("shelltime")
+	if os.IsNotExist(binFolderErr) && lookPathErr != nil {
+		color.Red.Println("📁 shelltime binary not found.")
+		color.Red.Println("Install via Homebrew:  brew install shelltime/tap/shelltime")
+		color.Red.Println("Or via curl installer: curl -sSL https://shelltime.xyz/i | bash")
 		return nil
 	}
 

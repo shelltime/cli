@@ -1,7 +1,9 @@
 package model
 
 import (
+	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 )
 
@@ -110,4 +112,36 @@ func GetDaemonLogFilePath() string {
 // GetDaemonErrFilePath returns the path to the daemon error log file (macOS)
 func GetDaemonErrFilePath() string {
 	return GetStoragePath("logs", "shelltime-daemon.err")
+}
+
+// ResolveDaemonBinaryPath finds the shelltime-daemon binary.
+// It checks the curl-installer location first, then PATH (Homebrew),
+// then known Homebrew prefix paths as fallback.
+func ResolveDaemonBinaryPath() (string, error) {
+	const binaryName = "shelltime-daemon"
+
+	// 1. Check curl-installer location
+	curlPath := filepath.Join(GetBaseStoragePath(), "bin", binaryName)
+	if info, err := os.Stat(curlPath); err == nil && !info.IsDir() {
+		return curlPath, nil
+	}
+
+	// 2. Check PATH (covers Homebrew and other package managers)
+	if path, err := exec.LookPath(binaryName); err == nil {
+		return path, nil
+	}
+
+	// 3. Explicit Homebrew fallback paths
+	homebrewPaths := []string{
+		filepath.Join("/opt/homebrew/bin", binaryName),
+		filepath.Join("/usr/local/bin", binaryName),
+		filepath.Join("/home/linuxbrew/.linuxbrew/bin", binaryName),
+	}
+	for _, p := range homebrewPaths {
+		if info, err := os.Stat(p); err == nil && !info.IsDir() {
+			return p, nil
+		}
+	}
+
+	return "", fmt.Errorf("%s not found at %s, on PATH, or in standard Homebrew locations", binaryName, curlPath)
 }
