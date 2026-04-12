@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/gookit/color"
 )
@@ -20,7 +21,8 @@ func ensureBashPreexec(hooksDir string) error {
 		return nil // already exists
 	}
 
-	resp, err := http.Get(bashPreexecURL)
+	client := &http.Client{Timeout: 1 * time.Minute}
+	resp, err := client.Get(bashPreexecURL)
 	if err != nil {
 		return fmt.Errorf("failed to download bash-preexec.sh: %w", err)
 	}
@@ -30,7 +32,7 @@ func ensureBashPreexec(hooksDir string) error {
 		return fmt.Errorf("failed to download bash-preexec.sh: HTTP %d", resp.StatusCode)
 	}
 
-	body, err := io.ReadAll(resp.Body)
+	body, err := io.ReadAll(io.LimitReader(resp.Body, 1024*1024))
 	if err != nil {
 		return fmt.Errorf("failed to read bash-preexec.sh response: %w", err)
 	}
