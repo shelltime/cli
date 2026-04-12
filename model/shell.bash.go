@@ -2,11 +2,47 @@ package model
 
 import (
 	"fmt"
+	"io"
+	"net/http"
 	"os"
+	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/gookit/color"
 )
+
+const bashPreexecURL = "https://raw.githubusercontent.com/rcaloras/bash-preexec/master/bash-preexec.sh"
+
+// ensureBashPreexec downloads bash-preexec.sh if it doesn't exist in the hooks directory.
+func ensureBashPreexec(hooksDir string) error {
+	preexecPath := filepath.Join(hooksDir, "bash-preexec.sh")
+	if _, err := os.Stat(preexecPath); err == nil {
+		return nil // already exists
+	}
+
+	client := &http.Client{Timeout: 1 * time.Minute}
+	resp, err := client.Get(bashPreexecURL)
+	if err != nil {
+		return fmt.Errorf("failed to download bash-preexec.sh: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("failed to download bash-preexec.sh: HTTP %d", resp.StatusCode)
+	}
+
+	body, err := io.ReadAll(io.LimitReader(resp.Body, 1024*1024))
+	if err != nil {
+		return fmt.Errorf("failed to read bash-preexec.sh response: %w", err)
+	}
+
+	if err := os.WriteFile(preexecPath, body, 0644); err != nil {
+		return fmt.Errorf("failed to write bash-preexec.sh: %w", err)
+	}
+
+	return nil
+}
 
 type BashHookService struct {
 	BaseHookService
@@ -38,10 +74,11 @@ func (s *BashHookService) ShellName() string {
 
 func (s *BashHookService) Install() error {
 	hookFilePath := os.ExpandEnv(fmt.Sprintf("$HOME/%s/hooks/bash.bash", COMMAND_BASE_STORAGE_FOLDER))
-	if _, err := os.Stat(hookFilePath); os.IsNotExist(err) {
-		color.Red.Println("hook file not found at", hookFilePath)
-		color.Red.Println("Please run 'curl -sSL https://shelltime.xyz/i | bash' first")
-		return err
+	if err := ensureHookFile(hookFilePath, EmbeddedBashHook); err != nil {
+		return fmt.Errorf("failed to ensure bash hook file: %w", err)
+	}
+	if err := ensureBashPreexec(filepath.Dir(hookFilePath)); err != nil {
+		color.Yellow.Printf("Warning: failed to set up bash-preexec: %v\n", err)
 	}
 
 	if _, err := os.Stat(s.configPath); os.IsNotExist(err) {

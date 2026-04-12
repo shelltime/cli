@@ -29,33 +29,32 @@ func commandDaemonInstall(c *cli.Context) error {
 	baseFolder := filepath.Join(currentUser.HomeDir, ".shelltime")
 	username := currentUser.Username
 
-	installer, err := model.NewDaemonInstaller(baseFolder, username)
+	// Handle .bak upgrade for curl-installer users
+	bakPath := filepath.Join(baseFolder, "bin/shelltime-daemon.bak")
+	if _, err := os.Stat(bakPath); err == nil {
+		color.Yellow.Println("🔄 Found latest daemon file, restoring...")
+		_ = os.Remove(filepath.Join(baseFolder, "bin/shelltime-daemon"))
+		if err := os.Rename(bakPath, filepath.Join(baseFolder, "bin/shelltime-daemon")); err != nil {
+			return fmt.Errorf("failed to restore latest daemon: %w", err)
+		}
+	}
+
+	// Resolve daemon binary (curl-installer, Homebrew, or PATH)
+	daemonBinPath, err := model.ResolveDaemonBinaryPath()
+	if err != nil {
+		color.Yellow.Println("⚠️ shelltime-daemon not found.")
+		color.Yellow.Println("Install via Homebrew:  brew install shelltime/tap/shelltime")
+		color.Yellow.Println("Or via curl installer: curl -sSL https://shelltime.xyz/i | bash")
+		return nil
+	}
+	color.Green.Printf("✅ Found daemon binary at: %s\n", daemonBinPath)
+
+	installer, err := model.NewDaemonInstaller(baseFolder, username, daemonBinPath)
 	if err != nil {
 		return err
 	}
 
 	installer.CheckAndStopExistingService()
-
-	// check latest file exist or not
-	if _, err := os.Stat(filepath.Join(baseFolder, "bin/shelltime-daemon.bak")); err == nil {
-		color.Yellow.Println("🔄 Found latest daemon file, restoring...")
-		// try to remove old file
-		_ = os.Remove(filepath.Join(baseFolder, "bin/shelltime-daemon"))
-		// rename .bak to original
-		if err := os.Rename(
-			filepath.Join(baseFolder, "bin/shelltime-daemon.bak"),
-			filepath.Join(baseFolder, "bin/shelltime-daemon"),
-		); err != nil {
-			return fmt.Errorf("failed to restore latest daemon: %w", err)
-		}
-	}
-
-	// check shelltime-daemon
-	if _, err := os.Stat(filepath.Join(baseFolder, "bin/shelltime-daemon")); err != nil {
-		color.Yellow.Println("⚠️ shelltime-daemon not found, please reinstall the CLI first:")
-		color.Yellow.Println("curl -sSL https://raw.githubusercontent.com/malamtime/installation/master/install.bash | bash")
-		return nil
-	}
 
 	// User-level installation - no system-wide symlink needed
 	color.Yellow.Println("🔍 Setting up user-level daemon installation...")

@@ -18,16 +18,18 @@ var daemonMacServiceDesc []byte
 
 // MacDaemonInstaller implements DaemonInstaller for macOS systems
 type MacDaemonInstaller struct {
-	baseFolder  string
-	serviceName string
-	user        string
+	baseFolder    string
+	serviceName   string
+	user          string
+	daemonBinPath string
 }
 
-func NewMacDaemonInstaller(baseFolder, user string) *MacDaemonInstaller {
+func NewMacDaemonInstaller(baseFolder, user, daemonBinPath string) *MacDaemonInstaller {
 	return &MacDaemonInstaller{
-		baseFolder:  baseFolder,
-		user:        user,
-		serviceName: "xyz.shelltime.daemon",
+		baseFolder:    baseFolder,
+		user:          user,
+		serviceName:   "xyz.shelltime.daemon",
+		daemonBinPath: daemonBinPath,
 	}
 }
 
@@ -163,8 +165,9 @@ func (m *MacDaemonInstaller) GetDaemonServiceFile(username string) (buf bytes.Bu
 		return
 	}
 	err = tmpl.Execute(&buf, map[string]string{
-		"UserName":   username,
-		"BaseFolder": m.baseFolder,
+		"UserName":      username,
+		"BaseFolder":    m.baseFolder,
+		"DaemonBinPath": m.daemonBinPath,
 	})
 	return
 }

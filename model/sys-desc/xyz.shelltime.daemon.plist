@@ -8,7 +8,7 @@
     <array>
         <string>/bin/sh</string>
         <string>-c</string>
-        <string>exec $SHELL -l -c '{{.BaseFolder}}/bin/shelltime-daemon'</string>
+        <string>exec $SHELL -l -c '{{.DaemonBinPath}}'</string>
     </array>
     <key>RunAtLoad</key>
     <true/>

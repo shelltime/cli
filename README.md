@@ -9,6 +9,14 @@ The Go module path is `github.com/malamtime/cli`. That naming mismatch is intent
 
 ## Install
 
+### Homebrew (macOS and Linux)
+
+```bash
+brew install shelltime/tap/shelltime
+```
+
+### curl installer
+
 ```bash
 curl -sSL https://shelltime.xyz/i | bash
 ```

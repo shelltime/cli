@@ -19,12 +19,13 @@ var daemonLinuxServiceDesc []byte
 
 // LinuxDaemonInstaller implements DaemonInstaller for Linux systems
 type LinuxDaemonInstaller struct {
-	baseFolder string
-	user       string
+	baseFolder    string
+	user          string
+	daemonBinPath string
 }
 
-func NewLinuxDaemonInstaller(baseFolder, user string) *LinuxDaemonInstaller {
-	return &LinuxDaemonInstaller{baseFolder: baseFolder, user: user}
+func NewLinuxDaemonInstaller(baseFolder, user, daemonBinPath string) *LinuxDaemonInstaller {
+	return &LinuxDaemonInstaller{baseFolder: baseFolder, user: user, daemonBinPath: daemonBinPath}
 }
 
 // getXDGRuntimeDir returns the XDG_RUNTIME_DIR path for the current user
@@ -221,8 +222,9 @@ func (l *LinuxDaemonInstaller) GetDaemonServiceFile(username string) (buf bytes.
 		return
 	}
 	err = tmpl.Execute(&buf, map[string]string{
-		"UserName":   username,
-		"BaseFolder": l.baseFolder,
+		"UserName":      username,
+		"BaseFolder":    l.baseFolder,
+		"DaemonBinPath": l.daemonBinPath,
 	})
 	return
 }

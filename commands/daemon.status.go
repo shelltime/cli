@@ -53,7 +53,7 @@ func commandDaemonStatus(c *cli.Context) error {
 	}
 
 	// Check 3: Service manager status
-	installer, installerErr := model.NewDaemonInstaller("", "")
+	installer, installerErr := model.NewDaemonInstaller("", "", "")
 	if installerErr == nil {
 		if err := installer.Check(); err == nil {
 			printSuccess("Service is registered and running")

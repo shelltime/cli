@@ -42,6 +42,11 @@ func (s *FishHookService) ShellName() string {
 }
 
 func (s *FishHookService) Install() error {
+	hookFilePath := os.ExpandEnv(fmt.Sprintf("$HOME/%s/hooks/fish.fish", COMMAND_BASE_STORAGE_FOLDER))
+	if err := ensureHookFile(hookFilePath, EmbeddedFishHook); err != nil {
+		return fmt.Errorf("failed to ensure fish hook file: %w", err)
+	}
+
 	if _, err := os.Stat(s.configPath); os.IsNotExist(err) {
 		return fmt.Errorf("fish config file not found at %s. Please run 'shelltime hooks install'", s.configPath)
 	}
