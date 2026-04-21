@@ -451,7 +451,42 @@ func (s *queryTestSuite) TestQueryCommandEmptyAIResponse() {
 	}
 
 	err := s.app.Run(command)
-	assert.Nil(s.T(), err)
+	assert.NotNil(s.T(), err)
+	assert.Contains(s.T(), err.Error(), "empty AI response")
+}
+
+func (s *queryTestSuite) TestSanitizeSuggestedCommand() {
+	tests := []struct {
+		name string
+		in   string
+		want string
+	}{
+		{"plain", "ls -la", "ls -la"},
+		{"trims whitespace", "  ls -la  \n\t", "ls -la"},
+		{"fence with bash tag", "```bash\necho hi\n```", "echo hi"},
+		{"fence with sh tag", "```sh\necho hi\n```", "echo hi"},
+		{"fence with zsh tag", "```zsh\necho hi\n```", "echo hi"},
+		{"fence with shell tag", "```shell\necho hi\n```", "echo hi"},
+		{"fence with fish tag", "```fish\nset -x FOO bar\n```", "set -x FOO bar"},
+		{"fence with powershell tag", "```powershell\nGet-Process\n```", "Get-Process"},
+		{"fence with pwsh tag", "```pwsh\nGet-Process\n```", "Get-Process"},
+		{"fence no language tag", "```\necho hi\n```", "echo hi"},
+		{"fence with trailing newline before closing", "```bash\nls -la\n\n```", "ls -la"},
+		{"single backticks around single-line", "`ls -la`", "ls -la"},
+		{"single backticks with surrounding space", "  `ls -la`  ", "ls -la"},
+		{"only whitespace", "   \n\t ", ""},
+		{"empty", "", ""},
+		{"comment passthrough preserved", "# refusing: unsafe request", "# refusing: unsafe request"},
+		{"multiline without fences kept", "ls\ncat foo", "ls\ncat foo"},
+	}
+	for _, tt := range tests {
+		s.T().Run(tt.name, func(t *testing.T) {
+			got := sanitizeSuggestedCommand(tt.in)
+			if got != tt.want {
+				t.Errorf("sanitizeSuggestedCommand(%q) = %q, want %q", tt.in, got, tt.want)
+			}
+		})
+	}
 }
 
 func (s *queryTestSuite) TestQueryCommandDescription() {

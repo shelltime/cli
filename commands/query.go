@@ -102,7 +102,11 @@ func commandQuery(c *cli.Context) error {
 	// Print newline after streaming
 	fmt.Println()
 
-	newCommand := strings.TrimSpace(result.String())
+	newCommand := sanitizeSuggestedCommand(result.String())
+	if newCommand == "" {
+		color.Red.Println("AI returned an empty response. Try rephrasing your query.")
+		return fmt.Errorf("empty AI response")
+	}
 
 	// Check auto-run configuration
 	if cfg.AI != nil && (cfg.AI.Agent.View || cfg.AI.Agent.Edit || cfg.AI.Agent.Delete) {
@@ -186,6 +190,39 @@ func executeCommand(ctx context.Context, command string) error {
 	}
 
 	return nil
+}
+
+// sanitizeSuggestedCommand normalizes raw AI output into an executable command.
+// It strips triple-backtick fences (with optional language tag like bash, sh,
+// zsh, fish, pwsh, powershell), strips surrounding single backticks when the
+// result is a single line, and trims whitespace. Responses that start with `#`
+// are treated as refusal comments and preserved verbatim so the caller can
+// surface them to the user without attempting execution.
+func sanitizeSuggestedCommand(raw string) string {
+	s := strings.TrimSpace(raw)
+	if s == "" {
+		return ""
+	}
+
+	if strings.HasPrefix(s, "```") {
+		s = strings.TrimPrefix(s, "```")
+		if nl := strings.IndexByte(s, '\n'); nl >= 0 {
+			switch strings.ToLower(strings.TrimSpace(s[:nl])) {
+			case "", "bash", "sh", "shell", "zsh", "fish", "pwsh", "powershell":
+				s = s[nl+1:]
+			}
+		}
+		s = strings.TrimRight(s, " \t\n")
+		s = strings.TrimSuffix(s, "```")
+		s = strings.TrimSpace(s)
+	}
+
+	if !strings.ContainsRune(s, '\n') && len(s) >= 2 &&
+		strings.HasPrefix(s, "`") && strings.HasSuffix(s, "`") {
+		s = strings.TrimSpace(s[1 : len(s)-1])
+	}
+
+	return s
 }
 
 func getSystemContext(query string) (model.CommandSuggestVariables, error) {
