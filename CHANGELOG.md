@@ -1,5 +1,22 @@
 # Changelog
 
+## [0.1.82](https://github.com/shelltime/cli/compare/v0.1.81...v0.1.82) (2026-04-22)
+
+
+### Features
+
+* add Homebrew tap auto-update via GoReleaser ([a717507](https://github.com/shelltime/cli/commit/a717507402c81c42648514e0c54d289f24405644))
+* **cli:** support Homebrew binary paths for daemon and hooks ([8e0b3ea](https://github.com/shelltime/cli/commit/8e0b3eaeac0771a96b372783cb0fbfaaf66056ae))
+* **cli:** support Homebrew binary paths for daemon and hooks ([02368fb](https://github.com/shelltime/cli/commit/02368fbe0b205637d48949dbc04a37a3c2cf906e))
+
+
+### Bug Fixes
+
+* **cli:** sanitize AI command output before execution ([5373bf2](https://github.com/shelltime/cli/commit/5373bf2b76f80e8419e919bbcf6ca647190ce5db))
+* **daemon:** capture additional_rate_limits from codex wham API ([9e42799](https://github.com/shelltime/cli/commit/9e42799a85fae59b5797dfc7a3421903f5a40a17))
+* **model:** add 1-minute timeout and body size limit to bash-preexec download ([519ea35](https://github.com/shelltime/cli/commit/519ea35864300fc41f12b549d895920e51407143))
+* **model:** handle SSE spec leading space and event prefix ([8c3fb32](https://github.com/shelltime/cli/commit/8c3fb3270e9e6d9dca1d2272881582515e8c8549))
+
 ## [0.1.81](https://github.com/shelltime/cli/compare/v0.1.80...v0.1.81) (2026-04-06)
 
 
