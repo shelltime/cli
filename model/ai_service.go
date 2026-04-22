@@ -72,24 +72,26 @@ func (s *sseAIService) QueryCommandStream(
 	for scanner.Scan() {
 		line := scanner.Text()
 
-		if line == "event: error" {
-			isError = true
+		if line == "" {
+			isError = false
 			continue
 		}
 
-		if strings.HasPrefix(line, "data:") {
-			data := line[len("data:"):]
-
-			if isError {
-				return fmt.Errorf("server error: %s", data)
+		if v, ok := stripSSEField(line, "event:"); ok {
+			if v == "error" {
+				isError = true
 			}
+			continue
+		}
 
-			if data == "[DONE]" {
+		if v, ok := stripSSEField(line, "data:"); ok {
+			if isError {
+				return fmt.Errorf("server error: %s", v)
+			}
+			if v == "[DONE]" {
 				return nil
 			}
-
-			onToken(data)
-			isError = false
+			onToken(v)
 		}
 	}
 
@@ -98,4 +100,18 @@ func (s *sseAIService) QueryCommandStream(
 	}
 
 	return nil
+}
+
+// stripSSEField returns the value after prefix, stripping one optional leading
+// space per the SSE specification (§9.2 "If value starts with a U+0020 SPACE
+// character, remove it from value").
+func stripSSEField(line, prefix string) (string, bool) {
+	if !strings.HasPrefix(line, prefix) {
+		return "", false
+	}
+	v := line[len(prefix):]
+	if strings.HasPrefix(v, " ") {
+		v = v[1:]
+	}
+	return v, true
 }
