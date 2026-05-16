@@ -17,9 +17,11 @@ type AIService interface {
 }
 
 type CommandSuggestVariables struct {
-	Shell string `json:"shell"`
-	Os    string `json:"os"`
-	Query string `json:"query"`
+	Shell    string `json:"shell"`
+	Os       string `json:"os"`
+	Query    string `json:"query"`
+	Pwd      string `json:"pwd,omitempty"`
+	Hostname string `json:"hostname,omitempty"`
 }
 
 type sseAIService struct{}

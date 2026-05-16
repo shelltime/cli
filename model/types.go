@@ -19,6 +19,9 @@ type AIAgentConfig struct {
 type AIConfig struct {
 	Agent    AIAgentConfig `toml:"agent,omitempty" yaml:"agent,omitempty" json:"agent,omitempty"`
 	ShowTips *bool         `toml:"showTips" yaml:"showTips" json:"showTips"`
+	// ShareContext controls whether `shelltime q` sends the working directory
+	// and hostname alongside the prompt. Defaults to true if unset.
+	ShareContext *bool `toml:"shareContext,omitempty" yaml:"shareContext,omitempty" json:"shareContext,omitempty"`
 }
 
 type CCUsage struct {
