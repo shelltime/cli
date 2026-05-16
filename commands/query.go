@@ -60,7 +60,7 @@ func commandQuery(c *cli.Context) error {
 	}
 
 	// Get system context
-	systemContext, err := getSystemContext(query)
+	systemContext, err := getSystemContext(query, cfg.AI)
 	if err != nil {
 		slog.Warn("Failed to get system context", slog.Any("err", err))
 	}
@@ -225,7 +225,7 @@ func sanitizeSuggestedCommand(raw string) string {
 	return s
 }
 
-func getSystemContext(query string) (model.CommandSuggestVariables, error) {
+func getSystemContext(query string, ai *model.AIConfig) (model.CommandSuggestVariables, error) {
 	// Get shell information
 	shell := os.Getenv("SHELL")
 	if shell == "" {
@@ -240,9 +240,25 @@ func getSystemContext(query string) (model.CommandSuggestVariables, error) {
 	// Get OS information
 	osInfo := runtime.GOOS
 
-	return model.CommandSuggestVariables{
+	vars := model.CommandSuggestVariables{
 		Shell: shell,
 		Os:    osInfo,
 		Query: query,
-	}, nil
+	}
+
+	// Skip context fields when the user has opted out via config:
+	//   [ai]
+	//   shareContext = false
+	if ai != nil && ai.ShareContext != nil && !*ai.ShareContext {
+		return vars, nil
+	}
+
+	if pwd, err := os.Getwd(); err == nil {
+		vars.Pwd = pwd
+	}
+	if host, err := os.Hostname(); err == nil {
+		vars.Hostname = host
+	}
+
+	return vars, nil
 }

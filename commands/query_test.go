@@ -326,7 +326,7 @@ func (s *queryTestSuite) TestGetSystemContext() {
 	os.Setenv("SHELL", "/bin/bash")
 	defer os.Setenv("SHELL", originalShell)
 
-	context, err := getSystemContext(query)
+	context, err := getSystemContext(query, nil)
 	assert.Nil(s.T(), err)
 	assert.Equal(s.T(), "bash", context.Shell)
 	assert.Equal(s.T(), runtime.GOOS, context.Os)
@@ -334,7 +334,7 @@ func (s *queryTestSuite) TestGetSystemContext() {
 
 	// Test with no SHELL environment variable
 	os.Unsetenv("SHELL")
-	context, err = getSystemContext(query)
+	context, err = getSystemContext(query, nil)
 	assert.Nil(s.T(), err)
 	assert.Equal(s.T(), "unknown", context.Shell)
 	assert.Equal(s.T(), runtime.GOOS, context.Os)
@@ -342,9 +342,16 @@ func (s *queryTestSuite) TestGetSystemContext() {
 
 	// Test with full path shell
 	os.Setenv("SHELL", "/usr/local/bin/zsh")
-	context, err = getSystemContext(query)
+	context, err = getSystemContext(query, nil)
 	assert.Nil(s.T(), err)
 	assert.Equal(s.T(), "zsh", context.Shell)
+
+	// Opt-out: when ShareContext is explicitly false, pwd/hostname are omitted.
+	disabled := false
+	context, err = getSystemContext(query, &model.AIConfig{ShareContext: &disabled})
+	assert.Nil(s.T(), err)
+	assert.Empty(s.T(), context.Pwd)
+	assert.Empty(s.T(), context.Hostname)
 }
 
 func (s *queryTestSuite) TestQueryCommandWithAlias() {
