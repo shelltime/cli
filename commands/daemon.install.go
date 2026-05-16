@@ -39,7 +39,7 @@ func commandDaemonInstall(c *cli.Context) error {
 		}
 	}
 
-	// Resolve daemon binary (curl-installer, Homebrew, or PATH)
+	// Resolve daemon binary (Homebrew/PATH preferred, curl-installer fallback)
 	daemonBinPath, err := model.ResolveDaemonBinaryPath()
 	if err != nil {
 		color.Yellow.Println("⚠️ shelltime-daemon not found.")
@@ -48,6 +48,20 @@ func commandDaemonInstall(c *cli.Context) error {
 		return nil
 	}
 	color.Green.Printf("✅ Found daemon binary at: %s\n", daemonBinPath)
+
+	// If we picked a system-managed binary but a stale curl-installer copy
+	// still lives under ~/.shelltime/bin, remove it so future resolution
+	// stays unambiguous.
+	curlDaemonPath := model.GetCurlInstallerDaemonPath()
+	if daemonBinPath != curlDaemonPath {
+		if info, statErr := os.Stat(curlDaemonPath); statErr == nil && !info.IsDir() {
+			if rmErr := os.Remove(curlDaemonPath); rmErr == nil {
+				color.Yellow.Printf("🧹 Removed stale curl-installer daemon at %s\n", curlDaemonPath)
+			} else {
+				color.Yellow.Printf("⚠️ Could not remove stale daemon at %s: %v\n", curlDaemonPath, rmErr)
+			}
+		}
+	}
 
 	installer, err := model.NewDaemonInstaller(baseFolder, username, daemonBinPath)
 	if err != nil {

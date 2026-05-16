@@ -289,3 +289,117 @@ func TestPathsAreClean(t *testing.T) {
 		}
 	}
 }
+
+// writeFakeDaemon creates an executable file at the given path so exec.LookPath
+// will accept it as resolvable. Returns the absolute path actually written.
+func writeFakeDaemon(t *testing.T, dir string) string {
+	t.Helper()
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatalf("failed to mkdir %s: %v", dir, err)
+	}
+	p := filepath.Join(dir, "shelltime-daemon")
+	if err := os.WriteFile(p, []byte("#!/bin/sh\nexit 0\n"), 0o755); err != nil {
+		t.Fatalf("failed to write fake daemon: %v", err)
+	}
+	return p
+}
+
+// withIsolatedDaemonResolution sets up a hermetic environment for
+// ResolveDaemonBinaryPath: a temp $HOME, an empty $PATH (caller can re-add
+// dirs), and an empty Homebrew search list so the host machine's installs
+// (e.g. real /opt/homebrew/bin/shelltime-daemon) don't leak into assertions.
+// Returns the temp home directory.
+func withIsolatedDaemonResolution(t *testing.T) string {
+	t.Helper()
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("PATH", "")
+
+	prev := daemonHomebrewSearchPaths
+	daemonHomebrewSearchPaths = nil
+	t.Cleanup(func() { daemonHomebrewSearchPaths = prev })
+
+	return home
+}
+
+func TestResolveDaemonBinaryPath(t *testing.T) {
+	t.Run("returns curl-installer path when nothing else is on PATH", func(t *testing.T) {
+		home := withIsolatedDaemonResolution(t)
+
+		curl := writeFakeDaemon(t, filepath.Join(home, COMMAND_BASE_STORAGE_FOLDER, "bin"))
+
+		got, err := ResolveDaemonBinaryPath()
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if got != curl {
+			t.Errorf("expected %s, got %s", curl, got)
+		}
+	})
+
+	t.Run("prefers PATH-resolved binary over curl-installer path", func(t *testing.T) {
+		home := withIsolatedDaemonResolution(t)
+
+		brewDir := t.TempDir()
+		brewPath := writeFakeDaemon(t, brewDir)
+		t.Setenv("PATH", brewDir)
+
+		// stale curl-installer copy that should be ignored
+		writeFakeDaemon(t, filepath.Join(home, COMMAND_BASE_STORAGE_FOLDER, "bin"))
+
+		got, err := ResolveDaemonBinaryPath()
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if got != brewPath {
+			t.Errorf("expected PATH-resolved %s, got %s", brewPath, got)
+		}
+	})
+
+	t.Run("uses explicit Homebrew search list when PATH is empty", func(t *testing.T) {
+		home := withIsolatedDaemonResolution(t)
+
+		brewDir := t.TempDir()
+		brewPath := writeFakeDaemon(t, brewDir)
+		daemonHomebrewSearchPaths = []string{brewDir}
+
+		// stale curl-installer copy that should be ignored
+		writeFakeDaemon(t, filepath.Join(home, COMMAND_BASE_STORAGE_FOLDER, "bin"))
+
+		got, err := ResolveDaemonBinaryPath()
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if got != brewPath {
+			t.Errorf("expected Homebrew search result %s, got %s", brewPath, got)
+		}
+	})
+
+	t.Run("skips PATH result that points back at the curl-installer path", func(t *testing.T) {
+		home := withIsolatedDaemonResolution(t)
+
+		curlBin := filepath.Join(home, COMMAND_BASE_STORAGE_FOLDER, "bin")
+		curl := writeFakeDaemon(t, curlBin)
+		// Put only the curl-installer dir on PATH; LookPath would return curl,
+		// but the resolver must fall through and still return the curl path
+		// from step 3 (so the cleanup logic in daemon.install can detect it).
+		t.Setenv("PATH", curlBin)
+
+		got, err := ResolveDaemonBinaryPath()
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if got != curl {
+			t.Errorf("expected curl-installer fallback %s, got %s", curl, got)
+		}
+	})
+
+	t.Run("returns error when no daemon is found anywhere", func(t *testing.T) {
+		withIsolatedDaemonResolution(t)
+
+		_, err := ResolveDaemonBinaryPath()
+		if err == nil {
+			t.Fatal("expected error when no daemon binary exists, got nil")
+		}
+	})
+}
