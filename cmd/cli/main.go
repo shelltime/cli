@@ -104,6 +104,7 @@ func main() {
 		commands.GrepCommand,
 		commands.ConfigCommand,
 		commands.IosCommand,
+		commands.UpdateCommand,
 	}
 	err = app.Run(os.Args)
 	if err != nil {
