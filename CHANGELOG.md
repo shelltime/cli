@@ -1,5 +1,25 @@
 # Changelog
 
+## [0.1.83](https://github.com/shelltime/cli/compare/v0.1.82...v0.1.83) (2026-05-17)
+
+
+### Features
+
+* **commands:** add `shelltime update` self-update command ([74e4e86](https://github.com/shelltime/cli/commit/74e4e86b58a8b62bfb7a4684deb3a5cf60db0267))
+* **commands:** add `shelltime update` self-update command ([865dca9](https://github.com/shelltime/cli/commit/865dca96e231bae2f086fa56947af75f465c8dac))
+
+
+### Bug Fixes
+
+* **daemon:** prefer Homebrew binary over curl-installer location ([5351071](https://github.com/shelltime/cli/commit/53510719ba1e1cb9ca752a98b002b74faab8cac3))
+* **daemon:** prefer Homebrew binary over curl-installer location ([80c00a1](https://github.com/shelltime/cli/commit/80c00a16e126fe031c7a61183b6c72fe8f3d51b0))
+
+
+### Reverts
+
+* **cli:** undo PR [#273](https://github.com/shelltime/cli/issues/273) AI response parsing changes ([c2c0e2f](https://github.com/shelltime/cli/commit/c2c0e2ffb61d32a663ba89aca8cc127ed23f0030))
+* **cli:** undo PR [#273](https://github.com/shelltime/cli/issues/273) AI response parsing changes ([5a30d5c](https://github.com/shelltime/cli/commit/5a30d5c055a718d55c44568dbf4cd844d05c1401))
+
 ## [0.1.82](https://github.com/shelltime/cli/compare/v0.1.81...v0.1.82) (2026-05-16)
 
 
