@@ -114,34 +114,50 @@ func GetDaemonErrFilePath() string {
 	return GetStoragePath("logs", "shelltime-daemon.err")
 }
 
+// GetCurlInstallerDaemonPath returns the legacy curl-installer daemon location
+// (~/.shelltime/bin/shelltime-daemon).
+func GetCurlInstallerDaemonPath() string {
+	return filepath.Join(GetBaseStoragePath(), "bin", "shelltime-daemon")
+}
+
+// daemonHomebrewSearchPaths lists explicit Homebrew/Linuxbrew bin dirs to
+// probe when PATH is stripped (e.g. launchd-spawned shells). Exposed as a var
+// so tests can swap it out.
+var daemonHomebrewSearchPaths = []string{
+	"/opt/homebrew/bin",
+	"/usr/local/bin",
+	"/home/linuxbrew/.linuxbrew/bin",
+}
+
 // ResolveDaemonBinaryPath finds the shelltime-daemon binary.
-// It checks the curl-installer location first, then PATH (Homebrew),
-// then known Homebrew prefix paths as fallback.
+// It prefers a system-managed binary (Homebrew or anything on PATH) over the
+// legacy curl-installer location, so that `brew upgrade shelltime` is what
+// actually drives the running daemon.
 func ResolveDaemonBinaryPath() (string, error) {
 	const binaryName = "shelltime-daemon"
+	curlPath := GetCurlInstallerDaemonPath()
 
-	// 1. Check curl-installer location
-	curlPath := filepath.Join(GetBaseStoragePath(), "bin", binaryName)
-	if info, err := os.Stat(curlPath); err == nil && !info.IsDir() {
-		return curlPath, nil
-	}
-
-	// 2. Check PATH (covers Homebrew and other package managers)
+	// 1. Check PATH (covers Homebrew and other package managers). Ignore the
+	// result if it happens to resolve to the curl-installer path — we want
+	// step 3 to be the only branch that returns that location.
 	if path, err := exec.LookPath(binaryName); err == nil {
-		return path, nil
+		if resolved, _ := filepath.Abs(path); resolved != curlPath {
+			return path, nil
+		}
 	}
 
-	// 3. Explicit Homebrew fallback paths
-	homebrewPaths := []string{
-		filepath.Join("/opt/homebrew/bin", binaryName),
-		filepath.Join("/usr/local/bin", binaryName),
-		filepath.Join("/home/linuxbrew/.linuxbrew/bin", binaryName),
-	}
-	for _, p := range homebrewPaths {
+	// 2. Explicit Homebrew/Linuxbrew fallback paths, in case PATH was stripped.
+	for _, dir := range daemonHomebrewSearchPaths {
+		p := filepath.Join(dir, binaryName)
 		if info, err := os.Stat(p); err == nil && !info.IsDir() {
 			return p, nil
 		}
 	}
 
-	return "", fmt.Errorf("%s not found at %s, on PATH, or in standard Homebrew locations", binaryName, curlPath)
+	// 3. Curl-installer fallback.
+	if info, err := os.Stat(curlPath); err == nil && !info.IsDir() {
+		return curlPath, nil
+	}
+
+	return "", fmt.Errorf("%s not found on PATH, in standard Homebrew locations, or at %s", binaryName, curlPath)
 }
