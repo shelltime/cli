@@ -42,10 +42,10 @@ func commandDaemonInstall(c *cli.Context) error {
 	// Resolve daemon binary (Homebrew/PATH preferred, curl-installer fallback)
 	daemonBinPath, err := model.ResolveDaemonBinaryPath()
 	if err != nil {
-		color.Yellow.Println("⚠️ shelltime-daemon not found.")
+		color.Red.Println("❌ shelltime-daemon binary not found.")
 		color.Yellow.Println("Install via Homebrew:  brew install shelltime/tap/shelltime")
 		color.Yellow.Println("Or via curl installer: curl -sSL https://shelltime.xyz/i | bash")
-		return nil
+		return fmt.Errorf("shelltime-daemon binary not found: %w", err)
 	}
 	color.Green.Printf("✅ Found daemon binary at: %s\n", daemonBinPath)
 
