@@ -61,16 +61,20 @@ func commandDaemonInstall(c *cli.Context) error {
 		color.Green.Printf("✅ Found daemon binary at: %s\n", daemonBinPath)
 	}
 
-	// If we picked a system-managed binary but a stale curl-installer copy
-	// still lives under ~/.shelltime/bin, remove it so future resolution
-	// stays unambiguous.
+	// If we picked a system-managed binary but a curl-installer copy still
+	// lives under ~/.shelltime/bin, rename it to shelltime-daemon.bak rather
+	// than delete it. Future resolution stays unambiguous AND the .bak
+	// recovery branch above can restore it on the next `daemon install` —
+	// no GitHub re-download when the user later clears the system binary.
 	curlDaemonPath := model.GetCurlInstallerDaemonPath()
 	if daemonBinPath != curlDaemonPath {
 		if info, statErr := os.Stat(curlDaemonPath); statErr == nil && !info.IsDir() {
-			if rmErr := os.Remove(curlDaemonPath); rmErr == nil {
-				color.Yellow.Printf("🧹 Removed stale curl-installer daemon at %s\n", curlDaemonPath)
+			preservedPath := curlDaemonPath + ".bak"
+			_ = os.Remove(preservedPath)
+			if rnErr := os.Rename(curlDaemonPath, preservedPath); rnErr == nil {
+				color.Yellow.Printf("📦 Preserved curl-installer daemon as %s (auto-restores on next `daemon install`).\n", preservedPath)
 			} else {
-				color.Yellow.Printf("⚠️ Could not remove stale daemon at %s: %v\n", curlDaemonPath, rmErr)
+				color.Yellow.Printf("⚠️ Could not preserve curl-installer daemon at %s: %v\n", curlDaemonPath, rnErr)
 			}
 		}
 	}
