@@ -39,15 +39,27 @@ func commandDaemonInstall(c *cli.Context) error {
 		}
 	}
 
-	// Resolve daemon binary (Homebrew/PATH preferred, curl-installer fallback)
+	// Resolve daemon binary (Homebrew/PATH preferred, curl-installer fallback).
+	// On miss, try to auto-download a matching daemon archive from GitHub
+	// releases so curl-installer users from before the daemon-bundling fix
+	// don't have to rerun the installer.
 	daemonBinPath, err := model.ResolveDaemonBinaryPath()
 	if err != nil {
-		color.Red.Println("❌ shelltime-daemon binary not found.")
-		color.Yellow.Println("Install via Homebrew:  brew install shelltime/tap/shelltime")
-		color.Yellow.Println("Or via curl installer: curl -sSL https://shelltime.xyz/i | bash")
-		return fmt.Errorf("shelltime-daemon binary not found: %w", err)
+		color.Yellow.Println("⚠️  shelltime-daemon binary not found locally.")
+		cliPath, _ := model.ResolveCLIBinaryPath()
+		color.Yellow.Println("⬇️  Attempting to download matching daemon from GitHub releases...")
+		daemonBinPath, err = model.EnsureDaemonBinary(c.Context, cliPath, commitID)
+		if err != nil {
+			color.Red.Println("❌ shelltime-daemon binary not found and auto-download failed.")
+			color.Yellow.Printf("   reason: %v\n", err)
+			color.Yellow.Println("Install via Homebrew:  brew install shelltime/tap/shelltime")
+			color.Yellow.Println("Or via curl installer: curl -sSL https://shelltime.xyz/i | bash")
+			return fmt.Errorf("shelltime-daemon binary not found: %w", err)
+		}
+		color.Green.Printf("✅ Downloaded daemon binary to: %s\n", daemonBinPath)
+	} else {
+		color.Green.Printf("✅ Found daemon binary at: %s\n", daemonBinPath)
 	}
-	color.Green.Printf("✅ Found daemon binary at: %s\n", daemonBinPath)
 
 	// If we picked a system-managed binary but a stale curl-installer copy
 	// still lives under ~/.shelltime/bin, remove it so future resolution

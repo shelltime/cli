@@ -37,6 +37,13 @@ const (
 	updaterDownloadTimeout = 5 * time.Minute
 )
 
+// Base URLs for GitHub. Exposed as vars so tests can point them at an
+// httptest.Server.
+var (
+	githubAPIBaseURL     = "https://api.github.com"
+	githubReleaseBaseURL = "https://github.com"
+)
+
 // Binary names extracted from release archives.
 var allowedArchiveBinaries = map[string]bool{
 	"shelltime":            true,
@@ -67,7 +74,7 @@ func updaterUserAgent() string {
 
 // FetchLatestVersion calls the GitHub API for the latest stable release tag.
 func FetchLatestVersion(ctx context.Context) (string, error) {
-	url := fmt.Sprintf("https://api.github.com/repos/%s/%s/releases/latest", githubReleasesOwner, githubReleasesRepo)
+	url := fmt.Sprintf("%s/repos/%s/%s/releases/latest", githubAPIBaseURL, githubReleasesOwner, githubReleasesRepo)
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
@@ -135,16 +142,16 @@ func BuildArchiveName(goos, goarch string) (string, error) {
 // BuildDownloadURL returns the direct release-asset URL for a specific tag.
 func BuildDownloadURL(tag, archiveName string) string {
 	return fmt.Sprintf(
-		"https://github.com/%s/%s/releases/download/%s/%s",
-		githubReleasesOwner, githubReleasesRepo, tag, archiveName,
+		"%s/%s/%s/releases/download/%s/%s",
+		githubReleaseBaseURL, githubReleasesOwner, githubReleasesRepo, tag, archiveName,
 	)
 }
 
 // BuildChecksumsURL returns the checksums.txt URL for a specific tag.
 func BuildChecksumsURL(tag string) string {
 	return fmt.Sprintf(
-		"https://github.com/%s/%s/releases/download/%s/checksums.txt",
-		githubReleasesOwner, githubReleasesRepo, tag,
+		"%s/%s/%s/releases/download/%s/checksums.txt",
+		githubReleaseBaseURL, githubReleasesOwner, githubReleasesRepo, tag,
 	)
 }
 
