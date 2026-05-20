@@ -71,9 +71,14 @@ func EnsureDaemonBinary(ctx context.Context, cliBinPath, cliVersion string) (str
 func fetchDaemonToCurlPath(ctx context.Context, tag, archiveName string) (string, error) {
 	downloadURL := BuildDownloadURL(tag, archiveName)
 
-	sum, _, _ := FetchChecksum(ctx, tag, archiveName)
-	// FetchChecksum errors and absent checksums are both non-fatal; we proceed
-	// without verification, matching the `shelltime update` behavior.
+	sum, _, err := FetchChecksum(ctx, tag, archiveName)
+	if err != nil {
+		return "", fmt.Errorf("fetch checksum: %w", err)
+	}
+	// Empty sum (404 / no entry for this archive) is legitimately absent —
+	// proceed without verification. Non-nil errors (5xx, network, MITM) MUST
+	// propagate so an attacker can't silently downgrade us to an unverified
+	// download.
 
 	tmpDir, err := os.MkdirTemp("", "shelltime-daemon-fetch-*")
 	if err != nil {

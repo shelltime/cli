@@ -282,6 +282,42 @@ func TestEnsureDaemon_UsesCliVersionWhenSet(t *testing.T) {
 	assert.Equal(t, "v0.94.5", seenTag.Load())
 }
 
+func TestEnsureDaemon_ChecksumServer5xxAborts(t *testing.T) {
+	home := isolateDaemonFetchEnv(t)
+
+	name, body := makeArchiveWithDaemon(t, true)
+	apiSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.NotFound(w, r)
+	}))
+	t.Cleanup(apiSrv.Close)
+	relSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		parts := strings.Split(strings.Trim(r.URL.Path, "/"), "/")
+		file := parts[len(parts)-1]
+		if file == "checksums.txt" {
+			// Simulate a transient 5xx (or a tampered/blocked checksum
+			// endpoint): the caller must NOT silently downgrade to an
+			// unverified download.
+			http.Error(w, "boom", http.StatusServiceUnavailable)
+			return
+		}
+		if file == name {
+			_, _ = w.Write(body)
+			return
+		}
+		http.NotFound(w, r)
+	}))
+	t.Cleanup(relSrv.Close)
+	pointURLsAt(t, apiSrv.URL, relSrv.URL)
+
+	cliPath := filepath.Join(home, COMMAND_BASE_STORAGE_FOLDER, "bin", "shelltime")
+	_, err := EnsureDaemonBinary(context.Background(), cliPath, "v0.1.83")
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "fetch checksum")
+	// And the binary must not have been written.
+	_, statErr := os.Stat(filepath.Join(home, COMMAND_BASE_STORAGE_FOLDER, "bin", "shelltime-daemon"))
+	assert.True(t, os.IsNotExist(statErr), "daemon binary should not be written on checksum failure")
+}
+
 func TestEnsureDaemon_PrefixesVForUnprefixedVersion(t *testing.T) {
 	assert.Equal(t, "v0.94.5", normalizeDaemonTag("0.94.5"))
 	assert.Equal(t, "v0.94.5", normalizeDaemonTag("v0.94.5"))
