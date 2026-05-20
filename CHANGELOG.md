@@ -1,5 +1,16 @@
 # Changelog
 
+## [0.1.84](https://github.com/shelltime/cli/compare/v0.1.83...v0.1.84) (2026-05-20)
+
+
+### Bug Fixes
+
+* **daemon:** auto-download missing shelltime-daemon binary on install ([99d7f48](https://github.com/shelltime/cli/commit/99d7f484c5f67e15b0abb1845e5d31192952fd5c))
+* **daemon:** auto-download shelltime-daemon when missing on install ([7b71e01](https://github.com/shelltime/cli/commit/7b71e011c019fb56dd2b1e08d1be6e471043c22a))
+* **daemon:** propagate error when daemon binary not found ([5d06025](https://github.com/shelltime/cli/commit/5d06025a31b7051d79f91f4bdf9b5169ae417cf1))
+* **daemon:** propagate error when daemon binary not found on reinstall ([dec5e49](https://github.com/shelltime/cli/commit/dec5e49d4f4c534069568c911caf115fa7fe6f0e))
+* **daemon:** propagate FetchChecksum errors during auto-download ([ca9a087](https://github.com/shelltime/cli/commit/ca9a087d1063dd43918b4652ec0d42348ee47967))
+
 ## [0.1.83](https://github.com/shelltime/cli/compare/v0.1.82...v0.1.83) (2026-05-17)
 
 
