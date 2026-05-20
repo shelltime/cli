@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.1.85](https://github.com/shelltime/cli/compare/v0.1.84...v0.1.85) (2026-05-20)
+
+
+### Bug Fixes
+
+* **daemon:** preserve curl-installer daemon as .bak instead of deleting ([7b5eecd](https://github.com/shelltime/cli/commit/7b5eecd080461a199198acb4d400a8a723824682))
+* **daemon:** preserve curl-installer daemon as .bak instead of deleting ([c925450](https://github.com/shelltime/cli/commit/c9254500f2ccb6fd0c9a095f05c2722888fe1e63))
+
 ## [0.1.84](https://github.com/shelltime/cli/compare/v0.1.83...v0.1.84) (2026-05-20)
 
 
