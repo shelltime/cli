@@ -82,6 +82,19 @@ func main() {
 	model.InjectVar(version)
 	cmdService := model.NewCommandService()
 
+	// When the bolt storage engine is enabled, the daemon owns the bolt-backed
+	// command store for its lifetime (bbolt holds an exclusive file lock).
+	if cfg.Storage != nil && cfg.Storage.Engine == model.StorageEngineBolt {
+		store, err := model.NewCommandStore(cfg)
+		if err != nil {
+			slog.Error("Failed to open bolt command store", slog.Any("err", err))
+		} else {
+			daemon.InitCommandStore(store)
+			defer store.Close()
+			slog.Info("Bolt command store initialized")
+		}
+	}
+
 	pubsub := daemon.NewGoChannel(daemon.PubSubConfig{}, watermill.NewSlogLogger(slog.Default()))
 	msg, err := pubsub.Subscribe(context.Background(), daemon.PubSubTopic)
 

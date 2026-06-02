@@ -24,6 +24,10 @@ func SocketTopicProcessor(messages <-chan *message.Message) {
 		switch socketMsg.Type {
 		case SocketMessageTypeSync:
 			err = handlePubSubSync(ctx, socketMsg.Payload)
+		case SocketMessageTypeTrackPre:
+			err = handlePubSubTrackPre(ctx, socketMsg.Payload)
+		case SocketMessageTypeTrackPost:
+			err = handlePubSubTrackPost(ctx, socketMsg.Payload)
 		case SocketMessageTypeHeartbeat:
 			err = handlePubSubHeartbeat(ctx, socketMsg.Payload)
 		default:

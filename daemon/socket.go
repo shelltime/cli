@@ -23,7 +23,19 @@ const (
 	SocketMessageTypeStatus         SocketMessageType = "status"
 	SocketMessageTypeCCInfo         SocketMessageType = "cc_info"
 	SocketMessageTypeSessionProject SocketMessageType = "session_project"
+	// SocketMessageTypeTrackPre / TrackPost carry a single raw command event the
+	// daemon persists to its bolt-backed CommandStore (used when the bolt storage
+	// engine is enabled).
+	SocketMessageTypeTrackPre  SocketMessageType = "track_pre"
+	SocketMessageTypeTrackPost SocketMessageType = "track_post"
 )
+
+// TrackEventPayload is the payload for track_pre / track_post messages: a single
+// command plus the recording time stamped by the CLI.
+type TrackEventPayload struct {
+	Command           model.Command `json:"command"`
+	RecordingTimeNano int64         `json:"recordingTimeNano"`
+}
 
 type SessionProjectRequest struct {
 	SessionID   string `json:"sessionId"`
@@ -163,6 +175,16 @@ func (p *SocketHandler) handleConnection(conn net.Conn) {
 		chMsg := message.NewMessage(watermill.NewUUID(), buf)
 		if err := p.channel.Publish(PubSubTopic, chMsg); err != nil {
 			slog.Error("Error to publish topic", slog.Any("err", err))
+		}
+	case SocketMessageTypeTrackPre, SocketMessageTypeTrackPost:
+		buf, err := json.Marshal(msg)
+		if err != nil {
+			slog.Error("Error encoding track message", slog.Any("err", err))
+			return
+		}
+		chMsg := message.NewMessage(watermill.NewUUID(), buf)
+		if err := p.channel.Publish(PubSubTopic, chMsg); err != nil {
+			slog.Error("Error publishing track topic", slog.Any("err", err))
 		}
 	case SocketMessageTypeHeartbeat:
 		// Only process heartbeat if codeTracking is enabled

@@ -47,7 +47,7 @@ func (s *fileStore) SavePost(ctx context.Context, cmd Command, result int, recor
 	return s.appendLine(GetPostCommandFilePath(), cmd, recordingTime)
 }
 
-func (s *fileStore) GetPreTree(ctx context.Context) (preCommandTree, error) {
+func (s *fileStore) GetPreTree(ctx context.Context) (map[string][]*Command, error) {
 	return GetPreCommandsTree(ctx)
 }
 

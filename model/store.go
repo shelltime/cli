@@ -26,7 +26,7 @@ type CommandStore interface {
 
 	// GetPreTree returns pre commands indexed by their unique key, used to pair
 	// post commands with the originating pre command during sync.
-	GetPreTree(ctx context.Context) (preCommandTree, error)
+	GetPreTree(ctx context.Context) (map[string][]*Command, error)
 	// GetPreCommands returns all pre commands (used by compaction).
 	GetPreCommands(ctx context.Context) ([]*Command, error)
 	// GetPostCommands returns all post commands with RecordingTime populated.

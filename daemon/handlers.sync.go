@@ -34,6 +34,13 @@ func handlePubSubSync(ctx context.Context, socketMsgPayload interface{}) error {
 		return err
 	}
 
+	return sendTrackArgsToServer(ctx, syncMsg)
+}
+
+// sendTrackArgsToServer enriches a tracking payload (terminal resolution, daemon
+// source, optional encryption) and sends it to the server, recording circuit
+// breaker state. It is shared by the sync handler and the bolt track handler.
+func sendTrackArgsToServer(ctx context.Context, syncMsg model.PostTrackArgs) error {
 	// Resolve terminal from PPID (use first data item's PPID)
 	if len(syncMsg.Data) > 0 && syncMsg.Data[0].PPID > 0 {
 		terminal, multiplexer := ResolveTerminal(syncMsg.Data[0].PPID)

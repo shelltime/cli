@@ -113,12 +113,12 @@ func (s *boltStore) SavePost(ctx context.Context, cmd Command, result int, recor
 	return s.put(archivedBucket, cmd, recordingTime)
 }
 
-func (s *boltStore) GetPreTree(ctx context.Context) (preCommandTree, error) {
+func (s *boltStore) GetPreTree(ctx context.Context) (map[string][]*Command, error) {
 	cmds, err := s.all(activeBucket)
 	if err != nil {
 		return nil, err
 	}
-	tree := make(preCommandTree)
+	tree := make(map[string][]*Command)
 	for _, cmd := range cmds {
 		key := cmd.GetUniqueKey()
 		tree[key] = append(tree[key], cmd)
