@@ -63,11 +63,6 @@ func commandTrack(c *cli.Context) error {
 	SetupLogger(os.ExpandEnv("$HOME/" + model.COMMAND_BASE_STORAGE_FOLDER))
 
 	slog.Debug("track command args", slog.String("first", c.Args().First()))
-	config, err := configService.ReadConfigFile(ctx)
-	if err != nil {
-		slog.Error("failed to read config file", slog.Any("err", err))
-		return err
-	}
 
 	hostname, err := os.Hostname()
 	if err != nil {
@@ -95,31 +90,38 @@ func commandTrack(c *cli.Context) error {
 		PPID:      ppid,
 	}
 
+	// Fast path: `track` runs inside the shell hook on every command, so it must
+	// stay cheap. A fresh `shelltime track` process is spawned per command, which
+	// means the in-memory config cache never helps and reading the config would add
+	// two TOML file reads to every command. Instead, if a daemon is listening on the
+	// default socket, hand it the raw event (fire-and-forget) and return. The daemon
+	// is a long-lived process: it reads config once (cached) and owns the
+	// storage-engine decision (bolt vs txt), exclude filtering, sync and pruning.
+	if daemon.IsSocketReady(ctx, model.DefaultSocketPath) {
+		return sendTrackEventToDaemon(ctx, span, model.DefaultSocketPath, cmdPhase, instance, result)
+	}
+
+	// Slow path: no daemon on the default socket. We can now afford to read config —
+	// it may point at a custom socket path, and it carries the exclude rules and the
+	// settings the direct (daemon-less) sync needs.
+	config, err := configService.ReadConfigFile(ctx)
+	if err != nil {
+		slog.Error("failed to read config file", slog.Any("err", err))
+		return err
+	}
+
 	// Check if command should be excluded
 	if model.ShouldExcludeCommand(cmdCommand, config.Exclude) {
 		slog.Debug("Command excluded by pattern", slog.String("command", cmdCommand))
 		return nil
 	}
 
-	// When the bolt storage engine is enabled and the daemon is up, hand the raw
-	// command event to the daemon (fire-and-forget) and let it own persistence,
-	// sync, and pruning. This keeps the hook fast and avoids the CLI ever opening
-	// the daemon-locked bolt DB. Otherwise fall back to the txt file store.
-	useBolt := config.Storage != nil && config.Storage.Engine == model.StorageEngineBolt
-	if useBolt && daemon.IsSocketReady(ctx, config.SocketPath) {
-		now := time.Now()
-		switch cmdPhase {
-		case "pre":
-			span.SetAttributes(attribute.Int("phase", 0))
-			return daemon.SendTrackEvent(ctx, config.SocketPath, daemon.SocketMessageTypeTrackPre, *instance, now)
-		case "post":
-			span.SetAttributes(attribute.Int("phase", 1))
-			instance.Result = result
-			return daemon.SendTrackEvent(ctx, config.SocketPath, daemon.SocketMessageTypeTrackPost, *instance, now)
-		}
-		return nil
+	// A daemon may still be listening on a non-default socket path.
+	if config.SocketPath != model.DefaultSocketPath && daemon.IsSocketReady(ctx, config.SocketPath) {
+		return sendTrackEventToDaemon(ctx, span, config.SocketPath, cmdPhase, instance, result)
 	}
 
+	// No daemon at all: persist to the local txt store and sync directly over HTTP.
 	if cmdPhase == "pre" {
 		span.SetAttributes(attribute.Int("phase", 0))
 		err = instance.DoSavePre()
@@ -138,6 +140,22 @@ func commandTrack(c *cli.Context) error {
 			isDryRun:    false,
 			isForceSync: false,
 		})
+	}
+	return nil
+}
+
+// sendTrackEventToDaemon forwards a single raw pre/post command event to the
+// daemon. The daemon owns persistence, exclude filtering, sync and pruning.
+func sendTrackEventToDaemon(ctx context.Context, span trace.Span, socketPath, cmdPhase string, instance *model.Command, result int) error {
+	now := time.Now()
+	switch cmdPhase {
+	case "pre":
+		span.SetAttributes(attribute.Int("phase", 0))
+		return daemon.SendTrackEvent(ctx, socketPath, daemon.SocketMessageTypeTrackPre, *instance, now)
+	case "post":
+		span.SetAttributes(attribute.Int("phase", 1))
+		instance.Result = result
+		return daemon.SendTrackEvent(ctx, socketPath, daemon.SocketMessageTypeTrackPost, *instance, now)
 	}
 	return nil
 }

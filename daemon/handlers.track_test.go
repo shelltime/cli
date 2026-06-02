@@ -85,18 +85,23 @@ func (f fakeConfigService) ReadConfigFile(ctx context.Context, opts ...model.Rea
 
 type TrackHandlerTestSuite struct {
 	suite.Suite
-	prevStore  model.CommandStore
-	prevConfig model.ConfigService
+	prevStore    model.CommandStore
+	prevConfig   model.ConfigService
+	prevFallback func() model.CommandStore
 }
 
 func (s *TrackHandlerTestSuite) SetupTest() {
 	s.prevStore = commandStore
 	s.prevConfig = stConfig
+	s.prevFallback = newFallbackStore
+	// pre/post handlers now read config (exclude rules); give every test a default.
+	stConfig = fakeConfigService{}
 }
 
 func (s *TrackHandlerTestSuite) TearDownTest() {
 	commandStore = s.prevStore
 	stConfig = s.prevConfig
+	newFallbackStore = s.prevFallback
 }
 
 func (s *TrackHandlerTestSuite) TestParseTrackEvent() {
@@ -111,10 +116,33 @@ func (s *TrackHandlerTestSuite) TestParseTrackEvent() {
 	assert.Equal(s.T(), now.UnixNano(), rt.UnixNano())
 }
 
-func (s *TrackHandlerTestSuite) TestTrackPreNoStore() {
+func (s *TrackHandlerTestSuite) TestTrackPreFallsBackToFileStore() {
+	// bolt disabled (commandStore nil) => persist via the fallback store.
 	commandStore = nil
-	err := handlePubSubTrackPre(context.Background(), TrackEventPayload{})
-	assert.ErrorIs(s.T(), err, errNoCommandStore)
+	fallback := &fakeCommandStore{}
+	newFallbackStore = func() model.CommandStore { return fallback }
+
+	now := time.Now()
+	payload := TrackEventPayload{
+		Command:           model.Command{Shell: "bash", SessionID: 1, Command: "ls", Username: "u"},
+		RecordingTimeNano: now.UnixNano(),
+	}
+	require.NoError(s.T(), handlePubSubTrackPre(context.Background(), payload))
+	require.Len(s.T(), fallback.pre, 1)
+	assert.Equal(s.T(), "ls", fallback.pre[0].Command)
+}
+
+func (s *TrackHandlerTestSuite) TestTrackPreExcluded() {
+	store := &fakeCommandStore{}
+	commandStore = store
+	stConfig = fakeConfigService{cfg: model.ShellTimeConfig{Exclude: []string{"secret*"}}}
+
+	payload := TrackEventPayload{
+		Command:           model.Command{Shell: "bash", SessionID: 1, Command: "secret-cmd", Username: "u"},
+		RecordingTimeNano: time.Now().UnixNano(),
+	}
+	require.NoError(s.T(), handlePubSubTrackPre(context.Background(), payload))
+	assert.Empty(s.T(), store.pre, "excluded command must not be persisted")
 }
 
 func (s *TrackHandlerTestSuite) TestTrackPrePersists() {
@@ -178,10 +206,42 @@ func (s *TrackHandlerTestSuite) TestTrackPostFlushSyncsAndPrunes() {
 	assert.Equal(s.T(), 1, store.pruneCalls)
 }
 
-func (s *TrackHandlerTestSuite) TestTrackPostNoStore() {
+func (s *TrackHandlerTestSuite) TestTrackPostFallsBackToFileStore() {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusNoContent)
+	}))
+	defer server.Close()
+
+	// bolt disabled (commandStore nil) => persist + sync via the fallback store.
 	commandStore = nil
-	err := handlePubSubTrackPost(context.Background(), TrackEventPayload{})
-	assert.ErrorIs(s.T(), err, errNoCommandStore)
+	fallback := &fakeCommandStore{noCursorExist: true}
+	newFallbackStore = func() model.CommandStore { return fallback }
+	stConfig = fakeConfigService{cfg: model.ShellTimeConfig{Token: "t", APIEndpoint: server.URL, FlushCount: 1}}
+
+	now := time.Now()
+	cmd := model.Command{Shell: "bash", SessionID: 1, Command: "ls", Username: "u", Time: now}
+	require.NoError(s.T(), fallback.SavePre(context.Background(), cmd, now))
+
+	payload := TrackEventPayload{Command: cmd, RecordingTimeNano: now.UnixNano()}
+	require.NoError(s.T(), handlePubSubTrackPost(context.Background(), payload))
+
+	assert.Len(s.T(), fallback.post, 1)
+	assert.Equal(s.T(), 1, fallback.cursorSetCalls)
+	assert.Equal(s.T(), 1, fallback.pruneCalls)
+}
+
+func (s *TrackHandlerTestSuite) TestTrackPostExcluded() {
+	store := &fakeCommandStore{}
+	commandStore = store
+	stConfig = fakeConfigService{cfg: model.ShellTimeConfig{Exclude: []string{"secret*"}}}
+
+	payload := TrackEventPayload{
+		Command:           model.Command{Shell: "bash", SessionID: 1, Command: "secret-cmd", Username: "u"},
+		RecordingTimeNano: time.Now().UnixNano(),
+	}
+	require.NoError(s.T(), handlePubSubTrackPost(context.Background(), payload))
+	assert.Empty(s.T(), store.post, "excluded command must not be persisted")
+	assert.Equal(s.T(), 0, store.cursorSetCalls)
 }
 
 func (s *TrackHandlerTestSuite) TestTrackPreParseError() {
