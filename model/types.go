@@ -97,9 +97,21 @@ type ShellTimeConfig struct {
 	// LogCleanup configuration for automatic log file cleanup in daemon
 	LogCleanup *LogCleanup `toml:"logCleanup" yaml:"logCleanup" json:"logCleanup"`
 
+	// Storage selects the local command buffering backend. When unset the
+	// always-available txt file store is used.
+	Storage *StorageConfig `toml:"storage" yaml:"storage,omitempty" json:"storage,omitempty"`
+
 	// SocketPath is the path to the Unix domain socket used for communication
 	// between the CLI and the daemon.
 	SocketPath string `toml:"socketPath" yaml:"socketPath" json:"socketPath"`
+}
+
+// StorageConfig selects which CommandStore backend buffers tracked commands
+// before they sync to the server.
+type StorageConfig struct {
+	// Engine is "file" (default) or "bolt". The bolt engine is daemon-owned;
+	// see CommandStore for details.
+	Engine string `toml:"engine" yaml:"engine" json:"engine"`
 }
 
 var DefaultAIConfig = &AIConfig{
