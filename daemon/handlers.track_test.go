@@ -2,6 +2,8 @@ package daemon
 
 import (
 	"context"
+	"net/http"
+	"net/http/httptest"
 	"testing"
 	"time"
 
@@ -151,6 +153,35 @@ func (s *TrackHandlerTestSuite) TestTrackPostNotEnoughToFlush() {
 	assert.Len(s.T(), store.post, 1, "post should still be persisted")
 	assert.Equal(s.T(), 0, store.cursorSetCalls, "cursor must not advance below flush threshold")
 	assert.Equal(s.T(), 0, store.pruneCalls)
+}
+
+func (s *TrackHandlerTestSuite) TestTrackPostFlushSyncsAndPrunes() {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusNoContent)
+	}))
+	defer server.Close()
+
+	store := &fakeCommandStore{noCursorExist: true}
+	commandStore = store
+	stConfig = fakeConfigService{cfg: model.ShellTimeConfig{Token: "t", APIEndpoint: server.URL, FlushCount: 1}}
+
+	now := time.Now()
+	cmd := model.Command{Shell: "bash", SessionID: 1, Command: "ls", Username: "u", Time: now}
+	require.NoError(s.T(), store.SavePre(context.Background(), cmd, now))
+
+	payload := TrackEventPayload{Command: cmd, RecordingTimeNano: now.UnixNano()}
+	require.NoError(s.T(), handlePubSubTrackPost(context.Background(), payload))
+
+	// flush threshold met (no cursor yet) => sent, cursor advanced, pruned
+	assert.Len(s.T(), store.post, 1)
+	assert.Equal(s.T(), 1, store.cursorSetCalls)
+	assert.Equal(s.T(), 1, store.pruneCalls)
+}
+
+func (s *TrackHandlerTestSuite) TestTrackPostNoStore() {
+	commandStore = nil
+	err := handlePubSubTrackPost(context.Background(), TrackEventPayload{})
+	assert.ErrorIs(s.T(), err, errNoCommandStore)
 }
 
 func TestTrackHandlerSuite(t *testing.T) {
