@@ -184,6 +184,19 @@ func (s *TrackHandlerTestSuite) TestTrackPostNoStore() {
 	assert.ErrorIs(s.T(), err, errNoCommandStore)
 }
 
+func (s *TrackHandlerTestSuite) TestTrackPreParseError() {
+	commandStore = &fakeCommandStore{}
+	// a channel cannot be JSON-marshaled, so parseTrackEvent fails
+	err := handlePubSubTrackPre(context.Background(), make(chan int))
+	assert.Error(s.T(), err)
+}
+
+func (s *TrackHandlerTestSuite) TestTrackPostParseError() {
+	commandStore = &fakeCommandStore{}
+	err := handlePubSubTrackPost(context.Background(), make(chan int))
+	assert.Error(s.T(), err)
+}
+
 func TestTrackHandlerSuite(t *testing.T) {
 	suite.Run(t, new(TrackHandlerTestSuite))
 }
