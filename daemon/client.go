@@ -103,6 +103,29 @@ func SendSessionProject(socketPath string, sessionID, projectPath string) {
 	json.NewEncoder(conn).Encode(msg)
 }
 
+// RequestListCommands asks the daemon for the locally buffered commands (used
+// by `shelltime ls` in bolt mode, since the CLI can't open the locked DB).
+func RequestListCommands(socketPath string, timeout time.Duration) (*ListCommandsResponse, error) {
+	conn, err := net.DialTimeout("unix", socketPath, timeout)
+	if err != nil {
+		return nil, err
+	}
+	defer conn.Close()
+
+	conn.SetDeadline(time.Now().Add(timeout))
+
+	msg := SocketMessage{Type: SocketMessageTypeListCommands}
+	if err := json.NewEncoder(conn).Encode(msg); err != nil {
+		return nil, err
+	}
+
+	var response ListCommandsResponse
+	if err := json.NewDecoder(conn).Decode(&response); err != nil {
+		return nil, err
+	}
+	return &response, nil
+}
+
 // RequestCCInfo requests CC info (cost data and git info) from the daemon
 func RequestCCInfo(socketPath string, timeRange CCInfoTimeRange, workingDir string, timeout time.Duration) (*CCInfoResponse, error) {
 	conn, err := net.DialTimeout("unix", socketPath, timeout)
