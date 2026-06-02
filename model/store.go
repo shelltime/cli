@@ -52,6 +52,13 @@ const StorageEngineFile = "file"
 // StorageEngineBolt selects the bbolt backend (daemon-owned).
 const StorageEngineBolt = "bolt"
 
+// NewFileStore returns the txt-file backed store. The CLI uses this for the
+// fallback path (bolt disabled or no daemon) and must never open the bolt DB
+// directly, since the daemon holds its exclusive lock.
+func NewFileStore() CommandStore {
+	return newFileStore()
+}
+
 // NewCommandStore builds the store selected by config. It falls back to the
 // file store for any unknown / empty engine so misconfiguration never loses data.
 //
