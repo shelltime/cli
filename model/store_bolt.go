@@ -65,6 +65,9 @@ func encodeKey(recordingTime time.Time, seq uint64) []byte {
 }
 
 func decodeKeyNano(key []byte) int64 {
+	if len(key) < 8 {
+		return 0
+	}
 	return int64(binary.BigEndian.Uint64(key[0:8]))
 }
 
@@ -75,6 +78,9 @@ func (s *boltStore) put(bucket string, cmd Command, recordingTime time.Time) err
 	}
 	return s.db.Update(func(tx *bolt.Tx) error {
 		b := tx.Bucket([]byte(bucket))
+		if b == nil {
+			return fmt.Errorf("bucket %s not found", bucket)
+		}
 		seq, err := b.NextSequence()
 		if err != nil {
 			return err
@@ -87,6 +93,9 @@ func (s *boltStore) all(bucket string) ([]*Command, error) {
 	result := make([]*Command, 0)
 	err := s.db.View(func(tx *bolt.Tx) error {
 		b := tx.Bucket([]byte(bucket))
+		if b == nil {
+			return fmt.Errorf("bucket %s not found", bucket)
+		}
 		return b.ForEach(func(k, v []byte) error {
 			cmd := new(Command)
 			if err := json.Unmarshal(v, cmd); err != nil {
@@ -136,7 +145,11 @@ func (s *boltStore) GetPostCommands(ctx context.Context) ([]*Command, error) {
 
 func (s *boltStore) GetLastCursor(ctx context.Context) (cursorTime time.Time, noCursorExist bool, err error) {
 	err = s.db.View(func(tx *bolt.Tx) error {
-		v := tx.Bucket([]byte(metaBucket)).Get([]byte(cursorKey))
+		b := tx.Bucket([]byte(metaBucket))
+		if b == nil {
+			return fmt.Errorf("bucket %s not found", metaBucket)
+		}
+		v := b.Get([]byte(cursorKey))
 		if v == nil {
 			noCursorExist = true
 			cursorTime = time.Time{}
@@ -152,24 +165,40 @@ func (s *boltStore) SetCursor(ctx context.Context, cursor time.Time) error {
 	buf := make([]byte, 8)
 	binary.BigEndian.PutUint64(buf, uint64(cursor.UnixNano()))
 	return s.db.Update(func(tx *bolt.Tx) error {
-		return tx.Bucket([]byte(metaBucket)).Put([]byte(cursorKey), buf)
+		b := tx.Bucket([]byte(metaBucket))
+		if b == nil {
+			return fmt.Errorf("bucket %s not found", metaBucket)
+		}
+		return b.Put([]byte(cursorKey), buf)
 	})
 }
 
 // Prune deletes synced post commands (recording time <= cursor) and the pre
-// commands that have a matching post. Unfinished pre commands are kept, matching
-// the historical gc behavior.
+// commands they complete, keeping unfinished pre commands. It runs in a single
+// write transaction so the post set is consistent with the deletions.
 func (s *boltStore) Prune(ctx context.Context, cursor time.Time) error {
-	postCommands, err := s.GetPostCommands(ctx)
-	if err != nil {
-		return err
-	}
 	cursorNano := cursor.UnixNano()
 
 	return s.db.Update(func(tx *bolt.Tx) error {
 		archived := tx.Bucket([]byte(archivedBucket))
+		if archived == nil {
+			return fmt.Errorf("bucket %s not found", archivedBucket)
+		}
+		active := tx.Bucket([]byte(activeBucket))
+		if active == nil {
+			return fmt.Errorf("bucket %s not found", activeBucket)
+		}
+
+		// Single pass over archived: collect all post commands (for matching) and
+		// the synced keys to delete.
+		var postCommands []*Command
 		var delArchived [][]byte
 		if err := archived.ForEach(func(k, v []byte) error {
+			cmd := new(Command)
+			if err := json.Unmarshal(v, cmd); err == nil {
+				cmd.RecordingTime = time.Unix(0, decodeKeyNano(k))
+				postCommands = append(postCommands, cmd)
+			}
 			if decodeKeyNano(k) <= cursorNano {
 				delArchived = append(delArchived, append([]byte(nil), k...))
 			}
@@ -177,31 +206,31 @@ func (s *boltStore) Prune(ctx context.Context, cursor time.Time) error {
 		}); err != nil {
 			return err
 		}
-		for _, k := range delArchived {
-			if err := archived.Delete(k); err != nil {
-				return err
-			}
-		}
 
-		active := tx.Bucket([]byte(activeBucket))
+		// Drop pre rows at/before the cursor that a synced post completes.
 		var delActive [][]byte
 		if err := active.ForEach(func(k, v []byte) error {
 			nano := decodeKeyNano(k)
 			if nano > cursorNano {
 				return nil // keep anything newer than the cursor
 			}
-			cmd := new(Command)
-			if err := json.Unmarshal(v, cmd); err != nil {
+			pre := new(Command)
+			if err := json.Unmarshal(v, pre); err != nil {
 				return nil
 			}
-			cmd.RecordingTime = time.Unix(0, nano)
-			closest := cmd.FindClosestCommand(postCommands, true)
-			if closest != nil && !closest.IsNil() {
+			pre.RecordingTime = time.Unix(0, nano)
+			if preHasSyncedPost(pre, postCommands, cursor) {
 				delActive = append(delActive, append([]byte(nil), k...))
 			}
 			return nil
 		}); err != nil {
 			return err
+		}
+
+		for _, k := range delArchived {
+			if err := archived.Delete(k); err != nil {
+				return err
+			}
 		}
 		for _, k := range delActive {
 			if err := active.Delete(k); err != nil {

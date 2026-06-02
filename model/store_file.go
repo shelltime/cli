@@ -120,9 +120,8 @@ func (s *fileStore) Prune(ctx context.Context, cursor time.Time) error {
 			newPre = append(newPre, row)
 			continue
 		}
-		// keep pre commands that never got a matching post (unfinished)
-		closest := row.FindClosestCommand(postCommands, true)
-		if closest == nil || closest.IsNil() {
+		// keep pre commands that no synced post completes (unfinished)
+		if !preHasSyncedPost(row, postCommands, cursor) {
 			newPre = append(newPre, row)
 		}
 	}

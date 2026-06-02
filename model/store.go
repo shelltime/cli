@@ -78,3 +78,33 @@ func NewCommandStore(cfg ShellTimeConfig) (CommandStore, error) {
 		return newFileStore(), nil
 	}
 }
+
+// preHasSyncedPost reports whether posts contains a synced post command (recording
+// time at or before cursor) that completes the given pre command: same unique key
+// and running at or after the pre started. Prune uses it to drop finished, synced
+// pre rows while keeping unfinished ones.
+//
+// Note the direction: a post always runs after its pre, so matching must be
+// post.Time >= pre.Time. (Command.FindClosestCommand only accepts candidates at or
+// before the receiver, so calling it on the pre would never match its later post.)
+func preHasSyncedPost(pre *Command, posts []*Command, cursor time.Time) bool {
+	if pre == nil {
+		return false
+	}
+	key := pre.GetUniqueKey()
+	for _, p := range posts {
+		if p == nil {
+			continue
+		}
+		if p.RecordingTime.After(cursor) {
+			continue // post not yet synced; keep the pre for the next sync
+		}
+		if p.GetUniqueKey() != key {
+			continue
+		}
+		if !p.Time.Before(pre.Time) {
+			return true
+		}
+	}
+	return false
+}

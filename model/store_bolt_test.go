@@ -139,6 +139,30 @@ func (s *BoltStoreTestSuite) TestPrune() {
 	s.Equal("later", post[0].Command)
 }
 
+func (s *BoltStoreTestSuite) TestPruneRealisticTiming() {
+	// A normal command: post runs AFTER pre. Once synced (<= cursor) both must be
+	// pruned, otherwise the active bucket grows unbounded.
+	start := time.Now()
+	end := start.Add(2 * time.Second)
+	cmd := s.newCmd("npm test", start)
+
+	s.Require().NoError(s.store.SavePre(s.ctx, cmd, start))
+	post := cmd
+	post.Time = end
+	s.Require().NoError(s.store.SavePost(s.ctx, post, 0, end))
+
+	// cursor at/after the post recording time => both are synced
+	s.Require().NoError(s.store.Prune(s.ctx, end))
+
+	pre, err := s.store.GetPreCommands(s.ctx)
+	s.Require().NoError(err)
+	s.Empty(pre, "synced pre command must be pruned even though post.Time > pre.Time")
+
+	postCmds, err := s.store.GetPostCommands(s.ctx)
+	s.Require().NoError(err)
+	s.Empty(postCmds)
+}
+
 func TestBoltStoreSuite(t *testing.T) {
 	suite.Run(t, new(BoltStoreTestSuite))
 }
