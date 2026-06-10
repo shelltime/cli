@@ -4,12 +4,12 @@ package commands
 import (
 	"encoding/json"
 	"fmt"
-	"log/slog"
 	"os"
 	"strconv"
 	"time"
 
 	"github.com/gookit/color"
+	"github.com/malamtime/cli/daemon"
 	"github.com/malamtime/cli/model"
 	"github.com/olekukonko/tablewriter"
 	"github.com/urfave/cli/v2"
@@ -54,66 +54,26 @@ func commandList(c *cli.Context) error {
 		color.Yellow.Println("⚠️ Note: Local data will be cleaned periodically for performance and disk efficiency. To view all of your commands, please run 'shelltime web'")
 	}
 
-	// Get post commands
-	postFileContent, _, err := model.GetPostCommands(ctx)
+	config, err := configService.ReadConfigFile(ctx)
 	if err != nil {
 		return err
 	}
 
-	// Get pre commands tree for reference
-	preFileTree, err := model.GetPreCommandsTree(ctx)
-	if err != nil {
-		return err
-	}
-
-	// Process commands
-	var commands []struct {
-		Command   string    `json:"command"`
-		Shell     string    `json:"shell"`
-		StartTime time.Time `json:"start_time"`
-		EndTime   time.Time `json:"end_time"`
-		Result    int       `json:"result"`
-		Username  string    `json:"username"`
-		Hostname  string    `json:"hostname"`
-	}
-
-	for _, line := range postFileContent {
-		postCommand := new(model.Command)
-		_, err := postCommand.FromLineBytes(line)
+	// In bolt mode the daemon owns the (exclusively locked) DB, so query it over
+	// the socket. Otherwise read the txt file store directly.
+	var commands []model.ListedCommand
+	useBolt := config.Storage != nil && config.Storage.Engine == model.StorageEngineBolt
+	if useBolt && daemon.IsSocketReady(ctx, config.SocketPath) {
+		resp, err := daemon.RequestListCommands(config.SocketPath, 2*time.Second)
 		if err != nil {
-			slog.Error("Failed to parse post command", slog.Any("err", err), slog.String("line", string(line)))
-			continue
+			return err
 		}
-
-		key := postCommand.GetUniqueKey()
-		preCommands, ok := preFileTree[key]
-		if !ok {
-			continue
+		commands = resp.Commands
+	} else {
+		commands, err = model.BuildListedCommands(ctx, model.NewFileStore())
+		if err != nil {
+			return err
 		}
-
-		closestPreCommand := postCommand.FindClosestCommand(preCommands, false)
-		startTime := postCommand.Time
-		if closestPreCommand != nil {
-			startTime = closestPreCommand.Time
-		}
-
-		commands = append(commands, struct {
-			Command   string    `json:"command"`
-			Shell     string    `json:"shell"`
-			StartTime time.Time `json:"start_time"`
-			EndTime   time.Time `json:"end_time"`
-			Result    int       `json:"result"`
-			Username  string    `json:"username"`
-			Hostname  string    `json:"hostname"`
-		}{
-			Command:   postCommand.Command,
-			Shell:     postCommand.Shell,
-			StartTime: startTime,
-			EndTime:   postCommand.Time,
-			Result:    postCommand.Result,
-			Username:  postCommand.Username,
-			Hostname:  postCommand.Hostname,
-		})
 	}
 
 	// Output based on format
@@ -132,15 +92,7 @@ func outputJSON(commands interface{}) error {
 	return nil
 }
 
-func outputTable(commands []struct {
-	Command   string    `json:"command"`
-	Shell     string    `json:"shell"`
-	StartTime time.Time `json:"start_time"`
-	EndTime   time.Time `json:"end_time"`
-	Result    int       `json:"result"`
-	Username  string    `json:"username"`
-	Hostname  string    `json:"hostname"`
-}) error {
+func outputTable(commands []model.ListedCommand) error {
 	w := tablewriter.NewWriter(os.Stdout)
 	w.Header([]string{"COMMAND", "SHELL", "START TIME", "END TIME", "DURATION(ms)", "STATUS", "USER", "HOST"})
 

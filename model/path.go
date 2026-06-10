@@ -79,6 +79,11 @@ func GetCursorFilePath() string {
 	return GetStoragePath("commands", "cursor.txt")
 }
 
+// GetBoltDBPath returns the path to the bbolt command database (daemon-owned).
+func GetBoltDBPath() string {
+	return GetStoragePath("commands", "commands.db")
+}
+
 // GetHeartbeatLogFilePath returns the path to the heartbeat log file
 func GetHeartbeatLogFilePath() string {
 	return GetStoragePath("coding-heartbeat.data.log")

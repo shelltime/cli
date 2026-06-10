@@ -51,6 +51,39 @@ func SendLocalDataToSocket(
 	return nil
 }
 
+// SendTrackEvent sends a single raw command event (pre or post) to the daemon
+// for persistence in its bolt store. Fire-and-forget, mirroring the latency
+// profile of the txt-file append it replaces.
+func SendTrackEvent(
+	ctx context.Context,
+	socketPath string,
+	msgType SocketMessageType,
+	cmd model.Command,
+	recordingTime time.Time,
+) error {
+	conn, err := net.Dial("unix", socketPath)
+	if err != nil {
+		return err
+	}
+	defer conn.Close()
+
+	data := SocketMessage{
+		Type: msgType,
+		Payload: TrackEventPayload{
+			Command:           cmd,
+			RecordingTimeNano: recordingTime.UnixNano(),
+		},
+	}
+
+	encoded, err := json.Marshal(data)
+	if err != nil {
+		return err
+	}
+
+	_, err = conn.Write(encoded)
+	return err
+}
+
 // SendSessionProject sends a session-to-project mapping to the daemon (fire-and-forget)
 func SendSessionProject(socketPath string, sessionID, projectPath string) {
 	conn, err := net.DialTimeout("unix", socketPath, 10*time.Millisecond)
@@ -68,6 +101,29 @@ func SendSessionProject(socketPath string, sessionID, projectPath string) {
 	}
 
 	json.NewEncoder(conn).Encode(msg)
+}
+
+// RequestListCommands asks the daemon for the locally buffered commands (used
+// by `shelltime ls` in bolt mode, since the CLI can't open the locked DB).
+func RequestListCommands(socketPath string, timeout time.Duration) (*ListCommandsResponse, error) {
+	conn, err := net.DialTimeout("unix", socketPath, timeout)
+	if err != nil {
+		return nil, err
+	}
+	defer conn.Close()
+
+	conn.SetDeadline(time.Now().Add(timeout))
+
+	msg := SocketMessage{Type: SocketMessageTypeListCommands}
+	if err := json.NewEncoder(conn).Encode(msg); err != nil {
+		return nil, err
+	}
+
+	var response ListCommandsResponse
+	if err := json.NewDecoder(conn).Decode(&response); err != nil {
+		return nil, err
+	}
+	return &response, nil
 }
 
 // RequestCCInfo requests CC info (cost data and git info) from the daemon

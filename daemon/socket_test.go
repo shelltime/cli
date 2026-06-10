@@ -1,6 +1,7 @@
 package daemon
 
 import (
+	"context"
 	"encoding/json"
 	"net"
 	"os"
@@ -135,6 +136,51 @@ func TestSocketHandler_StatusRequest(t *testing.T) {
 	}
 	if response.Uptime == "" {
 		t.Error("Uptime should not be empty")
+	}
+}
+
+func TestSocketHandler_ListCommandsAndTrackEvent(t *testing.T) {
+	tempDir, err := os.MkdirTemp("", "shelltime-socket-test-*")
+	if err != nil {
+		t.Fatalf("Failed to create temp dir: %v", err)
+	}
+	defer os.RemoveAll(tempDir)
+
+	socketPath := filepath.Join(tempDir, "test.sock")
+	config := &model.ShellTimeConfig{SocketPath: socketPath}
+	ch := NewGoChannel(PubSubConfig{OutputChannelBuffer: 10}, nil)
+	handler := NewSocketHandler(config, ch)
+
+	// Seed the daemon-owned store with a completed command.
+	prev := commandStore
+	defer func() { commandStore = prev }()
+	store := &fakeCommandStore{}
+	now := time.Now()
+	cmd := model.Command{Shell: "bash", SessionID: 1, Command: "ls", Username: "u", Hostname: "h", Time: now}
+	_ = store.SavePre(context.Background(), cmd, now)
+	post := cmd
+	post.Time = now.Add(time.Second)
+	_ = store.SavePost(context.Background(), post, 0, post.Time)
+	commandStore = store
+
+	if err := handler.Start(); err != nil {
+		t.Fatalf("Start failed: %v", err)
+	}
+	defer handler.Stop()
+	time.Sleep(50 * time.Millisecond)
+
+	// list_commands request/response
+	resp, err := RequestListCommands(socketPath, 2*time.Second)
+	if err != nil {
+		t.Fatalf("RequestListCommands failed: %v", err)
+	}
+	if len(resp.Commands) != 1 || resp.Commands[0].Command != "ls" {
+		t.Fatalf("unexpected list response: %+v", resp.Commands)
+	}
+
+	// track event is fire-and-forget; it should be accepted without error
+	if err := SendTrackEvent(context.Background(), socketPath, SocketMessageTypeTrackPre, cmd, now); err != nil {
+		t.Errorf("SendTrackEvent returned error: %v", err)
 	}
 }
 

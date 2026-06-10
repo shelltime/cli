@@ -207,9 +207,13 @@ func commandGC(c *cli.Context) error {
 		defer CloseLogger()
 	}
 
-	// Clean command files
-	if err := cleanCommandFiles(ctx); err != nil {
-		return err
+	// Clean command files. In bolt mode the daemon prunes synced commands from
+	// the DB after each sync, and the txt files are only fallback leftovers, so
+	// skip the txt compaction (post.txt may not even exist).
+	if cfg.Storage == nil || cfg.Storage.Engine != model.StorageEngineBolt {
+		if err := cleanCommandFiles(ctx); err != nil {
+			return err
+		}
 	}
 
 	// TODO: delete $HOME/.config/malamtime/ folder

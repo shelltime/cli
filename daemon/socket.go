@@ -23,7 +23,28 @@ const (
 	SocketMessageTypeStatus         SocketMessageType = "status"
 	SocketMessageTypeCCInfo         SocketMessageType = "cc_info"
 	SocketMessageTypeSessionProject SocketMessageType = "session_project"
+	// SocketMessageTypeTrackPre / TrackPost carry a single raw command event the
+	// daemon persists to its bolt-backed CommandStore (used when the bolt storage
+	// engine is enabled).
+	SocketMessageTypeTrackPre  SocketMessageType = "track_pre"
+	SocketMessageTypeTrackPost SocketMessageType = "track_post"
+	// SocketMessageTypeListCommands requests the locally buffered commands from
+	// the daemon (request/response), used by `shelltime ls` when the bolt store
+	// is enabled and the CLI cannot open the daemon-locked DB.
+	SocketMessageTypeListCommands SocketMessageType = "list_commands"
 )
+
+// ListCommandsResponse is the daemon's reply to a list_commands request.
+type ListCommandsResponse struct {
+	Commands []model.ListedCommand `json:"commands"`
+}
+
+// TrackEventPayload is the payload for track_pre / track_post messages: a single
+// command plus the recording time stamped by the CLI.
+type TrackEventPayload struct {
+	Command           model.Command `json:"command"`
+	RecordingTimeNano int64         `json:"recordingTimeNano"`
+}
 
 type SessionProjectRequest struct {
 	SessionID   string `json:"sessionId"`
@@ -164,6 +185,16 @@ func (p *SocketHandler) handleConnection(conn net.Conn) {
 		if err := p.channel.Publish(PubSubTopic, chMsg); err != nil {
 			slog.Error("Error to publish topic", slog.Any("err", err))
 		}
+	case SocketMessageTypeTrackPre, SocketMessageTypeTrackPost:
+		buf, err := json.Marshal(msg)
+		if err != nil {
+			slog.Error("Error encoding track message", slog.Any("err", err))
+			return
+		}
+		chMsg := message.NewMessage(watermill.NewUUID(), buf)
+		if err := p.channel.Publish(PubSubTopic, chMsg); err != nil {
+			slog.Error("Error publishing track topic", slog.Any("err", err))
+		}
 	case SocketMessageTypeHeartbeat:
 		// Only process heartbeat if codeTracking is enabled
 		if p.config.CodeTracking == nil || p.config.CodeTracking.Enabled == nil || !*p.config.CodeTracking.Enabled {
@@ -186,6 +217,8 @@ func (p *SocketHandler) handleConnection(conn net.Conn) {
 		// Send acknowledgment to client
 		encoder := json.NewEncoder(conn)
 		encoder.Encode(map[string]string{"status": "ok"})
+	case SocketMessageTypeListCommands:
+		p.handleListCommands(conn)
 	case SocketMessageTypeCCInfo:
 		p.handleCCInfo(conn, msg)
 	case SocketMessageTypeSessionProject:
@@ -215,6 +248,23 @@ func (p *SocketHandler) handleStatus(conn net.Conn) {
 	encoder := json.NewEncoder(conn)
 	if err := encoder.Encode(response); err != nil {
 		slog.Error("Error encoding status response", slog.Any("err", err))
+	}
+}
+
+func (p *SocketHandler) handleListCommands(conn net.Conn) {
+	response := ListCommandsResponse{Commands: []model.ListedCommand{}}
+	if commandStore != nil {
+		commands, err := model.BuildListedCommands(context.Background(), commandStore)
+		if err != nil {
+			slog.Error("Failed to build listed commands", slog.Any("err", err))
+		} else {
+			response.Commands = commands
+		}
+	}
+
+	encoder := json.NewEncoder(conn)
+	if err := encoder.Encode(response); err != nil {
+		slog.Error("Error encoding list_commands response", slog.Any("err", err))
 	}
 }
 
