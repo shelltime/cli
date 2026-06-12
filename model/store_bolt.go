@@ -241,6 +241,8 @@ func (s *boltStore) Prune(ctx context.Context, cursor time.Time) error {
 	})
 }
 
+func (s *boltStore) Engine() string { return StorageEngineBolt }
+
 func (s *boltStore) Close() error {
 	if s.db == nil {
 		return nil
