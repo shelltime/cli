@@ -56,6 +56,7 @@ func BuildTrackingData(ctx context.Context, store CommandStore, config ShellTime
 	meta := TrackingMetaData{
 		OS:        sysInfo.Os,
 		OSVersion: sysInfo.Version,
+		CliEngine: store.Engine(),
 	}
 
 	trackingData := make([]TrackingData, 0)

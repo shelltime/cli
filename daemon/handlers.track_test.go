@@ -2,6 +2,7 @@ package daemon
 
 import (
 	"context"
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -23,6 +24,8 @@ type fakeCommandStore struct {
 
 	cursorSetCalls int
 	pruneCalls     int
+
+	engine string
 }
 
 func (f *fakeCommandStore) SavePre(ctx context.Context, cmd model.Command, rt time.Time) error {
@@ -70,6 +73,13 @@ func (f *fakeCommandStore) SetCursor(ctx context.Context, cursor time.Time) erro
 func (f *fakeCommandStore) Prune(ctx context.Context, cursor time.Time) error {
 	f.pruneCalls++
 	return nil
+}
+
+func (f *fakeCommandStore) Engine() string {
+	if f.engine == "" {
+		return model.StorageEngineFile
+	}
+	return f.engine
 }
 
 func (f *fakeCommandStore) Close() error { return nil }
@@ -184,12 +194,14 @@ func (s *TrackHandlerTestSuite) TestTrackPostNotEnoughToFlush() {
 }
 
 func (s *TrackHandlerTestSuite) TestTrackPostFlushSyncsAndPrunes() {
+	var sentPayload model.PostTrackArgs
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewDecoder(r.Body).Decode(&sentPayload)
 		w.WriteHeader(http.StatusNoContent)
 	}))
 	defer server.Close()
 
-	store := &fakeCommandStore{noCursorExist: true}
+	store := &fakeCommandStore{noCursorExist: true, engine: model.StorageEngineBolt}
 	commandStore = store
 	stConfig = fakeConfigService{cfg: model.ShellTimeConfig{Token: "t", APIEndpoint: server.URL, FlushCount: 1}}
 
@@ -204,6 +216,9 @@ func (s *TrackHandlerTestSuite) TestTrackPostFlushSyncsAndPrunes() {
 	assert.Len(s.T(), store.post, 1)
 	assert.Equal(s.T(), 1, store.cursorSetCalls)
 	assert.Equal(s.T(), 1, store.pruneCalls)
+	// the payload must report the engine that buffered the commands
+	assert.Equal(s.T(), model.StorageEngineBolt, sentPayload.Meta.CliEngine)
+	assert.Equal(s.T(), 1, sentPayload.Meta.Source, "daemon path must mark source as daemon")
 }
 
 func (s *TrackHandlerTestSuite) TestTrackPostFallsBackToFileStore() {

@@ -32,6 +32,28 @@ func TestBuildTrackingData(t *testing.T) {
 	require.Equal(t, 42, res.Data[0].PPID)
 	require.Equal(t, "h", res.Meta.Hostname)
 	require.Equal(t, "bash", res.Meta.Shell)
+	require.Equal(t, StorageEngineBolt, res.Meta.CliEngine)
+}
+
+func TestBuildTrackingDataFileEngine(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	InitFolder("") // reset globals to the default .shelltime under the temp HOME
+
+	store := NewFileStore()
+	defer store.Close()
+
+	ctx := context.Background()
+	start := time.Now()
+	cmd := Command{Shell: "zsh", SessionID: 3, Command: "ls -la", Username: "u", Hostname: "h", Time: start}
+	require.NoError(t, store.SavePre(ctx, cmd, start))
+	post := cmd
+	post.Time = start.Add(time.Second)
+	require.NoError(t, store.SavePost(ctx, post, 0, post.Time))
+
+	res, err := BuildTrackingData(ctx, store, ShellTimeConfig{})
+	require.NoError(t, err)
+	require.Len(t, res.Data, 1)
+	require.Equal(t, StorageEngineFile, res.Meta.CliEngine)
 }
 
 func TestBuildTrackingDataExcludes(t *testing.T) {

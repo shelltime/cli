@@ -155,4 +155,6 @@ func (s *fileStore) Prune(ctx context.Context, cursor time.Time) error {
 	return os.WriteFile(GetCursorFilePath(), []byte(fmt.Sprintf("%d", cursor.UnixNano())), 0644)
 }
 
+func (s *fileStore) Engine() string { return StorageEngineFile }
+
 func (s *fileStore) Close() error { return nil }

@@ -32,6 +32,10 @@ type TrackingMetaData struct {
 	Terminal    string `json:"terminal,omitempty"`
 	Multiplexer string `json:"multiplexer,omitempty"`
 
+	// CliEngine is the storage engine that buffered these commands:
+	// StorageEngineFile or StorageEngineBolt.
+	CliEngine string `json:"cliEngine,omitempty"`
+
 	// 0: cli, 1: daemon
 	Source int `json:"source"`
 }

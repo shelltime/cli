@@ -42,6 +42,11 @@ type CommandStore interface {
 	// before the cursor), keeping unfinished pre commands.
 	Prune(ctx context.Context, cursor time.Time) error
 
+	// Engine reports which storage engine backs this store (StorageEngineFile
+	// or StorageEngineBolt). It is attached to sync metadata so the server
+	// knows how the commands were buffered.
+	Engine() string
+
 	// Close releases any resources held by the store (no-op for fileStore).
 	Close() error
 }
