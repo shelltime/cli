@@ -244,7 +244,20 @@ func (s *trackTestSuite) TestTrackWithSendData() {
 	}
 	assert.GreaterOrEqual(s.T(), len(cursorValues), 2)
 
-	assert.True(s.T(), cursorValues[len(cursorValues)-1].After(cursorValues[0]))
+	// Cursor values are written by concurrent goroutines, so their order in the
+	// file reflects write order, not timestamp order. Assert the cursor advanced
+	// over time by comparing the min and max values (order-independent) instead
+	// of relying on the last line being the latest timestamp.
+	minCursor, maxCursor := cursorValues[0], cursorValues[0]
+	for _, value := range cursorValues {
+		if value.Before(minCursor) {
+			minCursor = value
+		}
+		if value.After(maxCursor) {
+			maxCursor = value
+		}
+	}
+	assert.True(s.T(), maxCursor.After(minCursor))
 
 	reqCursorStr := strings.Join(strings.Fields(fmt.Sprint(reqCursor)), "\t")
 
