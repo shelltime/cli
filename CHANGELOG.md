@@ -1,5 +1,37 @@
 # Changelog
 
+## [0.1.85](https://github.com/shelltime/cli/compare/v0.1.84...v0.1.85) (2026-06-12)
+
+
+### Features
+
+* bbolt-backed command store (daemon-owned, feature-gated) ([07544ff](https://github.com/shelltime/cli/commit/07544ffe4f5d48d34f5c364564eb93779e48b745))
+* **cli:** route track events to the daemon when bolt is enabled ([2123998](https://github.com/shelltime/cli/commit/21239981707780c71512045afe647fa409404ab3))
+* **cli:** serve `ls` from the daemon when bolt is enabled ([a401635](https://github.com/shelltime/cli/commit/a4016356f2a623189a4a77cb54d482f19caca589))
+* **daemon:** persist track events to the bolt store ([c2dd737](https://github.com/shelltime/cli/commit/c2dd737dccd8df8a59346bc31b7e9aa48b57b8dd))
+* **model:** add CommandStore abstraction with bbolt backend ([3de7b8c](https://github.com/shelltime/cli/commit/3de7b8c5faed7876f886d755f6f2860d5471788d))
+* **model:** report storage engine in tracking metadata ([e5b8200](https://github.com/shelltime/cli/commit/e5b8200c26a192f20aae37506b2cfac09da50cf3))
+* **model:** report storage engine in tracking metadata ([50465bd](https://github.com/shelltime/cli/commit/50465bd16704413d0f155d3132adabe025d1270d))
+
+
+### Bug Fixes
+
+* **cli:** skip txt command-file gc in bolt mode ([aedc5e1](https://github.com/shelltime/cli/commit/aedc5e1225700b482086dd296fdf1c31d072f1df))
+* **daemon:** preserve curl-installer daemon as .bak instead of deleting ([7b5eecd](https://github.com/shelltime/cli/commit/7b5eecd080461a199198acb4d400a8a723824682))
+* **daemon:** preserve curl-installer daemon as .bak instead of deleting ([c925450](https://github.com/shelltime/cli/commit/c9254500f2ccb6fd0c9a095f05c2722888fe1e63))
+* **model:** prune synced pre commands using post-side matching ([771e371](https://github.com/shelltime/cli/commit/771e371a38b9cab5ebb4b765b4308cd4357b8379))
+
+
+### Code Refactoring
+
+* **cli:** keep track hook config-free; decide bolt in daemon ([a2372cc](https://github.com/shelltime/cli/commit/a2372ccbd45054bd8b2c66c6ae92cc27400cd011))
+
+
+### Tests
+
+* cover bolt store, tracking assembly, and track socket path ([351d37d](https://github.com/shelltime/cli/commit/351d37d2f613dfca794ef5b2a8f081d6afa6f8c9))
+* cover ls file-mode path and track-handler parse errors ([62e05db](https://github.com/shelltime/cli/commit/62e05dbd2914c7004be67360d7feabe0f193acfe))
+
 ## [0.1.84](https://github.com/shelltime/cli/compare/v0.1.83...v0.1.84) (2026-05-20)
 
 
