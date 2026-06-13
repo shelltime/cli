@@ -3,9 +3,7 @@
 [![codecov](https://codecov.io/gh/shelltime/cli/graph/badge.svg?token=N09WIJHNI2)](https://codecov.io/gh/shelltime/cli)
 [![shelltime](https://api.shelltime.xyz/badge/AnnatarHe/count)](https://shelltime.xyz/users/AnnatarHe)
 
-ShellTime is a CLI and background daemon for tracking shell activity, syncing command history, and wiring AI coding tools into a shared telemetry stream. The public product and hosted service are ShellTime at [shelltime.xyz](https://shelltime.xyz).
-
-The Go module path is `github.com/malamtime/cli`. That naming mismatch is intentional in this repo today; use `ShellTime` for product-facing docs and `github.com/malamtime/cli` for imports and module references.
+ShellTime is a CLI and background daemon that tracks your shell activity, syncs your command history, and pipes your AI coding tools into one shared telemetry stream. The hosted service lives at [shelltime.xyz](https://shelltime.xyz).
 
 ## Install
 
@@ -23,13 +21,13 @@ curl -sSL https://shelltime.xyz/i | bash
 
 ### Upgrading
 
-For curl-installed users, upgrade in place:
+If you installed with the curl script, upgrade in place:
 
 ```bash
 shelltime update
 ```
 
-Homebrew users should upgrade via brew:
+If you installed with Homebrew, upgrade through brew instead:
 
 ```bash
 brew upgrade shelltime/tap/shelltime
@@ -37,15 +35,15 @@ brew upgrade shelltime/tap/shelltime
 
 ## Quick Start
 
-The fastest setup path is:
+The fastest way to get set up is a single command:
 
 ```bash
 shelltime init
 ```
 
-`shelltime init` authenticates the CLI, installs shell hooks, installs the daemon, and attempts to configure Claude Code and Codex OTEL integration.
+`shelltime init` authenticates the CLI, installs the shell hooks and daemon, and tries to wire up Claude Code and Codex OTEL integration for you.
 
-If you prefer the manual flow:
+Prefer to do it step by step?
 
 ```bash
 shelltime auth
@@ -57,11 +55,11 @@ shelltime codex install
 
 ## What ShellTime Does
 
-- Tracks shell commands locally with masking and exclusion support.
-- Syncs command history to ShellTime for search and analysis.
+- Tracks shell commands locally, with masking and exclusion rules to keep secrets out.
+- Syncs your command history to ShellTime so you can search and analyze it.
 - Runs a background daemon for low-latency, non-blocking sync.
-- Integrates with Claude Code and OpenAI Codex through OTEL forwarding.
-- Shows live Claude Code statusline data for cost, quota, time, and context.
+- Forwards Claude Code and OpenAI Codex telemetry through OTEL.
+- Shows a live Claude Code statusline with cost, quota, time, and context usage.
 - Syncs supported dotfiles to and from the ShellTime service.
 
 ## Command Overview
@@ -142,18 +140,18 @@ exclude:
   - "^export .*"
 ```
 
-For the full configuration surface, defaults, OTEL settings, and AI options, see [docs/CONFIG.md](docs/CONFIG.md).
+For every option, its default, and the OTEL and AI settings, see [docs/CONFIG.md](docs/CONFIG.md).
 
 ## Daemon Mode
 
-The daemon keeps tracking fast by buffering and syncing in the background.
+The daemon keeps your shell fast by buffering commands and syncing them in the background, so a slow network never blocks your prompt.
 
-| Mode | Latency | Network Blocking |
-|------|---------|------------------|
+| Mode | Latency | Blocks your shell? |
+|------|---------|--------------------|
 | Direct | ~100ms+ | Yes |
 | Daemon | <8ms | No |
 
-Use daemon mode if you want lower shell latency, retry handling, and background processing for sync and OTEL events.
+Run in daemon mode for lower shell latency, automatic sync retries, and background processing of sync and OTEL events. It is optional but recommended.
 
 ## Claude Code Statusline
 
@@ -180,10 +178,10 @@ For formatting details and platform notes, see [docs/CC_STATUSLINE.md](docs/CC_S
 
 ## Security and Privacy
 
-- Data masking can redact sensitive command content before upload.
-- Exclusion patterns let you skip matching commands entirely.
-- Optional end-to-end encryption is available for supported flows.
-- Local config overrides can keep sensitive values out of the primary config file.
+- **Data masking** redacts sensitive command content before it leaves your machine.
+- **Exclusion patterns** skip matching commands entirely, so they are never recorded.
+- **End-to-end encryption** is available for supported flows (opt-in).
+- **Local config overrides** keep secrets like tokens out of your main config file.
 
 ## Development
 
@@ -196,6 +194,8 @@ go test -timeout 3m -coverprofile=coverage.txt -covermode=atomic ./...
 go fmt ./...
 go vet ./...
 ```
+
+> **Note on naming:** the product is **ShellTime** (`shelltime.xyz`), but the Go module path is `github.com/malamtime/cli`. This mismatch is intentional — use `ShellTime` in product-facing docs and `github.com/malamtime/cli` for imports.
 
 ## Links
 

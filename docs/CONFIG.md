@@ -1,6 +1,6 @@
 # ShellTime CLI Configuration Guide
 
-This guide explains all configuration options available in ShellTime CLI. Configuration is straightforward yet powerful, allowing you to customize everything from data syncing to AI features.
+This guide covers every configuration option in ShellTime CLI. ShellTime runs fine on its defaults, so you only need to set what you want to change — from sync behavior to AI features.
 
 ## Table of Contents
 
@@ -26,7 +26,7 @@ Create a configuration file at `~/.shelltime/config.yaml`:
 token: "your-api-token-from-shelltime.xyz"
 ```
 
-That's it! ShellTime works with sensible defaults. Read on to customize your experience.
+That's it — every other setting has a sensible default. Read on to fine-tune things.
 
 ---
 
@@ -298,7 +298,7 @@ codeTracking:
   token: "custom-heartbeat-token"
 ```
 
-When `apiEndpoint` or `token` is set under `codeTracking`, heartbeat data will use these values instead of the global configuration. This allows you to send coding activity to a different server or authenticate with a separate token.
+When `apiEndpoint` or `token` is set under `codeTracking`, heartbeats use those values instead of the global ones — handy for sending coding activity to a different server or authenticating with a separate token.
 
 ---
 
@@ -497,9 +497,9 @@ No, but it's recommended:
 - **With daemon:** <8ms latency, encryption support
 - **Without daemon:** ~100ms+ latency, no encryption
 
-Start the daemon:
+Install and start the daemon as a background service:
 ```bash
-shelltime-daemon
+shelltime daemon install
 ```
 
 ---

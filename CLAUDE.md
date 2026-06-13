@@ -68,7 +68,7 @@ go fmt ./...
 
 ### Service Interfaces (model package)
 Three key interfaces with dependency injection:
-- `ConfigService`: Reads and merges config from `config.toml` and `config.local.toml`
+- `ConfigService`: Reads and merges config from `config.yaml`/`config.toml` (YAML preferred) plus the matching `config.local.*` overrides
 - `AIService`: PromptPal integration for AI-powered command suggestions (`shelltime q`)
 - `CommandService`: Executable lookup with fallback paths (handles daemon's limited PATH)
 
@@ -96,8 +96,8 @@ Services initialize in `cmd/daemon/main.go`: check enabled flag → create → s
 4. Batch sync to shelltime.xyz API with optional encryption
 
 ### Configuration
-- Main config: `$HOME/.shelltime/config.toml`
-- Local overrides: `$HOME/.shelltime/config.local.toml` (merged, gitignored)
+- Main config: `$HOME/.shelltime/config.yaml` (YAML preferred; `config.yml` and `config.toml` are also accepted)
+- Local overrides: `$HOME/.shelltime/config.local.yaml` (merged over the base, gitignored)
 - Daemon socket: `/tmp/shelltime.sock` (configurable via `socketPath`)
 - AICodeOtel gRPC port: configurable via `aiCodeOtel.grpcPort` (default: 54027)
 

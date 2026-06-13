@@ -1,10 +1,10 @@
 # Claude Code Statusline Integration
 
-Display real-time cost and context usage in Claude Code's status bar using ShellTime.
+Show real-time cost and context usage right in Claude Code's status bar, powered by ShellTime.
 
 ## Overview
 
-The `shelltime cc statusline` command provides a custom status line for Claude Code that shows:
+The `shelltime cc statusline` command renders a custom status line for Claude Code that shows:
 
 - Git branch name and dirty status
 - Current model name
@@ -163,21 +163,21 @@ Color is based on the **maximum** utilization across both windows:
 
 ### For Session Cost & Context
 
-No additional setup required - data comes directly from Claude Code.
+No setup needed — this data comes straight from Claude Code.
 
 ### For Git Branch Info
 
 Requires the ShellTime daemon to be running:
 
 ```bash
-# Start the daemon
-shelltime daemon start
+# Install and start the daemon as a background service
+shelltime daemon install
 
 # Verify it's running
 shelltime daemon status
 ```
 
-The daemon caches git info and refreshes it periodically for optimal performance.
+The daemon caches git info and refreshes it in the background, so the statusline stays fast.
 
 ### For Today's Cost
 
@@ -209,7 +209,7 @@ If quota data is unavailable, the section will show as `🚦 -`.
 
 ## Performance
 
-- **Hard timeout:** 100ms for entire operation
+- **Hard timeout:** 100ms for the entire operation
 - **Daemon request timeout:** 50ms for the daemon socket request (fast path)
 - **Session mapping:** ~1ms fire-and-forget to daemon
 - **API caching:** 5-minute TTL for daily cost, 10-minute TTL for quota utilization
@@ -245,7 +245,7 @@ If quota data is unavailable, the section will show as `🚦 -`.
 1. Ensure you're on **macOS** - quota display is only available on macOS (omitted entirely on Linux)
 2. Verify you're logged into Claude Code (the OAuth token is stored in macOS Keychain)
 3. Ensure the daemon is running: `shelltime daemon status`
-4. Quota data is cached for 10 minutes - it may take a moment after daemon start
+4. Quota data is cached for 10 minutes — it may take a moment to appear after the daemon starts
 
 ### Colors not displaying
 

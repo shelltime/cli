@@ -1,9 +1,9 @@
 # Repository Guidelines
 
 ## Project Identity
-This repo is the ShellTime CLI and daemon. Public-facing docs, command examples, and product references should use `ShellTime` and `shelltime.xyz`.
+This repo is the ShellTime CLI and daemon. Use `ShellTime` and `shelltime.xyz` in public-facing docs, command examples, and product references.
 
-Code and imports currently use the module path `github.com/malamtime/cli`. Do not "fix" ShellTime branding in docs just because the module path says `malamtime`; the mismatch is intentional in the current repo state.
+Code and imports use the module path `github.com/malamtime/cli`. This mismatch is intentional — don't "fix" the ShellTime branding in docs just because the module path says `malamtime`.
 
 ## Project Structure & Package Boundaries
 This is a Go monorepo for the ShellTime CLI and daemon.
@@ -50,7 +50,7 @@ Use standard Go conventions and keep code `gofmt`-clean.
 - Ensure `go test -timeout 3m -coverprofile=coverage.txt -covermode=atomic ./...` passes before opening a PR or cutting a release
 
 ## Documentation Maintenance
-When command behavior, setup flow, config formats, or integrations change, update the docs in the same change.
+When command behavior, the setup flow, config formats, or integrations change, update the docs in the same commit.
 
 - `README.md`: concise user-facing overview, install/setup flow, current command surface, and links
 - `docs/CONFIG.md`: detailed config semantics, file locations, defaults, and OTEL settings
