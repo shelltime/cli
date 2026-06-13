@@ -105,15 +105,14 @@ release:
   mode: replace
   header: |
     ## shelltime.xyz CLI ({{ .Date }})
-    Welcome to this new release!
-    please install the latest cli by run command
+    Welcome to the latest release! Install or upgrade the CLI by running:
     ```bash
-    curl -sSL https://raw.githubusercontent.com/shelltime/installation/master/install.bash | bash
+    curl -sSL https://shelltime.xyz/i | bash
     ```
   footer: |
     ## Thanks!
 
-    Those were the changes on {{ .Tag }}!
+    That's everything in {{ .Tag }} — thanks for using ShellTime!
   name_template: "v{{.Version}}"
   disable: false
   skip_upload: false
@@ -158,12 +157,12 @@ brews:
     test: |
       system "#{bin}/shelltime", "--version"
     caveats: |
-      To get started with ShellTime, run:
+      Get started with a single command:
         shelltime init
 
-      Or set up manually:
+      Or set things up manually:
         shelltime auth
         shelltime hooks install
         shelltime daemon install
 
-      For more info, visit https://shelltime.xyz
+      Learn more at https://shelltime.xyz
