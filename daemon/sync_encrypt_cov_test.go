@@ -79,8 +79,7 @@ func TestX3SendTrackArgsToServer_EncryptedHappyPath(t *testing.T) {
 	assert.Contains(t, sentBody, "encrypted", "payload should carry the encrypted envelope")
 }
 
-// NOTE: the public-key-fetch-failure branch is intentionally not exercised here.
-// When GetOpenTokenPublicKey returns an error the product code logs it but does
-// not return, then dereferences the (nil) result in `len(ot.PublicKey)`, which
-// panics. Asserting on that path would require either a product fix or a test
-// that crashes, so it is left uncovered.
+// The public-key-fetch-failure branch is covered by
+// TestSendTrackArgsToServer_PublicKeyFetchErrorFailsClosed in
+// handlers_sync_pubkey_test.go (it previously panicked on a nil pointer; the
+// handler now fails closed and returns the error).
