@@ -1,0 +1,24 @@
+# Codecov configuration.
+#
+# Generated code is excluded from coverage measurement: the mockery mocks
+# (model/mock_*.go) and the PromptPal-generated types (model/pp.types.g.go)
+# are produced by `mockery` / `pp g` at CI time and are gitignored. They are
+# not hand-written product code, and the mock methods in particular register
+# as 0% because they are exercised from other packages' tests (cross-package
+# execution is not attributed to the model package's own coverage).
+coverage:
+  status:
+    project:
+      default:
+        target: 80%
+        threshold: 1%
+    patch:
+      default:
+        target: 80%
+        threshold: 5%
+
+ignore:
+  - "model/mock_*.go"
+  - "model/pp.types.g.go"
+  - "**/*.g.go"
+  - "cmd/**"

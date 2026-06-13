@@ -74,6 +74,11 @@ func sendTrackArgsToServer(ctx context.Context, syncMsg model.PostTrackArgs) err
 
 		if err != nil {
 			slog.Error("Failed to get the open token public key", slog.Any("err", err))
+			// Fail closed: encryption was requested but we could not fetch the
+			// public key. Returning here both avoids a nil-pointer dereference on
+			// ot below and prevents sending data unencrypted against the user's
+			// configured intent.
+			return err
 		}
 		if len(ot.PublicKey) > 0 {
 			rs := model.NewRSAService()

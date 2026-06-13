@@ -13,7 +13,9 @@ import (
 	"github.com/malamtime/cli/daemon"
 	"github.com/malamtime/cli/model"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/suite"
+	"github.com/urfave/cli/v2"
 )
 
 type CCStatuslineTestSuite struct {
@@ -590,4 +592,64 @@ func (s *CCStatuslineTestSuite) TestGetDaemonInfo_PropagatesRateLimitFields() {
 
 func TestCCStatuslineTestSuite(t *testing.T) {
 	suite.Run(t, new(CCStatuslineTestSuite))
+}
+
+// --- commandCCStatusline action (feeds JSON via a replaced os.Stdin) ----------
+
+// withStdin replaces os.Stdin with a pipe carrying the given bytes for the
+// duration of the test, restoring it afterwards.
+func withStdin(t *testing.T, payload []byte) {
+	t.Helper()
+	r, w, err := os.Pipe()
+	if err != nil {
+		t.Fatalf("os.Pipe: %v", err)
+	}
+	orig := os.Stdin
+	os.Stdin = r
+	t.Cleanup(func() {
+		os.Stdin = orig
+		r.Close()
+	})
+	// Write the payload and close the writer so the reader sees EOF.
+	go func() {
+		_, _ = w.Write(payload)
+		w.Close()
+	}()
+}
+
+func (s *CCStatuslineTestSuite) TestCommandCCStatusline_ValidInput() {
+	input := model.CCStatuslineInput{
+		SessionID: "sess-1",
+		Model:     model.CCStatuslineModel{DisplayName: "claude-opus-4"},
+		Cost:      model.CCStatuslineCost{TotalCostUSD: 1.5},
+		ContextWindow: model.CCStatuslineContextWindow{
+			ContextWindowSize: 100000,
+			TotalInputTokens:  20000,
+			TotalOutputTokens: 5000,
+		},
+		// Empty Cwd avoids touching a real git repo during the fallback path.
+		Cwd: "",
+	}
+	payload, err := json.Marshal(input)
+	s.Require().NoError(err)
+	withStdin(s.T(), payload)
+
+	// No token + nonexistent socket -> getDaemonInfoWithFallback returns fast.
+	s.mockConfig.On("ReadConfigFile", mock.Anything).Return(model.ShellTimeConfig{
+		SocketPath: "/nonexistent/socket.sock",
+		Token:      "",
+	}, nil)
+
+	app := &cli.App{Name: "t", Commands: []*cli.Command{CCStatuslineCommand}}
+	err = app.Run([]string{"t", "statusline"})
+	s.Require().NoError(err)
+}
+
+func (s *CCStatuslineTestSuite) TestCommandCCStatusline_InvalidJSONFallsBack() {
+	withStdin(s.T(), []byte("this is not json\n"))
+	// On unmarshal failure the action prints a fallback line and returns nil
+	// WITHOUT reading config, so no mock expectation is set.
+	app := &cli.App{Name: "t", Commands: []*cli.Command{CCStatuslineCommand}}
+	err := app.Run([]string{"t", "statusline"})
+	s.Require().NoError(err)
 }
