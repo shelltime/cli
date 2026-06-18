@@ -67,7 +67,7 @@ func commandDaemonInstall(c *cli.Context) error {
 	// recovery branch above can restore it on the next `daemon install` —
 	// no GitHub re-download when the user later clears the system binary.
 	curlDaemonPath := model.GetCurlInstallerDaemonPath()
-	if daemonBinPath != curlDaemonPath {
+	if shouldPreserveCurlDaemon(daemonBinPath, curlDaemonPath) {
 		if info, statErr := os.Stat(curlDaemonPath); statErr == nil && !info.IsDir() {
 			preservedPath := curlDaemonPath + ".bak"
 			_ = os.Remove(preservedPath)
@@ -104,4 +104,14 @@ func commandDaemonInstall(c *cli.Context) error {
 	color.Green.Println("✅ Daemon service has been installed and started successfully!")
 	color.Green.Println("💡 Your commands will now be automatically synced to shelltime.xyz faster")
 	return nil
+}
+
+// shouldPreserveCurlDaemon reports whether the curl-installer daemon at
+// curlDaemonPath should be renamed to .bak before installing the service. It is
+// true only when the resolved daemon is a genuinely different on-disk file — so
+// we never move away the binary the service is about to point at, even when the
+// resolved path is just a symlink/alias of the curl binary (the cause of the
+// "shelltime-daemon.bak but no shelltime-daemon" stuck loop on Linux).
+func shouldPreserveCurlDaemon(daemonBinPath, curlDaemonPath string) bool {
+	return daemonBinPath != curlDaemonPath && !model.SameDaemonFile(daemonBinPath, curlDaemonPath)
 }

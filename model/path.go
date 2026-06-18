@@ -143,18 +143,23 @@ func ResolveDaemonBinaryPath() (string, error) {
 	curlPath := GetCurlInstallerDaemonPath()
 
 	// 1. Check PATH (covers Homebrew and other package managers). Ignore the
-	// result if it happens to resolve to the curl-installer path — we want
-	// step 3 to be the only branch that returns that location.
+	// result if it is the same on-disk file as the curl-installer binary
+	// (symlink/alias) — step 3 is the only branch that may return that file.
 	if path, err := exec.LookPath(binaryName); err == nil {
-		if resolved, _ := filepath.Abs(path); resolved != curlPath {
-			return path, nil
+		if resolved, absErr := filepath.Abs(path); absErr == nil && !sameFile(resolved, curlPath) {
+			return resolved, nil
 		}
 	}
 
 	// 2. Explicit Homebrew/Linuxbrew fallback paths, in case PATH was stripped.
+	// Same-file guard: a stray symlink in e.g. /usr/local/bin that points back
+	// at the curl binary must not be treated as a distinct system install.
 	for _, dir := range daemonHomebrewSearchPaths {
 		p := filepath.Join(dir, binaryName)
 		if info, err := os.Stat(p); err == nil && !info.IsDir() {
+			if sameFile(p, curlPath) {
+				continue
+			}
 			return p, nil
 		}
 	}
@@ -166,3 +171,27 @@ func ResolveDaemonBinaryPath() (string, error) {
 
 	return "", fmt.Errorf("%s not found on PATH, in standard Homebrew locations, or at %s", binaryName, curlPath)
 }
+
+// sameFile reports whether a and b refer to the same on-disk file. It follows
+// symlinks (os.Stat) and compares device+inode via os.SameFile, so two
+// different path strings that resolve to the same file — a symlinked $HOME, a
+// realpath'd PATH entry, or a symlink in /usr/local/bin pointing back at the
+// curl binary — are recognized as identical. It is conservative: any stat error
+// (missing file, broken symlink, permission) yields false, and files on
+// different filesystems correctly compare unequal (no inode collisions).
+func sameFile(a, b string) bool {
+	ai, err := os.Stat(a)
+	if err != nil {
+		return false
+	}
+	bi, err := os.Stat(b)
+	if err != nil {
+		return false
+	}
+	return os.SameFile(ai, bi)
+}
+
+// SameDaemonFile reports whether two daemon paths refer to the same on-disk
+// file (symlink/hardlink/alias aware). Used by the installer to avoid moving the
+// binary the service points at to .bak.
+func SameDaemonFile(a, b string) bool { return sameFile(a, b) }
