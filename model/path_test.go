@@ -394,6 +394,53 @@ func TestResolveDaemonBinaryPath(t *testing.T) {
 		}
 	})
 
+	t.Run("skips PATH result that is a symlink back to the curl path", func(t *testing.T) {
+		home := withIsolatedDaemonResolution(t)
+
+		curl := writeFakeDaemon(t, filepath.Join(home, COMMAND_BASE_STORAGE_FOLDER, "bin"))
+
+		// A dir on PATH whose shelltime-daemon is only a symlink to the curl
+		// binary. LookPath finds it first, but it is the SAME on-disk file, so
+		// the resolver must fall through and return the real curl path —
+		// otherwise daemon.install would move the only binary to .bak.
+		linkDir := t.TempDir()
+		if err := os.Symlink(curl, filepath.Join(linkDir, "shelltime-daemon")); err != nil {
+			t.Fatalf("failed to create symlink: %v", err)
+		}
+		t.Setenv("PATH", linkDir)
+
+		got, err := ResolveDaemonBinaryPath()
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if got != curl {
+			t.Errorf("expected curl-installer path %s, got %s", curl, got)
+		}
+	})
+
+	t.Run("skips homebrew-search result that is a symlink back to the curl path", func(t *testing.T) {
+		home := withIsolatedDaemonResolution(t)
+
+		curl := writeFakeDaemon(t, filepath.Join(home, COMMAND_BASE_STORAGE_FOLDER, "bin"))
+
+		// Simulate a stray /usr/local/bin/shelltime-daemon symlink (reached via
+		// the explicit search list when PATH is stripped) pointing back at the
+		// curl binary. It must not be treated as a distinct system install.
+		fakeUsrLocal := t.TempDir()
+		if err := os.Symlink(curl, filepath.Join(fakeUsrLocal, "shelltime-daemon")); err != nil {
+			t.Fatalf("failed to create symlink: %v", err)
+		}
+		daemonHomebrewSearchPaths = []string{fakeUsrLocal}
+
+		got, err := ResolveDaemonBinaryPath()
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if got != curl {
+			t.Errorf("expected curl-installer path %s, got %s", curl, got)
+		}
+	})
+
 	t.Run("returns error when no daemon is found anywhere", func(t *testing.T) {
 		withIsolatedDaemonResolution(t)
 
@@ -402,4 +449,46 @@ func TestResolveDaemonBinaryPath(t *testing.T) {
 			t.Fatal("expected error when no daemon binary exists, got nil")
 		}
 	})
+}
+
+func Test_sameFile(t *testing.T) {
+	dir := t.TempDir()
+
+	fileA := filepath.Join(dir, "a")
+	if err := os.WriteFile(fileA, []byte("x"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	// Distinct file with identical contents — must NOT be reported as same.
+	fileB := filepath.Join(dir, "b")
+	if err := os.WriteFile(fileB, []byte("x"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	linkA := filepath.Join(dir, "link-a")
+	if err := os.Symlink(fileA, linkA); err != nil {
+		t.Fatal(err)
+	}
+	broken := filepath.Join(dir, "broken")
+	if err := os.Symlink(filepath.Join(dir, "does-not-exist"), broken); err != nil {
+		t.Fatal(err)
+	}
+
+	tests := []struct {
+		name string
+		a, b string
+		want bool
+	}{
+		{"same path twice", fileA, fileA, true},
+		{"symlink and its target", linkA, fileA, true},
+		{"distinct files with identical contents", fileA, fileB, false},
+		{"missing left operand", filepath.Join(dir, "nope"), fileA, false},
+		{"missing right operand", fileA, filepath.Join(dir, "nope"), false},
+		{"broken symlink", broken, fileA, false},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := sameFile(tc.a, tc.b); got != tc.want {
+				t.Errorf("sameFile(%q, %q) = %v, want %v", tc.a, tc.b, got, tc.want)
+			}
+		})
+	}
 }
