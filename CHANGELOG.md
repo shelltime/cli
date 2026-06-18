@@ -1,5 +1,43 @@
 # Changelog
 
+## [0.1.86](https://github.com/shelltime/cli/compare/v0.1.85...v0.1.86) (2026-06-18)
+
+
+### Bug Fixes
+
+* **daemon:** compare daemon paths by file identity, not string ([b05025f](https://github.com/shelltime/cli/commit/b05025f32baf14b7858cc5c1b18e611713ce9d2d))
+* **daemon:** compare daemon paths by file identity, not string ([6df7780](https://github.com/shelltime/cli/commit/6df7780f3592999af0de6223665a6fdea4961787))
+* **daemon:** fail closed when encryption public key fetch fails ([2bb1290](https://github.com/shelltime/cli/commit/2bb1290ec8d8e044d55243d6a322fa38d0dd916b))
+
+
+### Documentation
+
+* polish CLI documentation wording and fix stale references ([3ba427e](https://github.com/shelltime/cli/commit/3ba427ec187edae8bf34a0e40d80815d368c07a8))
+* polish CLI documentation wording and fix stale references ([22eb91f](https://github.com/shelltime/cli/commit/22eb91fb77c042712e1de664052b66fc89e75a58))
+
+
+### Continuous Integration
+
+* exclude generated mocks and types from codecov coverage ([a111e54](https://github.com/shelltime/cli/commit/a111e54e7f163a120ebb99d808d9a4bfaa47563b))
+
+
+### Tests
+
+* **commands:** add coverage for grep, alias, dotfiles, gc, daemon-status, cc, doctor ([81fb17c](https://github.com/shelltime/cli/commit/81fb17ce7dd54ac5ade8a8caca0c1ef17682b013))
+* **commands:** cover dotfiles record selection, codex uninstall, config-view table branches ([28e04e4](https://github.com/shelltime/cli/commit/28e04e4edea7a8faeef100a9a7a1553a1a007be3))
+* **commands:** cover ls, gc, dotfiles and cc-statusline edge branches ([e23db7d](https://github.com/shelltime/cli/commit/e23db7d452b55a7f85b828465799a5e4bd653a36))
+* **commands:** cover query, dotfiles/hooks, gc, track helpers, web/schema ([56af713](https://github.com/shelltime/cli/commit/56af71319b6e004124a2b5794f4a0e3698c63b4b))
+* **commands:** de-flake TestTrackWithSendData cursor assertion ([e2129fa](https://github.com/shelltime/cli/commit/e2129fa994346f0250dbef81a2bc285aeacd733e))
+* **daemon:** add coverage for otel processor, codex, terminal resolver, handlers, socket ([af1b768](https://github.com/shelltime/cli/commit/af1b7688370dc6f82a50e48b8825037c7a0fe00f))
+* **daemon:** cover circuit-breaker marshal error, socket decode, codex sync error paths ([552b11c](https://github.com/shelltime/cli/commit/552b11c9e802b99b4d659413e4c2cb5cb7202af4))
+* **daemon:** cover ratelimit parsing, heartbeat resync, terminal resolver ([53a70b6](https://github.com/shelltime/cli/commit/53a70b6da70cf156ae5eeabd4202407182891a41))
+* **daemon:** cover socket client, track handler, sync encryption paths ([993aa3a](https://github.com/shelltime/cli/commit/993aa3a95d7b2eb608c3d60006f07bfe0250c9eb))
+* **model:** add coverage for api senders, dotfiles, ccusage, otel env, updater ([779fa01](https://github.com/shelltime/cli/commit/779fa016695a62d6ed50b22de0d73023a5599695))
+* **model:** cover circuit breaker transitions and store factory branches ([14091a4](https://github.com/shelltime/cli/commit/14091a44e57167dbda183bc3b0d3fdacafe44caa))
+* **model:** cover config merge, stores, ccusage, updater, api error paths ([01d70f6](https://github.com/shelltime/cli/commit/01d70f676d596846e2f126c815625f2cfa1cb059))
+* **model:** cover shell hook install/uninstall lifecycle ([ed61ec4](https://github.com/shelltime/cli/commit/ed61ec4e09a8b9448101a09d286b8edb674dbf0f))
+* raise hand-written-code coverage above 80% (+ one daemon crash fix) ([a116c7b](https://github.com/shelltime/cli/commit/a116c7b0f42e96ea50e2a781e871a7d7f257a39c))
+
 ## [0.1.85](https://github.com/shelltime/cli/compare/v0.1.84...v0.1.85) (2026-06-12)
 
 
