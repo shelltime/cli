@@ -60,8 +60,9 @@ const (
 )
 
 type CCInfoRequest struct {
-	TimeRange        CCInfoTimeRange `json:"timeRange"`
-	WorkingDirectory string          `json:"workingDirectory"`
+	TimeRange         CCInfoTimeRange `json:"timeRange"`
+	WorkingDirectory  string          `json:"workingDirectory"`
+	ClaudeCodeVersion string          `json:"claudeCodeVersion,omitempty"`
 }
 
 type CCInfoResponse struct {
@@ -271,7 +272,7 @@ func (p *SocketHandler) handleListCommands(conn net.Conn) {
 func (p *SocketHandler) handleCCInfo(conn net.Conn, msg SocketMessage) {
 	slog.Debug("cc_info socket event received")
 
-	// Parse time range and working directory from payload
+	// Parse time range, working directory, and Claude Code version from payload
 	timeRange := CCInfoTimeRangeToday
 	var workingDir string
 	if payload, ok := msg.Payload.(map[string]interface{}); ok {
@@ -280,6 +281,9 @@ func (p *SocketHandler) handleCCInfo(conn net.Conn, msg SocketMessage) {
 		}
 		if wd, ok := payload["workingDirectory"].(string); ok {
 			workingDir = wd
+		}
+		if v, ok := payload["claudeCodeVersion"].(string); ok {
+			p.ccInfoTimer.SetClaudeCodeVersion(v)
 		}
 	}
 

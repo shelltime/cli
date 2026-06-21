@@ -3,16 +3,136 @@ package daemon
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/malamtime/cli/model"
 	"github.com/stretchr/testify/assert"
 )
+
+// withTestUsageURL points fetchAnthropicUsage at a test server for the duration of the test.
+func withTestUsageURL(t *testing.T, url string) {
+	t.Helper()
+	orig := anthropicUsageURL
+	anthropicUsageURL = url
+	t.Cleanup(func() { anthropicUsageURL = orig })
+}
+
+func TestFetchAnthropicUsage_SetsClaudeCodeUserAgent(t *testing.T) {
+	var gotUA, gotCT string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotUA = r.Header.Get("User-Agent")
+		gotCT = r.Header.Get("Content-Type")
+		assert.Equal(t, "Bearer tok", r.Header.Get("Authorization"))
+		assert.Equal(t, "oauth-2025-04-20", r.Header.Get("anthropic-beta"))
+		json.NewEncoder(w).Encode(anthropicUsageResponse{})
+	}))
+	defer server.Close()
+	withTestUsageURL(t, server.URL)
+
+	_, err := fetchAnthropicUsage(context.Background(), "tok", "9.9.9")
+	assert.NoError(t, err)
+	assert.Equal(t, "claude-code/9.9.9", gotUA)
+	assert.Equal(t, "application/json", gotCT)
+}
+
+func TestFetchAnthropicUsage_UserAgentFallback(t *testing.T) {
+	var gotUA string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotUA = r.Header.Get("User-Agent")
+		json.NewEncoder(w).Encode(anthropicUsageResponse{})
+	}))
+	defer server.Close()
+	withTestUsageURL(t, server.URL)
+
+	_, err := fetchAnthropicUsage(context.Background(), "tok", "")
+	assert.NoError(t, err)
+	assert.Equal(t, "claude-code/"+claudeCodeFallbackVersion, gotUA)
+}
+
+func TestFetchAnthropicUsage_429ReturnsTypedErrorWithRetryAfter(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Retry-After", "120")
+		w.WriteHeader(http.StatusTooManyRequests)
+	}))
+	defer server.Close()
+	withTestUsageURL(t, server.URL)
+
+	_, err := fetchAnthropicUsage(context.Background(), "tok", "1.0.0")
+	assert.Error(t, err)
+
+	var apiErr *anthropicAPIError
+	assert.True(t, errors.As(err, &apiErr))
+	assert.Equal(t, http.StatusTooManyRequests, apiErr.StatusCode)
+	assert.Equal(t, 120*time.Second, apiErr.RetryAfter)
+
+	// The typed error must still shorten to the historical "api:429" for the statusline.
+	assert.Equal(t, "api:429", shortenAPIError(err))
+}
+
+func TestParseRetryAfter(t *testing.T) {
+	cases := []struct {
+		in   string
+		want time.Duration
+	}{
+		{"", 0},
+		{"120", 120 * time.Second},
+		{" 60 ", 60 * time.Second},
+		{"0", 0},
+		{"-5", 0},
+		{"abc", 0},
+		{"Wed, 21 Oct 2026 07:28:00 GMT", 0}, // HTTP-date form is not parsed
+	}
+	for _, c := range cases {
+		assert.Equalf(t, c.want, parseRetryAfter(c.in), "parseRetryAfter(%q)", c.in)
+	}
+}
+
+func TestSetGetClaudeCodeVersion(t *testing.T) {
+	service := NewCCInfoTimerService(&model.ShellTimeConfig{})
+	assert.Empty(t, service.GetClaudeCodeVersion())
+
+	service.SetClaudeCodeVersion("3.1.4")
+	assert.Equal(t, "3.1.4", service.GetClaudeCodeVersion())
+
+	// Empty values are ignored so a known version is not clobbered.
+	service.SetClaudeCodeVersion("")
+	assert.Equal(t, "3.1.4", service.GetClaudeCodeVersion())
+}
+
+func TestStopTimer_PreservesRateLimitCache(t *testing.T) {
+	service := NewCCInfoTimerService(&model.ShellTimeConfig{})
+
+	// Seed a good rate-limit cache.
+	service.rateLimitCache.mu.Lock()
+	service.rateLimitCache.usage = &AnthropicRateLimitData{FiveHourUtilization: 0.5}
+	service.rateLimitCache.fetchedAt = time.Now()
+	service.rateLimitCache.lastAttemptAt = time.Now()
+	service.rateLimitCache.backoffUntil = time.Now().Add(time.Hour)
+	service.rateLimitCache.mu.Unlock()
+
+	// stopTimer must be called with timerMu held and the timer "running".
+	service.timerMu.Lock()
+	service.timerRunning = true
+	service.ticker = time.NewTicker(time.Hour)
+	service.stopTimer()
+	service.timerMu.Unlock()
+
+	// The cache must survive an idle stop so the TTL/backoff hold across idle cycles.
+	rl := service.GetCachedRateLimit()
+	assert.NotNil(t, rl)
+	assert.Equal(t, 0.5, rl.FiveHourUtilization)
+
+	service.rateLimitCache.mu.RLock()
+	assert.False(t, service.rateLimitCache.backoffUntil.IsZero())
+	service.rateLimitCache.mu.RUnlock()
+}
 
 func TestFetchAnthropicUsage_Success(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

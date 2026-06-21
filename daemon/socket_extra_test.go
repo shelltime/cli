@@ -192,7 +192,7 @@ func TestRequestCCInfo_OverRealHandler(t *testing.T) {
 	// (rather than a stub responder), exercising the server-side encode logic.
 	_, socketPath := startHandler(t, &model.ShellTimeConfig{})
 
-	resp, err := RequestCCInfo(socketPath, CCInfoTimeRangeWeek, "", 2*time.Second)
+	resp, err := RequestCCInfo(socketPath, CCInfoTimeRangeWeek, "", "", 2*time.Second)
 	require.NoError(t, err)
 	require.NotNil(t, resp)
 	assert.Equal(t, "week", resp.TimeRange)
