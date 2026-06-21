@@ -52,10 +52,10 @@ builds:
     ldflags:
       - -s -w -X main.version={{.Version}} -X main.commit={{.Commit}} -X main.date={{.Date}} -X main.builtBy=goreleaser -X main.uptraceDsn={{.Env.UPTRACE_DSN}}
 archives:
-  - format: tar.gz
+  - formats: [tar.gz]
     id: mt-common
     allow_different_binary_count: true
-    builds:
+    ids:
       - mt-common
       - mt-daemon-linux
     # this name template makes the OS and Arch compatible with the results of uname.
@@ -69,11 +69,11 @@ archives:
     # use zip for windows archives
     format_overrides:
       - goos: windows
-        format: zip
-  - format: zip
+        formats: [zip]
+  - formats: [zip]
     id: mac
     allow_different_binary_count: true
-    builds:
+    ids:
       - mt-mac
       - mt-daemon-mac
     name_template: >-
@@ -135,27 +135,25 @@ notarize:
         key_id: "{{.Env.QUILL_NOTARY_KEY_ID}}"
         key: "{{.Env.QUILL_NOTARY_KEY}}"
         wait: true
-brews:
+# Homebrew Casks are macOS-only; Linux users install via the curl script.
+homebrew_casks:
   - name: shelltime
     ids:
-      - mt-common
       - mac
+    binaries:
+      - shelltime
+      - shelltime-daemon
     repository:
       owner: shelltime
       name: homebrew-tap
       token: "{{ .Env.HOMEBREW_TAP_GITHUB_TOKEN }}"
-    directory: Formula
+    directory: Casks
     homepage: "https://shelltime.xyz"
     description: "Track and analyze your shell usage - ShellTime CLI"
     license: "MIT"
     commit_author:
       name: shelltime-bot
       email: bot@shelltime.xyz
-    install: |
-      bin.install "shelltime"
-      bin.install "shelltime-daemon"
-    test: |
-      system "#{bin}/shelltime", "--version"
     caveats: |
       Get started with a single command:
         shelltime init
