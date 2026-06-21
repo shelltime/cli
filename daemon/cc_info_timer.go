@@ -2,8 +2,10 @@ package daemon
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
+	"net/http"
 	"path/filepath"
 	"runtime"
 	"sync"
@@ -58,6 +60,9 @@ type CCInfoTimerService struct {
 	// User profile cache (permanent for daemon lifetime)
 	userLogin        string
 	userLoginFetched bool
+
+	// Claude Code version reported by the statusline client, used for the Anthropic usage User-Agent
+	claudeCodeVersion string
 }
 
 // NewCCInfoTimerService creates a new CC info timer service
@@ -142,16 +147,14 @@ func (s *CCInfoTimerService) stopTimer() {
 	s.ticker.Stop()
 	s.timerRunning = false
 
-	// Clear active ranges, git cache, and rate limit cache when stopping
+	// Clear active ranges and git cache when stopping.
+	// The Anthropic rate-limit cache is intentionally preserved across idle cycles: it keeps the
+	// last good usage for instant display and, crucially, retains fetchedAt/lastAttemptAt/backoffUntil
+	// so the TTL and 429 backoff hold instead of re-fetching immediately on the next activity.
 	s.mu.Lock()
 	s.activeRanges = make(map[CCInfoTimeRange]bool)
 	s.gitCache = make(map[string]*GitCacheEntry)
 	s.mu.Unlock()
-	s.rateLimitCache.mu.Lock()
-	s.rateLimitCache.usage = nil
-	s.rateLimitCache.fetchedAt = time.Time{}
-	s.rateLimitCache.lastAttemptAt = time.Time{}
-	s.rateLimitCache.mu.Unlock()
 
 	slog.Info("CC info timer stopped due to inactivity")
 }
@@ -399,11 +402,17 @@ func (s *CCInfoTimerService) fetchRateLimit(ctx context.Context) {
 		return
 	}
 
-	// Check cache TTL under read lock - skip if data is fresh or we attempted recently
+	// Check cache TTL under read lock - skip if data is fresh, we attempted recently, or we are
+	// in a 429 backoff window.
 	s.rateLimitCache.mu.RLock()
 	sinceLastFetch := time.Since(s.rateLimitCache.fetchedAt)
 	sinceLastAttempt := time.Since(s.rateLimitCache.lastAttemptAt)
+	backoffUntil := s.rateLimitCache.backoffUntil
 	s.rateLimitCache.mu.RUnlock()
+
+	if !backoffUntil.IsZero() && time.Now().Before(backoffUntil) {
+		return
+	}
 
 	if sinceLastFetch < anthropicUsageCacheTTL || sinceLastAttempt < anthropicUsageCacheTTL {
 		return
@@ -424,11 +433,21 @@ func (s *CCInfoTimerService) fetchRateLimit(ctx context.Context) {
 		return
 	}
 
-	usage, err := fetchAnthropicUsage(ctx, token)
+	usage, err := fetchAnthropicUsage(ctx, token, s.GetClaudeCodeVersion())
 	if err != nil {
 		slog.Warn("Failed to fetch Anthropic usage", slog.Any("err", err))
 		s.rateLimitCache.mu.Lock()
 		s.rateLimitCache.lastError = shortenAPIError(err)
+		// On rate limiting, back off longer than the normal TTL to avoid hammering the throttled
+		// bucket. Honor Retry-After when provided, otherwise use the default backoff.
+		var apiErr *anthropicAPIError
+		if errors.As(err, &apiErr) && apiErr.StatusCode == http.StatusTooManyRequests {
+			backoff := apiErr.RetryAfter
+			if backoff < anthropicRateLimitBackoff {
+				backoff = anthropicRateLimitBackoff
+			}
+			s.rateLimitCache.backoffUntil = time.Now().Add(backoff)
+		}
 		s.rateLimitCache.mu.Unlock()
 		return
 	}
@@ -437,6 +456,7 @@ func (s *CCInfoTimerService) fetchRateLimit(ctx context.Context) {
 	s.rateLimitCache.usage = usage
 	s.rateLimitCache.fetchedAt = time.Now()
 	s.rateLimitCache.lastError = ""
+	s.rateLimitCache.backoffUntil = time.Time{}
 	s.rateLimitCache.mu.Unlock()
 
 	// Send usage data to server for push notification scheduling (fire-and-forget)
@@ -457,6 +477,24 @@ func (s *CCInfoTimerService) GetCachedUserLogin() string {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	return s.userLogin
+}
+
+// SetClaudeCodeVersion records the Claude Code version reported by the statusline client.
+// Empty values are ignored so a known version is not overwritten by a client that omits it.
+func (s *CCInfoTimerService) SetClaudeCodeVersion(version string) {
+	if version == "" {
+		return
+	}
+	s.mu.Lock()
+	s.claudeCodeVersion = version
+	s.mu.Unlock()
+}
+
+// GetClaudeCodeVersion returns the last reported Claude Code version, or "" if unknown.
+func (s *CCInfoTimerService) GetClaudeCodeVersion() string {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.claudeCodeVersion
 }
 
 // fetchUserProfile fetches the current user's login once per daemon lifetime.

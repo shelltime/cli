@@ -86,7 +86,7 @@ func commandCCStatusline(c *cli.Context) error {
 			}
 		}
 
-		result = getDaemonInfoWithFallback(ctx, config, data.Cwd)
+		result = getDaemonInfoWithFallback(ctx, config, data.Cwd, data.Version)
 	}
 
 	// Format and output
@@ -304,7 +304,7 @@ func formatSessionDuration(totalSeconds int) string {
 
 // getDaemonInfoWithFallback tries to get daily stats and git info from daemon first,
 // falls back to direct API for stats if daemon is unavailable (git info only from daemon)
-func getDaemonInfoWithFallback(ctx context.Context, config model.ShellTimeConfig, workingDir string) ccStatuslineResult {
+func getDaemonInfoWithFallback(ctx context.Context, config model.ShellTimeConfig, workingDir, claudeCodeVersion string) ccStatuslineResult {
 	socketPath := config.SocketPath
 	if socketPath == "" {
 		socketPath = model.DefaultSocketPath
@@ -312,7 +312,7 @@ func getDaemonInfoWithFallback(ctx context.Context, config model.ShellTimeConfig
 
 	// Try daemon first (50ms timeout for fast path)
 	if daemon.IsSocketReady(ctx, socketPath) {
-		resp, err := daemon.RequestCCInfo(socketPath, daemon.CCInfoTimeRangeToday, workingDir, 50*time.Millisecond)
+		resp, err := daemon.RequestCCInfo(socketPath, daemon.CCInfoTimeRangeToday, workingDir, claudeCodeVersion, 50*time.Millisecond)
 		if err == nil && resp != nil {
 			return ccStatuslineResult{
 				Cost:                resp.TotalCostUSD,

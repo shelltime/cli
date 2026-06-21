@@ -79,7 +79,7 @@ func (s *CCStatuslineTestSuite) TestGetDaemonInfo_UsesDaemonWhenAvailable() {
 		SocketPath: s.socketPath,
 	}
 
-	result := getDaemonInfoWithFallback(context.Background(), config, "/some/path")
+	result := getDaemonInfoWithFallback(context.Background(), config, "/some/path", "")
 
 	assert.Equal(s.T(), expectedCost, result.Cost)
 	assert.Equal(s.T(), expectedSessionSeconds, result.SessionSeconds)
@@ -94,7 +94,7 @@ func (s *CCStatuslineTestSuite) TestGetDaemonInfo_FallbackWhenDaemonUnavailable(
 		Token:      "", // No token means FetchDailyStatsCached returns zero values
 	}
 
-	result := getDaemonInfoWithFallback(context.Background(), config, "")
+	result := getDaemonInfoWithFallback(context.Background(), config, "", "")
 
 	// Should return zero values (from cache fallback with no token)
 	assert.Equal(s.T(), float64(0), result.Cost)
@@ -122,7 +122,7 @@ func (s *CCStatuslineTestSuite) TestGetDaemonInfo_FallbackOnDaemonError() {
 		Token:      "", // No token
 	}
 
-	result := getDaemonInfoWithFallback(context.Background(), config, "")
+	result := getDaemonInfoWithFallback(context.Background(), config, "", "")
 
 	// Should fall back and return zero values
 	assert.Equal(s.T(), float64(0), result.Cost)
@@ -141,7 +141,7 @@ func (s *CCStatuslineTestSuite) TestGetDaemonInfo_UsesDefaultSocketPath() {
 	// This should use model.DefaultSocketPath internally
 	// Since no daemon is running at the default path, it will fall back to cached API
 	// The function should not panic and should return a valid result struct
-	result := getDaemonInfoWithFallback(context.Background(), config, "")
+	result := getDaemonInfoWithFallback(context.Background(), config, "", "")
 
 	// We can't assert on exact values since the global cache might have data
 	// from previous tests. Just verify the function returns without error
@@ -582,7 +582,7 @@ func (s *CCStatuslineTestSuite) TestGetDaemonInfo_PropagatesRateLimitFields() {
 		SocketPath: s.socketPath,
 	}
 
-	result := getDaemonInfoWithFallback(context.Background(), config, "/some/path")
+	result := getDaemonInfoWithFallback(context.Background(), config, "/some/path", "")
 
 	assert.NotNil(s.T(), result.FiveHourUtilization)
 	assert.NotNil(s.T(), result.SevenDayUtilization)

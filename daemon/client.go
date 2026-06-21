@@ -126,8 +126,9 @@ func RequestListCommands(socketPath string, timeout time.Duration) (*ListCommand
 	return &response, nil
 }
 
-// RequestCCInfo requests CC info (cost data and git info) from the daemon
-func RequestCCInfo(socketPath string, timeRange CCInfoTimeRange, workingDir string, timeout time.Duration) (*CCInfoResponse, error) {
+// RequestCCInfo requests CC info (cost data and git info) from the daemon.
+// claudeCodeVersion is forwarded so the daemon can use it in the Anthropic usage User-Agent.
+func RequestCCInfo(socketPath string, timeRange CCInfoTimeRange, workingDir, claudeCodeVersion string, timeout time.Duration) (*CCInfoResponse, error) {
 	conn, err := net.DialTimeout("unix", socketPath, timeout)
 	if err != nil {
 		return nil, err
@@ -141,8 +142,9 @@ func RequestCCInfo(socketPath string, timeRange CCInfoTimeRange, workingDir stri
 	msg := SocketMessage{
 		Type: SocketMessageTypeCCInfo,
 		Payload: CCInfoRequest{
-			TimeRange:        timeRange,
-			WorkingDirectory: workingDir,
+			TimeRange:         timeRange,
+			WorkingDirectory:  workingDir,
+			ClaudeCodeVersion: claudeCodeVersion,
 		},
 	}
 
