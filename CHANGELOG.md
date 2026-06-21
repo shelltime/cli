@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.1.87](https://github.com/shelltime/cli/compare/v0.1.86...v0.1.87) (2026-06-21)
+
+
+### Bug Fixes
+
+* **daemon:** send claude-code User-Agent to fix persistent statusline quota 429 ([d159f34](https://github.com/shelltime/cli/commit/d159f348de521c6bc4ec7f7dbeaa27582ace2a81))
+* **daemon:** send claude-code User-Agent to fix persistent statusline quota 429 ([370cdc0](https://github.com/shelltime/cli/commit/370cdc00865bec8fc74d5ecafe4e9128f7aaf633))
+
 ## [0.1.86](https://github.com/shelltime/cli/compare/v0.1.85...v0.1.86) (2026-06-18)
 
 
