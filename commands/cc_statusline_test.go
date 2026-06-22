@@ -167,8 +167,8 @@ func (s *CCStatuslineTestSuite) TestFormatStatuslineOutput_AllValues() {
 	assert.Contains(s.T(), output, "🤖 claude-opus-4")
 	assert.Contains(s.T(), output, "$1.23")
 	assert.Contains(s.T(), output, "$4.56")
-	assert.Contains(s.T(), output, "1h1m")    // Session time (3661 seconds = 1h 1m 1s)
-	assert.Contains(s.T(), output, "75%")     // Context percentage
+	assert.Contains(s.T(), output, "1h1m") // Session time (3661 seconds = 1h 1m 1s)
+	assert.Contains(s.T(), output, "75%")  // Context percentage
 }
 
 func (s *CCStatuslineTestSuite) TestFormatStatuslineOutput_WithDirtyBranch() {
@@ -387,6 +387,12 @@ func (s *CCStatuslineTestSuite) TestFormatQuotaPart_WithError() {
 func (s *CCStatuslineTestSuite) TestFormatQuotaPart_WithAPIError() {
 	result := formatQuotaPart(nil, nil, "api:403")
 	assert.Contains(s.T(), result, "🚦 err:api:403")
+}
+
+func (s *CCStatuslineTestSuite) TestFormatQuotaPart_WithScopeError() {
+	// Token lacks the user:profile scope (e.g. a setup-token); show a clear, actionable label.
+	result := formatQuotaPart(nil, nil, "api:scope")
+	assert.Contains(s.T(), result, "🚦 err:api:scope")
 }
 
 func (s *CCStatuslineTestSuite) TestFormatQuotaPart_ErrorIgnoredWhenDataPresent() {

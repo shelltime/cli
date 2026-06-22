@@ -424,7 +424,7 @@ func (s *CCInfoTimerService) fetchRateLimit(ctx context.Context) {
 	s.rateLimitCache.mu.Unlock()
 
 	// Read token fresh from Keychain (not cached)
-	token, err := fetchClaudeCodeOAuthToken()
+	token, scopes, err := fetchClaudeCodeOAuthToken()
 	if err != nil || token == "" {
 		slog.Debug("Failed to get Claude Code OAuth token", slog.Any("err", err))
 		s.rateLimitCache.mu.Lock()
@@ -433,20 +433,47 @@ func (s *CCInfoTimerService) fetchRateLimit(ctx context.Context) {
 		return
 	}
 
+	// Skip the doomed call when the token can't read the usage endpoint (e.g. a `claude setup-token`
+	// used in CI lacks the user:profile scope). No long backoff: re-reading local creds is cheap and
+	// lets us recover within the normal TTL if the user re-authenticates with a scoped token.
+	if !hasUsageScope(scopes) {
+		slog.Debug("Claude Code token lacks usage scope; skipping Anthropic usage fetch",
+			slog.String("required", anthropicUsageRequiredScope))
+		s.rateLimitCache.mu.Lock()
+		s.rateLimitCache.lastError = "api:scope"
+		s.rateLimitCache.mu.Unlock()
+		return
+	}
+
 	usage, err := fetchAnthropicUsage(ctx, token, s.GetClaudeCodeVersion())
 	if err != nil {
-		slog.Warn("Failed to fetch Anthropic usage", slog.Any("err", err))
 		s.rateLimitCache.mu.Lock()
-		s.rateLimitCache.lastError = shortenAPIError(err)
-		// On rate limiting, back off longer than the normal TTL to avoid hammering the throttled
-		// bucket. Honor Retry-After when provided, otherwise use the default backoff.
 		var apiErr *anthropicAPIError
-		if errors.As(err, &apiErr) && apiErr.StatusCode == http.StatusTooManyRequests {
+		switch {
+		case errors.As(err, &apiErr) && apiErr.StatusCode == http.StatusTooManyRequests:
+			// On rate limiting, back off longer than the normal TTL to avoid hammering the throttled
+			// bucket. Honor Retry-After when provided, otherwise use the default backoff.
+			slog.Warn("Failed to fetch Anthropic usage", slog.Any("err", err))
+			s.rateLimitCache.lastError = shortenAPIError(err)
 			backoff := apiErr.RetryAfter
 			if backoff < anthropicRateLimitBackoff {
 				backoff = anthropicRateLimitBackoff
 			}
 			s.rateLimitCache.backoffUntil = time.Now().Add(backoff)
+		case errors.As(err, &apiErr) && apiErr.StatusCode == http.StatusForbidden:
+			// 403 = token authenticated but lacks the usage scope (or org access). Expected for
+			// setup-tokens and non-recoverable for this token, so log quietly and back off.
+			slog.Debug("Anthropic usage forbidden for this token", slog.Any("err", err))
+			s.rateLimitCache.lastError = "api:scope"
+			s.rateLimitCache.backoffUntil = time.Now().Add(anthropicRateLimitBackoff)
+		case errors.As(err, &apiErr) && apiErr.StatusCode == http.StatusUnauthorized:
+			// 401 = expired/invalid token; won't self-heal until re-auth, so back off too.
+			slog.Debug("Anthropic usage unauthorized", slog.Any("err", err))
+			s.rateLimitCache.lastError = "api:401"
+			s.rateLimitCache.backoffUntil = time.Now().Add(anthropicRateLimitBackoff)
+		default:
+			slog.Warn("Failed to fetch Anthropic usage", slog.Any("err", err))
+			s.rateLimitCache.lastError = shortenAPIError(err)
 		}
 		s.rateLimitCache.mu.Unlock()
 		return
