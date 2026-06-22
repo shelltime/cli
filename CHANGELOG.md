@@ -1,5 +1,15 @@
 # Changelog
 
+## [0.1.88](https://github.com/shelltime/cli/compare/v0.1.87...v0.1.88) (2026-06-22)
+
+
+### Bug Fixes
+
+* **ci:** migrate .goreleaser.yaml off deprecated archives/brews APIs ([fb5bcdb](https://github.com/shelltime/cli/commit/fb5bcdb27287eebae0c27b6874d04eff842915aa))
+* **ci:** migrate .goreleaser.yaml off deprecated archives/brews APIs ([6b4e0d3](https://github.com/shelltime/cli/commit/6b4e0d3d5b790b437d88936057ae5bdfbc5c1bd1))
+* **daemon:** handle Anthropic usage 403 from tokens missing user:profile scope ([fa744a5](https://github.com/shelltime/cli/commit/fa744a52f51c63da4d125a176e20721ec6ab058c))
+* **daemon:** handle Anthropic usage 403 from tokens missing user:profile scope ([1ad47b8](https://github.com/shelltime/cli/commit/1ad47b8b2b429d55b23bc0c40a26746d1363ef62))
+
 ## [0.1.87](https://github.com/shelltime/cli/compare/v0.1.86...v0.1.87) (2026-06-21)
 
 
