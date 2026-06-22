@@ -289,14 +289,15 @@ func TestAnthropicRateLimitCache_GetCachedRateLimit_ReturnsCopy(t *testing.T) {
 
 func TestParseOAuthTokenFromJSON_Valid(t *testing.T) {
 	raw := `{"claudeAiOauth":{"accessToken":"sk-ant-test-token-123","refreshToken":"sk-ref","expiresAt":1773399176544,"scopes":["user:inference"],"subscriptionType":"max","rateLimitTier":"default_claude_max_5x"}}`
-	token, err := parseOAuthTokenFromJSON([]byte(raw))
+	token, scopes, err := parseOAuthTokenFromJSON([]byte(raw))
 	assert.NoError(t, err)
 	assert.Equal(t, "sk-ant-test-token-123", token)
+	assert.Equal(t, []string{"user:inference"}, scopes)
 }
 
 func TestParseOAuthTokenFromJSON_MissingOAuth(t *testing.T) {
 	raw := `{"someOtherKey":"value"}`
-	token, err := parseOAuthTokenFromJSON([]byte(raw))
+	token, _, err := parseOAuthTokenFromJSON([]byte(raw))
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "no OAuth access token found")
 	assert.Empty(t, token)
@@ -304,7 +305,7 @@ func TestParseOAuthTokenFromJSON_MissingOAuth(t *testing.T) {
 
 func TestParseOAuthTokenFromJSON_EmptyToken(t *testing.T) {
 	raw := `{"claudeAiOauth":{"accessToken":""}}`
-	token, err := parseOAuthTokenFromJSON([]byte(raw))
+	token, _, err := parseOAuthTokenFromJSON([]byte(raw))
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "no OAuth access token found")
 	assert.Empty(t, token)
@@ -312,10 +313,27 @@ func TestParseOAuthTokenFromJSON_EmptyToken(t *testing.T) {
 
 func TestParseOAuthTokenFromJSON_InvalidJSON(t *testing.T) {
 	raw := `not-json`
-	token, err := parseOAuthTokenFromJSON([]byte(raw))
+	token, _, err := parseOAuthTokenFromJSON([]byte(raw))
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "failed to parse credentials JSON")
 	assert.Empty(t, token)
+}
+
+func TestHasUsageScope(t *testing.T) {
+	cases := []struct {
+		name   string
+		scopes []string
+		want   bool
+	}{
+		{"has user:profile", []string{"user:inference", "user:profile"}, true},
+		{"setup-token without profile", []string{"user:inference"}, false},
+		{"empty scopes are treated as unknown", nil, true},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			assert.Equal(t, c.want, hasUsageScope(c.scopes))
+		})
+	}
 }
 
 func TestFetchOAuthTokenFromCredentialsFile_Valid(t *testing.T) {
@@ -326,20 +344,21 @@ func TestFetchOAuthTokenFromCredentialsFile_Valid(t *testing.T) {
 	err := os.MkdirAll(claudeDir, 0700)
 	assert.NoError(t, err)
 
-	content := `{"claudeAiOauth":{"accessToken":"sk-test-linux-token","refreshToken":"sk-ref","expiresAt":1773399176544}}`
+	content := `{"claudeAiOauth":{"accessToken":"sk-test-linux-token","refreshToken":"sk-ref","expiresAt":1773399176544,"scopes":["user:inference","user:profile"]}}`
 	err = os.WriteFile(filepath.Join(claudeDir, ".credentials.json"), []byte(content), 0600)
 	assert.NoError(t, err)
 
-	token, err := fetchOAuthTokenFromCredentialsFile()
+	token, scopes, err := fetchOAuthTokenFromCredentialsFile()
 	assert.NoError(t, err)
 	assert.Equal(t, "sk-test-linux-token", token)
+	assert.Equal(t, []string{"user:inference", "user:profile"}, scopes)
 }
 
 func TestFetchOAuthTokenFromCredentialsFile_MissingFile(t *testing.T) {
 	tmpDir := t.TempDir()
 	t.Setenv("HOME", tmpDir)
 
-	token, err := fetchOAuthTokenFromCredentialsFile()
+	token, _, err := fetchOAuthTokenFromCredentialsFile()
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "credentials file read failed")
 	assert.Empty(t, token)
@@ -356,7 +375,7 @@ func TestFetchOAuthTokenFromCredentialsFile_InvalidJSON(t *testing.T) {
 	err = os.WriteFile(filepath.Join(claudeDir, ".credentials.json"), []byte("not-json"), 0600)
 	assert.NoError(t, err)
 
-	token, err := fetchOAuthTokenFromCredentialsFile()
+	token, _, err := fetchOAuthTokenFromCredentialsFile()
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "failed to parse credentials JSON")
 	assert.Empty(t, token)

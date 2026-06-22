@@ -26,7 +26,7 @@ func TestFetchClaudeCodeOAuthToken_LinuxDispatch(t *testing.T) {
 		content := `{"claudeAiOauth":{"accessToken":"sk-dispatch-token"}}`
 		require.NoError(t, os.WriteFile(filepath.Join(claudeDir, ".credentials.json"), []byte(content), 0o600))
 
-		tok, err := fetchClaudeCodeOAuthToken()
+		tok, _, err := fetchClaudeCodeOAuthToken()
 		require.NoError(t, err)
 		assert.Equal(t, "sk-dispatch-token", tok)
 	})
@@ -35,7 +35,7 @@ func TestFetchClaudeCodeOAuthToken_LinuxDispatch(t *testing.T) {
 		home := t.TempDir()
 		t.Setenv("HOME", home)
 
-		tok, err := fetchClaudeCodeOAuthToken()
+		tok, _, err := fetchClaudeCodeOAuthToken()
 		require.Error(t, err)
 		assert.Empty(t, tok)
 		assert.Contains(t, err.Error(), "credentials file read failed")

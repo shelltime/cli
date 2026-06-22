@@ -29,6 +29,11 @@ const claudeCodeFallbackVersion = "2.0.0"
 // anthropicUsageURL is the OAuth usage endpoint. It is a var (not a const) so tests can override it.
 var anthropicUsageURL = "https://api.anthropic.com/api/oauth/usage"
 
+// anthropicUsageRequiredScope is the OAuth scope the usage endpoint gates on. Interactive Claude Code
+// login tokens carry it; tokens minted by `claude setup-token` (e.g. CLAUDE_CODE_OAUTH_TOKEN in CI) do
+// not, so the endpoint authenticates them but returns 403 "does not meet scope requirement user:profile".
+const anthropicUsageRequiredScope = "user:profile"
+
 // AnthropicRateLimitData holds the parsed rate limit utilization data
 type AnthropicRateLimitData struct {
 	FiveHourUtilization float64
@@ -82,58 +87,74 @@ type claudeCodeOAuthEntry struct {
 	RateLimitTier    any      `json:"rateLimitTier"`
 }
 
-// fetchClaudeCodeOAuthToken reads the OAuth token from the platform-specific credential store.
+// fetchClaudeCodeOAuthToken reads the OAuth token and its scopes from the platform-specific
+// credential store.
 // macOS: reads from Keychain via `security` command.
 // Linux: reads from ~/.claude/.credentials.json file.
-// Returns ("", nil) on unsupported platforms.
-func fetchClaudeCodeOAuthToken() (string, error) {
+// Returns ("", nil, nil) on unsupported platforms.
+func fetchClaudeCodeOAuthToken() (string, []string, error) {
 	switch runtime.GOOS {
 	case "darwin":
 		return fetchOAuthTokenFromKeychain()
 	case "linux":
 		return fetchOAuthTokenFromCredentialsFile()
 	default:
-		return "", nil
+		return "", nil, nil
 	}
 }
 
-// fetchOAuthTokenFromKeychain reads the OAuth token from macOS Keychain.
-func fetchOAuthTokenFromKeychain() (string, error) {
+// fetchOAuthTokenFromKeychain reads the OAuth token and scopes from macOS Keychain.
+func fetchOAuthTokenFromKeychain() (string, []string, error) {
 	out, err := exec.Command("security", "find-generic-password", "-s", "Claude Code-credentials", "-w").Output()
 	if err != nil {
-		return "", fmt.Errorf("keychain lookup failed: %w", err)
+		return "", nil, fmt.Errorf("keychain lookup failed: %w", err)
 	}
 
 	return parseOAuthTokenFromJSON(out)
 }
 
-// fetchOAuthTokenFromCredentialsFile reads the OAuth token from ~/.claude/.credentials.json.
-func fetchOAuthTokenFromCredentialsFile() (string, error) {
+// fetchOAuthTokenFromCredentialsFile reads the OAuth token and scopes from ~/.claude/.credentials.json.
+func fetchOAuthTokenFromCredentialsFile() (string, []string, error) {
 	homeDir, err := os.UserHomeDir()
 	if err != nil {
-		return "", fmt.Errorf("failed to get home directory: %w", err)
+		return "", nil, fmt.Errorf("failed to get home directory: %w", err)
 	}
 
 	data, err := os.ReadFile(filepath.Join(homeDir, ".claude", ".credentials.json"))
 	if err != nil {
-		return "", fmt.Errorf("credentials file read failed: %w", err)
+		return "", nil, fmt.Errorf("credentials file read failed: %w", err)
 	}
 
 	return parseOAuthTokenFromJSON(data)
 }
 
-// parseOAuthTokenFromJSON parses Claude Code credentials JSON and extracts the OAuth access token.
-func parseOAuthTokenFromJSON(data []byte) (string, error) {
+// parseOAuthTokenFromJSON parses Claude Code credentials JSON and extracts the OAuth access token
+// and the scopes granted to it.
+func parseOAuthTokenFromJSON(data []byte) (string, []string, error) {
 	var creds claudeCodeCredentials
 	if err := json.Unmarshal(data, &creds); err != nil {
-		return "", fmt.Errorf("failed to parse credentials JSON: %w", err)
+		return "", nil, fmt.Errorf("failed to parse credentials JSON: %w", err)
 	}
 
 	if creds.ClaudeAiOauth == nil || creds.ClaudeAiOauth.AccessToken == "" {
-		return "", fmt.Errorf("no OAuth access token found in credentials")
+		return "", nil, fmt.Errorf("no OAuth access token found in credentials")
 	}
 
-	return creds.ClaudeAiOauth.AccessToken, nil
+	return creds.ClaudeAiOauth.AccessToken, creds.ClaudeAiOauth.Scopes, nil
+}
+
+// hasUsageScope reports whether the token can read the usage endpoint. When scopes is empty
+// (unknown), returns true so we still attempt the fetch and let the reactive 403 path decide.
+func hasUsageScope(scopes []string) bool {
+	if len(scopes) == 0 {
+		return true
+	}
+	for _, s := range scopes {
+		if s == anthropicUsageRequiredScope {
+			return true
+		}
+	}
+	return false
 }
 
 // fetchAnthropicUsage calls the Anthropic OAuth usage API and returns rate limit data.
