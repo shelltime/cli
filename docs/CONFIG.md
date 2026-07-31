@@ -11,6 +11,7 @@ This guide covers every configuration option in ShellTime CLI. ShellTime runs fi
 - [Command Filtering](#command-filtering)
 - [AI Features](#ai-features)
 - [Claude Code Integration](#claude-code-integration)
+- [Codex Usage Tracking](#codex-usage-tracking)
 - [Advanced Settings](#advanced-settings)
 - [Complete Example](#complete-example)
 - [FAQ](#faq)
@@ -269,6 +270,23 @@ aiCodeOtel:
 2. AI coding CLIs (Claude Code, Codex) send OTEL metrics/logs to this port
 3. ShellTime auto-detects the source from service.name attribute
 4. Data is forwarded to shelltime.xyz for analysis
+
+## Codex Usage Tracking
+
+Codex usage has two separate data paths:
+
+| Data | Source | Cadence |
+|------|--------|---------|
+| Sessions, tokens, tools, and cost telemetry | Codex OTEL export configured by `shelltime codex install` | As Codex emits telemetry |
+| Rate-limit windows, reset times, plan, and extra-credit status | Codex usage API, authenticated with `~/.codex/auth.json` | Daemon startup and every 10 minutes |
+
+Quota sync is automatic and has no configuration switch. It runs only when:
+
+1. ShellTime has a token from `shelltime auth`.
+2. Codex is signed in with ChatGPT and has written `~/.codex/auth.json`.
+3. `shelltime-daemon` is running.
+
+The Codex access token never goes to ShellTime. The daemon uses it only for the direct Codex request, then sends ShellTime a summary containing the plan, the windows Codex returned, their usage percentages and reset times, and credit status. The set and duration of windows are dynamic; for example, an account may return only a weekly window, so ShellTime does not synthesize a 5-hour window.
 
 ### CCUsage (Legacy)
 

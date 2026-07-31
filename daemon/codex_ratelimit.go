@@ -1,6 +1,7 @@
 package daemon
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -8,11 +9,15 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"sort"
+	"strings"
 	"sync"
 	"time"
 )
 
 const codexUsageCacheTTL = 10 * time.Minute
+
+const codexUsageEndpoint = "https://chatgpt.com/backend-api/wham/usage"
 
 var (
 	loadCodexAuthFunc   = loadCodexAuth
@@ -31,11 +36,20 @@ var (
 type CodexRateLimitData struct {
 	Plan    string
 	Windows []CodexRateLimitWindow
+	Credits *CodexUsageCredits
+}
+
+// CodexUsageCredits holds the extra-credit state returned by Codex.
+type CodexUsageCredits struct {
+	HasCredits bool   `json:"has_credits"`
+	Unlimited  bool   `json:"unlimited"`
+	Balance    string `json:"balance"`
 }
 
 // CodexRateLimitWindow holds a single rate limit window from the Codex API
 type CodexRateLimitWindow struct {
 	LimitID               string
+	LimitName             string
 	UsagePercentage       float64
 	ResetAt               int64 // Unix timestamp
 	WindowDurationMinutes int
@@ -162,15 +176,28 @@ func loadCodexAuth() (*codexAuthData, error) {
 
 // whamUsageResponse maps the response from chatgpt.com/backend-api/wham/usage
 type whamUsageResponse struct {
-	PlanType             string                                `json:"plan_type"`
-	RateLimit            *whamRateLimitCategory                `json:"rate_limit"`
-	CodeReviewRateLimit  *whamRateLimitCategory                `json:"code_review_rate_limit"`
-	AdditionalRateLimits map[string]*whamRateLimitCategory     `json:"additional_rate_limits"`
+	PlanType             string                 `json:"plan_type"`
+	RateLimit            *whamRateLimitCategory `json:"rate_limit"`
+	CodeReviewRateLimit  *whamRateLimitCategory `json:"code_review_rate_limit"`
+	AdditionalRateLimits json.RawMessage        `json:"additional_rate_limits"`
+	Credits              *whamCredits           `json:"credits"`
+}
+
+type whamAdditionalRateLimit struct {
+	LimitName      string                 `json:"limit_name"`
+	MeteredFeature string                 `json:"metered_feature"`
+	RateLimit      *whamRateLimitCategory `json:"rate_limit"`
+}
+
+type whamCredits struct {
+	HasCredits bool   `json:"has_credits"`
+	Unlimited  bool   `json:"unlimited"`
+	Balance    string `json:"balance"`
 }
 
 type whamRateLimitCategory struct {
-	Allowed         bool                `json:"allowed"`
-	LimitReached    bool                `json:"limit_reached"`
+	Allowed         bool                 `json:"allowed"`
+	LimitReached    bool                 `json:"limit_reached"`
 	PrimaryWindow   *whamRateLimitWindow `json:"primary_window"`
 	SecondaryWindow *whamRateLimitWindow `json:"secondary_window"`
 }
@@ -184,15 +211,22 @@ type whamRateLimitWindow struct {
 
 // fetchCodexUsage calls the Codex usage API and returns rate limit data.
 func fetchCodexUsage(ctx context.Context, auth *codexAuthData) (*CodexRateLimitData, error) {
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, "https://chatgpt.com/backend-api/wham/usage", nil)
+	client := &http.Client{Timeout: 5 * time.Second}
+	return fetchCodexUsageFromEndpoint(ctx, auth, codexUsageEndpoint, client)
+}
+
+func fetchCodexUsageFromEndpoint(ctx context.Context, auth *codexAuthData, endpoint string, client *http.Client) (*CodexRateLimitData, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
 	if err != nil {
 		return nil, err
 	}
 
 	req.Header.Set("Authorization", "Bearer "+auth.AccessToken)
 	req.Header.Set("User-Agent", "shelltime-daemon")
+	if auth.AccountID != "" {
+		req.Header.Set("ChatGPT-Account-ID", auth.AccountID)
+	}
 
-	client := &http.Client{Timeout: 5 * time.Second}
 	resp, err := client.Do(req)
 	if err != nil {
 		return nil, err
@@ -211,47 +245,111 @@ func fetchCodexUsage(ctx context.Context, auth *codexAuthData) (*CodexRateLimitD
 		return nil, fmt.Errorf("failed to decode codex usage response: %w", err)
 	}
 
-	var windows []CodexRateLimitWindow
-	type categoryEntry struct {
-		name     string
-		category *whamRateLimitCategory
-	}
-	for _, cat := range []categoryEntry{
-		{"rate_limit", usage.RateLimit},
-		{"code_review_rate_limit", usage.CodeReviewRateLimit},
-	} {
-		if cat.category == nil {
-			continue
-		}
-		if w := cat.category.PrimaryWindow; w != nil {
-			windows = append(windows, mapWhamWindow(cat.name, "primary", w))
-		}
-		if w := cat.category.SecondaryWindow; w != nil {
-			windows = append(windows, mapWhamWindow(cat.name, "secondary", w))
-		}
-	}
-
-	for name, cat := range usage.AdditionalRateLimits {
-		if cat == nil {
-			continue
-		}
-		if w := cat.PrimaryWindow; w != nil {
-			windows = append(windows, mapWhamWindow(name, "primary", w))
-		}
-		if w := cat.SecondaryWindow; w != nil {
-			windows = append(windows, mapWhamWindow(name, "secondary", w))
-		}
-	}
-
-	return &CodexRateLimitData{
-		Plan:    usage.PlanType,
-		Windows: windows,
-	}, nil
+	return mapWhamUsageResponse(&usage)
 }
 
-func mapWhamWindow(category, position string, w *whamRateLimitWindow) CodexRateLimitWindow {
+func mapWhamUsageResponse(usage *whamUsageResponse) (*CodexRateLimitData, error) {
+	windows := make([]CodexRateLimitWindow, 0, 4)
+	windows = appendWhamCategoryWindows(windows, "rate_limit", "", usage.RateLimit)
+	windows = appendWhamCategoryWindows(windows, "code_review_rate_limit", "", usage.CodeReviewRateLimit)
+
+	additional, legacy, err := decodeAdditionalRateLimits(usage.AdditionalRateLimits)
+	if err != nil {
+		return nil, fmt.Errorf("failed to decode codex additional rate limits: %w", err)
+	}
+	for _, item := range additional {
+		identifier := normalizeAdditionalLimitID(item.MeteredFeature)
+		if identifier == "" {
+			identifier = normalizeAdditionalLimitID(item.LimitName)
+		}
+		if identifier == "" {
+			identifier = "unnamed"
+		}
+		windows = appendWhamCategoryWindows(windows, "additional_rate_limit:"+identifier, item.LimitName, item.RateLimit)
+	}
+
+	legacyNames := make([]string, 0, len(legacy))
+	for name := range legacy {
+		legacyNames = append(legacyNames, name)
+	}
+	sort.Strings(legacyNames)
+	for _, name := range legacyNames {
+		windows = appendWhamCategoryWindows(windows, name, "", legacy[name])
+	}
+
+	result := &CodexRateLimitData{
+		Plan:    usage.PlanType,
+		Windows: windows,
+	}
+	if usage.Credits != nil {
+		result.Credits = &CodexUsageCredits{
+			HasCredits: usage.Credits.HasCredits,
+			Unlimited:  usage.Credits.Unlimited,
+			Balance:    usage.Credits.Balance,
+		}
+	}
+	return result, nil
+}
+
+func decodeAdditionalRateLimits(raw json.RawMessage) ([]whamAdditionalRateLimit, map[string]*whamRateLimitCategory, error) {
+	trimmed := bytes.TrimSpace(raw)
+	if len(trimmed) == 0 || bytes.Equal(trimmed, []byte("null")) {
+		return nil, nil, nil
+	}
+
+	switch trimmed[0] {
+	case '[':
+		var additional []whamAdditionalRateLimit
+		if err := json.Unmarshal(trimmed, &additional); err != nil {
+			return nil, nil, err
+		}
+		return additional, nil, nil
+	case '{':
+		var legacy map[string]*whamRateLimitCategory
+		if err := json.Unmarshal(trimmed, &legacy); err != nil {
+			return nil, nil, err
+		}
+		return nil, legacy, nil
+	default:
+		return nil, nil, errors.New("expected an array or object")
+	}
+}
+
+func appendWhamCategoryWindows(windows []CodexRateLimitWindow, category, limitName string, rateLimit *whamRateLimitCategory) []CodexRateLimitWindow {
+	if rateLimit == nil {
+		return windows
+	}
+	if rateLimit.PrimaryWindow != nil {
+		windows = append(windows, mapWhamWindow(category, limitName, "primary", rateLimit.PrimaryWindow))
+	}
+	if rateLimit.SecondaryWindow != nil {
+		windows = append(windows, mapWhamWindow(category, limitName, "secondary", rateLimit.SecondaryWindow))
+	}
+	return windows
+}
+
+func normalizeAdditionalLimitID(value string) string {
+	var normalized strings.Builder
+	lastUnderscore := false
+	for _, r := range strings.ToLower(strings.TrimSpace(value)) {
+		isAlphaNumeric := r >= 'a' && r <= 'z' || r >= '0' && r <= '9'
+		if isAlphaNumeric {
+			normalized.WriteRune(r)
+			lastUnderscore = false
+			continue
+		}
+		if !lastUnderscore && normalized.Len() > 0 {
+			normalized.WriteByte('_')
+			lastUnderscore = true
+		}
+	}
+	return strings.Trim(normalized.String(), "_")
+}
+
+func mapWhamWindow(category, limitName, position string, w *whamRateLimitWindow) CodexRateLimitWindow {
 	return CodexRateLimitWindow{
 		LimitID:               category + ":" + position,
+		LimitName:             limitName,
 		UsagePercentage:       float64(w.UsedPercent),
 		ResetAt:               w.ResetAt,
 		WindowDurationMinutes: w.LimitWindowSeconds / 60,

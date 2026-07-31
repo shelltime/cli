@@ -124,7 +124,7 @@ func TestMapWhamWindow(t *testing.T) {
 		ResetAfterSeconds:  120,
 		ResetAt:            1712400000,
 	}
-	got := mapWhamWindow("rate_limit", "primary", w)
+	got := mapWhamWindow("rate_limit", "", "primary", w)
 	assert.Equal(t, "rate_limit:primary", got.LimitID)
 	assert.Equal(t, float64(85), got.UsagePercentage)
 	assert.Equal(t, int64(1712400000), got.ResetAt)
@@ -149,88 +149,86 @@ func TestShortenCodexAPIError(t *testing.T) {
 	}
 }
 
-// TestFetchCodexUsage_DecodeAndMapping exercises the decode/mapping logic of
-// fetchCodexUsage by temporarily overriding the request to hit a test server.
-// fetchCodexUsage hardcodes its URL, so we verify the mapping by directly
-// decoding a representative response shape through the same struct and
-// mapWhamWindow used by the function.
-func TestFetchCodexUsage_ResponseMapping(t *testing.T) {
-	payload := whamUsageResponse{
-		PlanType: "pro",
-		RateLimit: &whamRateLimitCategory{
-			PrimaryWindow:   &whamRateLimitWindow{UsedPercent: 10, LimitWindowSeconds: 300, ResetAt: 100},
-			SecondaryWindow: &whamRateLimitWindow{UsedPercent: 20, LimitWindowSeconds: 600, ResetAt: 200},
-		},
-		CodeReviewRateLimit: &whamRateLimitCategory{
-			PrimaryWindow: &whamRateLimitWindow{UsedPercent: 30, LimitWindowSeconds: 1200, ResetAt: 300},
-		},
-		AdditionalRateLimits: map[string]*whamRateLimitCategory{
-			"extra": {PrimaryWindow: &whamRateLimitWindow{UsedPercent: 40, LimitWindowSeconds: 60, ResetAt: 400}},
-			"nilcat": nil,
-		},
-	}
-	raw, err := json.Marshal(payload)
+func TestFetchCodexUsage_CurrentResponseShape(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		assert.Equal(t, "Bearer access-token", r.Header.Get("Authorization"))
+		assert.Equal(t, "account-1", r.Header.Get("ChatGPT-Account-ID"))
+		assert.Equal(t, "shelltime-daemon", r.Header.Get("User-Agent"))
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"plan_type": "prolite",
+			"rate_limit": map[string]any{
+				"primary_window": map[string]any{"used_percent": 12, "limit_window_seconds": 604800, "reset_at": 1712400000},
+			},
+			"code_review_rate_limit": nil,
+			"additional_rate_limits": []any{
+				map[string]any{
+					"limit_name":      "GPT-5.3-Codex-Spark",
+					"metered_feature": "codex_bengalfox",
+					"rate_limit": map[string]any{
+						"primary_window": map[string]any{"used_percent": 40, "limit_window_seconds": 18000, "reset_at": 1712400100},
+					},
+				},
+			},
+			"credits": map[string]any{"has_credits": false, "unlimited": false, "balance": "0"},
+		})
+	}))
+	defer server.Close()
+
+	usage, err := fetchCodexUsageFromEndpoint(context.Background(), &codexAuthData{
+		AccessToken: "access-token",
+		AccountID:   "account-1",
+	}, server.URL, server.Client())
 	require.NoError(t, err)
 
-	var decoded whamUsageResponse
-	require.NoError(t, json.Unmarshal(raw, &decoded))
-
-	// Recreate the window aggregation the same way fetchCodexUsage does.
-	var windows []CodexRateLimitWindow
-	for _, c := range []struct {
-		name string
-		cat  *whamRateLimitCategory
-	}{{"rate_limit", decoded.RateLimit}, {"code_review_rate_limit", decoded.CodeReviewRateLimit}} {
-		if c.cat == nil {
-			continue
-		}
-		if w := c.cat.PrimaryWindow; w != nil {
-			windows = append(windows, mapWhamWindow(c.name, "primary", w))
-		}
-		if w := c.cat.SecondaryWindow; w != nil {
-			windows = append(windows, mapWhamWindow(c.name, "secondary", w))
-		}
-	}
-
-	assert.Equal(t, "pro", decoded.PlanType)
-	require.Len(t, windows, 3)
-	assert.Equal(t, "rate_limit:primary", windows[0].LimitID)
-	assert.Equal(t, "rate_limit:secondary", windows[1].LimitID)
-	assert.Equal(t, "code_review_rate_limit:primary", windows[2].LimitID)
-	assert.Equal(t, 5, windows[0].WindowDurationMinutes)
-	assert.Equal(t, 10, windows[1].WindowDurationMinutes)
+	assert.Equal(t, "prolite", usage.Plan)
+	require.Len(t, usage.Windows, 2)
+	assert.Equal(t, "rate_limit:primary", usage.Windows[0].LimitID)
+	assert.Equal(t, 10080, usage.Windows[0].WindowDurationMinutes)
+	assert.Equal(t, "additional_rate_limit:codex_bengalfox:primary", usage.Windows[1].LimitID)
+	assert.Equal(t, "GPT-5.3-Codex-Spark", usage.Windows[1].LimitName)
+	require.NotNil(t, usage.Credits)
+	assert.False(t, usage.Credits.HasCredits)
+	assert.False(t, usage.Credits.Unlimited)
+	assert.Equal(t, "0", usage.Credits.Balance)
 }
 
-// TestFetchCodexUsage_StatusHandling verifies fetchCodexUsage's status-code
-// branches using a test server reachable through the same HTTP client pattern.
-// Since fetchCodexUsage uses a hardcoded host, we replicate its status handling
-// against a local server to assert the sentinel mapping it relies on.
-func TestFetchCodexUsage_StatusHandling(t *testing.T) {
-	t.Run("unauthorized -> token invalid sentinel via direct status check", func(t *testing.T) {
-		// Confirms that a 401/403 maps to errCodexTokenInvalid in the function's
-		// logic; we test the branch by reproducing the condition.
-		statuses := []int{http.StatusUnauthorized, http.StatusForbidden}
-		for _, sc := range statuses {
-			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-				w.WriteHeader(sc)
-			}))
-			req, err := http.NewRequestWithContext(context.Background(), http.MethodGet, server.URL, nil)
-			require.NoError(t, err)
-			resp, err := http.DefaultClient.Do(req)
-			require.NoError(t, err)
-			resp.Body.Close()
-			server.Close()
+func TestMapWhamUsageResponse_LegacyAdditionalRateLimits(t *testing.T) {
+	var response whamUsageResponse
+	require.NoError(t, json.Unmarshal([]byte(`{
+		"plan_type":"pro",
+		"rate_limit":{"primary_window":{"used_percent":10,"limit_window_seconds":300,"reset_at":100},"secondary_window":{"used_percent":20,"limit_window_seconds":600,"reset_at":200}},
+		"code_review_rate_limit":{"primary_window":{"used_percent":30,"limit_window_seconds":1200,"reset_at":300}},
+		"additional_rate_limits":{"z_extra":null,"extra":{"primary_window":{"used_percent":40,"limit_window_seconds":60,"reset_at":400}}}
+	}`), &response))
 
-			// Replicate fetchCodexUsage's status branch.
-			var got error
-			if resp.StatusCode != http.StatusOK {
-				if resp.StatusCode == http.StatusUnauthorized || resp.StatusCode == http.StatusForbidden {
-					got = errCodexTokenInvalid
-				} else {
-					got = fmt.Errorf("codex usage API returned status %d", resp.StatusCode)
-				}
-			}
-			assert.ErrorIs(t, got, errCodexTokenInvalid)
-		}
-	})
+	usage, err := mapWhamUsageResponse(&response)
+	require.NoError(t, err)
+	require.Len(t, usage.Windows, 4)
+	assert.Equal(t, "rate_limit:primary", usage.Windows[0].LimitID)
+	assert.Equal(t, "rate_limit:secondary", usage.Windows[1].LimitID)
+	assert.Equal(t, "code_review_rate_limit:primary", usage.Windows[2].LimitID)
+	assert.Equal(t, "extra:primary", usage.Windows[3].LimitID)
+	assert.Empty(t, usage.Windows[3].LimitName)
+}
+
+func TestMapWhamUsageResponse_RejectsInvalidAdditionalRateLimits(t *testing.T) {
+	response := &whamUsageResponse{AdditionalRateLimits: json.RawMessage(`"invalid"`)}
+	_, err := mapWhamUsageResponse(response)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "expected an array or object")
+}
+
+func TestFetchCodexUsage_StatusHandling(t *testing.T) {
+	for _, status := range []int{http.StatusUnauthorized, http.StatusForbidden} {
+		t.Run(fmt.Sprintf("status_%d", status), func(t *testing.T) {
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				w.WriteHeader(status)
+			}))
+			defer server.Close()
+
+			usage, err := fetchCodexUsageFromEndpoint(context.Background(), &codexAuthData{AccessToken: "invalid"}, server.URL, server.Client())
+			assert.Nil(t, usage)
+			assert.ErrorIs(t, err, errCodexTokenInvalid)
+		})
+	}
 }

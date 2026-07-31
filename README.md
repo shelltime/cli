@@ -59,6 +59,7 @@ shelltime codex install
 - Syncs your command history to ShellTime so you can search and analyze it.
 - Runs a background daemon for low-latency, non-blocking sync.
 - Forwards Claude Code and OpenAI Codex telemetry through OTEL.
+- Syncs the rate-limit windows and extra-credit status that Codex currently reports.
 - Shows a live Claude Code statusline with cost, quota, time, and context usage.
 - Syncs supported dotfiles to and from the ShellTime service.
 
@@ -175,6 +176,17 @@ Example output:
 ```
 
 For formatting details and platform notes, see [docs/CC_STATUSLINE.md](docs/CC_STATUSLINE.md).
+
+## Codex Usage Tracking
+
+ShellTime receives Codex data through two independent paths:
+
+- `shelltime codex install` configures Codex OTEL export for sessions, tokens, tool activity, and cost telemetry.
+- The running `shelltime-daemon` reads your local Codex login, fetches the rate-limit windows and credit status currently returned by Codex, and syncs that summary when the daemon starts and every 10 minutes afterward.
+
+Quota sync requires both a ShellTime login (`shelltime auth`) and a ChatGPT-authenticated Codex installation. ShellTime reads the Codex access token from `~/.codex/auth.json` only for the direct request to Codex; the token stays on your machine, and only the returned plan, quota windows, percentages, reset times, and credit summary are sent to ShellTime.
+
+Codex decides which windows are present. ShellTime displays the windows returned by Codex instead of assuming that every account has a fixed 5-hour window.
 
 ## Security and Privacy
 
