@@ -106,7 +106,7 @@ func TestMapWhamWindow_SubMinuteSecondary(t *testing.T) {
 		LimitWindowSeconds: 30, // < 60 -> 0 minutes
 		ResetAt:            999,
 	}
-	got := mapWhamWindow("code_review_rate_limit", "secondary", w)
+	got := mapWhamWindow("code_review_rate_limit", "", "secondary", w)
 	assert.Equal(t, "code_review_rate_limit:secondary", got.LimitID)
 	assert.Equal(t, float64(5), got.UsagePercentage)
 	assert.Equal(t, int64(999), got.ResetAt)

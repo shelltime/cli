@@ -31,9 +31,14 @@ func TestSyncCodexUsage_SendsUsageToServer(t *testing.T) {
 	fetchCodexUsageFunc = func(ctx context.Context, auth *codexAuthData) (*CodexRateLimitData, error) {
 		return &CodexRateLimitData{
 			Plan: "pro",
+			Credits: &CodexUsageCredits{
+				HasCredits: true,
+				Balance:    "12.50",
+			},
 			Windows: []CodexRateLimitWindow{
 				{
 					LimitID:               "main",
+					LimitName:             "Main window",
 					UsagePercentage:       72.5,
 					ResetAt:               1712400000,
 					WindowDurationMinutes: 300,
@@ -43,9 +48,12 @@ func TestSyncCodexUsage_SendsUsageToServer(t *testing.T) {
 	}
 
 	var captured struct {
-		Plan    string `json:"plan"`
-		Windows []struct {
+		SchemaVersion int                `json:"schema_version"`
+		Plan          string             `json:"plan"`
+		Credits       *CodexUsageCredits `json:"credits"`
+		Windows       []struct {
 			LimitID               string  `json:"limit_id"`
+			LimitName             string  `json:"limit_name"`
 			UsagePercentage       float64 `json:"usage_percentage"`
 			ResetsAt              string  `json:"resets_at"`
 			WindowDurationMinutes int     `json:"window_duration_minutes"`
@@ -69,8 +77,13 @@ func TestSyncCodexUsage_SendsUsageToServer(t *testing.T) {
 	require.NoError(t, err)
 
 	require.Len(t, captured.Windows, 1)
+	assert.Equal(t, 2, captured.SchemaVersion)
 	assert.Equal(t, "pro", captured.Plan)
+	require.NotNil(t, captured.Credits)
+	assert.True(t, captured.Credits.HasCredits)
+	assert.Equal(t, "12.50", captured.Credits.Balance)
 	assert.Equal(t, "main", captured.Windows[0].LimitID)
+	assert.Equal(t, "Main window", captured.Windows[0].LimitName)
 	assert.Equal(t, 72.5, captured.Windows[0].UsagePercentage)
 	assert.Equal(t, "2024-04-06T10:40:00Z", captured.Windows[0].ResetsAt)
 	assert.Equal(t, 300, captured.Windows[0].WindowDurationMinutes)

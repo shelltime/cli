@@ -110,19 +110,23 @@ func sendCodexUsageToServer(ctx context.Context, config model.ShellTimeConfig, u
 
 	type usageWindow struct {
 		LimitID               string  `json:"limit_id"`
+		LimitName             string  `json:"limit_name"`
 		UsagePercentage       float64 `json:"usage_percentage"`
 		ResetsAt              string  `json:"resets_at"`
 		WindowDurationMinutes int     `json:"window_duration_minutes"`
 	}
 	type usagePayload struct {
-		Plan    string        `json:"plan"`
-		Windows []usageWindow `json:"windows"`
+		SchemaVersion int                `json:"schema_version"`
+		Plan          string             `json:"plan"`
+		Credits       *CodexUsageCredits `json:"credits,omitempty"`
+		Windows       []usageWindow      `json:"windows"`
 	}
 
 	windows := make([]usageWindow, len(usage.Windows))
 	for i, w := range usage.Windows {
 		windows[i] = usageWindow{
 			LimitID:               w.LimitID,
+			LimitName:             w.LimitName,
 			UsagePercentage:       w.UsagePercentage,
 			ResetsAt:              time.Unix(w.ResetAt, 0).UTC().Format(time.RFC3339),
 			WindowDurationMinutes: w.WindowDurationMinutes,
@@ -130,8 +134,10 @@ func sendCodexUsageToServer(ctx context.Context, config model.ShellTimeConfig, u
 	}
 
 	payload := usagePayload{
-		Plan:    usage.Plan,
-		Windows: windows,
+		SchemaVersion: 2,
+		Plan:          usage.Plan,
+		Credits:       usage.Credits,
+		Windows:       windows,
 	}
 
 	return model.SendHTTPRequestJSON(model.HTTPRequestOptions[usagePayload, any]{
