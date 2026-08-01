@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.1.89](https://github.com/shelltime/cli/compare/v0.1.88...v0.1.89) (2026-07-31)
+
+
+### Bug Fixes
+
+* **daemon:** restore Codex usage synchronization ([dac9b2a](https://github.com/shelltime/cli/commit/dac9b2a7973d7b51a6b807bd3c19ddb68c1e94aa))
+* **daemon:** restore Codex usage synchronization ([70fc0fc](https://github.com/shelltime/cli/commit/70fc0fc9c2913dac8d63c6d6ae359b993b571461))
+
 ## [0.1.88](https://github.com/shelltime/cli/compare/v0.1.87...v0.1.88) (2026-06-22)
 
 
