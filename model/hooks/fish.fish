@@ -4,7 +4,9 @@
 if not command -v shelltime > /dev/null
     echo "Warning: shelltime CLI not found. Please install it to enable time tracking."
 else
-    shelltime gc
+    # Detached from the tty: this runs while fish is still probing the terminal
+    # (OSC 11 / CPR / DA1) at startup, and must not sit on the input queue.
+    shelltime gc < /dev/null
 end
 
 # Create a timestamp for the session when the shell starts
@@ -19,7 +21,7 @@ function fish_preexec --on-event fish_preexec
         return
     end
 
-    shelltime track -s=fish -id=$SESSION_ID -cmd="$argv" -p=pre --ppid=$FISH_PPID > /dev/null
+    shelltime track -s=fish -id=$SESSION_ID -cmd="$argv" -p=pre --ppid=$FISH_PPID < /dev/null > /dev/null 2>&1
 end
 
 # Define the postexec function
@@ -29,5 +31,5 @@ function fish_postexec --on-event fish_postexec
         return
     end
     # This event is triggered before each prompt, which is after each command
-    shelltime track -s=fish -id=$SESSION_ID -cmd="$argv" -p=post -r=$LAST_RESULT --ppid=$FISH_PPID > /dev/null
+    shelltime track -s=fish -id=$SESSION_ID -cmd="$argv" -p=post -r=$LAST_RESULT --ppid=$FISH_PPID < /dev/null > /dev/null 2>&1
 end
