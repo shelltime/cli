@@ -18,21 +18,34 @@ func driftTestEnv(t *testing.T) {
 	t.Setenv("HOME", t.TempDir())
 	t.Setenv(model.DisableAutoUpdateEnv, "")
 
-	prevRate := updateDriftSampleRate
+	prevRate := trackDaemonStartSampleRate
 	prevSpawn := spawnDriftRepair
+	prevStart := spawnDaemonStart
 	prevNow := driftNow
 	prevReady := driftDaemonIsReady
 	t.Cleanup(func() {
-		updateDriftSampleRate = prevRate
+		trackDaemonStartSampleRate = prevRate
 		spawnDriftRepair = prevSpawn
+		spawnDaemonStart = prevStart
 		driftNow = prevNow
 		driftDaemonIsReady = prevReady
 	})
 
 	// Force the sampled branch so tests are deterministic.
-	updateDriftSampleRate = 1
+	trackDaemonStartSampleRate = 1
 	// Don't let a real daemon on the dev machine influence the result.
 	driftDaemonIsReady = func(context.Context) bool { return false }
+}
+
+// installDaemonServiceFile simulates a daemon that has been installed at some
+// point (so we are allowed to restart it).
+func installDaemonServiceFile(t *testing.T) {
+	t.Helper()
+	require.NoError(t, os.MkdirAll(model.GetStoragePath("daemon"), 0o755))
+	require.NoError(t, os.WriteFile(
+		model.GetStoragePath("daemon", "xyz.shelltime.daemon.plist"), []byte("<plist/>"), 0o644))
+	require.NoError(t, os.WriteFile(
+		model.GetStoragePath("daemon", "shelltime.service"), []byte("[Unit]"), 0o644))
 }
 
 func autoUpdateOnConfig() model.ShellTimeConfig {
@@ -40,57 +53,101 @@ func autoUpdateOnConfig() model.ShellTimeConfig {
 	return model.ShellTimeConfig{AutoUpdate: &model.AutoUpdate{Enabled: &on}}
 }
 
-func TestCheckDaemonDriftSampled_NoMarkerDoesNothing(t *testing.T) {
+// track's ONLY permitted daemon action is starting the service. It must never
+// spawn the update-applying path, which swaps binaries.
+func TestMaybeStartDaemonFromTrack_StartsDaemonNeverAppliesUpdate(t *testing.T) {
 	driftTestEnv(t)
-
-	var spawned atomic.Bool
-	spawnDriftRepair = func() { spawned.Store(true) }
-
-	checkDaemonDriftSampled()
-	assert.False(t, spawned.Load(), "no marker means no repair")
-}
-
-func TestCheckDaemonDriftSampled_MarkerTriggersRepair(t *testing.T) {
-	driftTestEnv(t)
+	installDaemonServiceFile(t)
+	// Even with a staged update pending, track must not touch it.
 	require.NoError(t, model.WriteDaemonUpdatePending("v0.1.90"))
 
-	var spawned atomic.Bool
-	spawnDriftRepair = func() { spawned.Store(true) }
+	var started, repaired atomic.Bool
+	spawnDaemonStart = func() { started.Store(true) }
+	spawnDriftRepair = func() { repaired.Store(true) }
 
-	checkDaemonDriftSampled()
-	assert.True(t, spawned.Load())
+	maybeStartDaemonFromTrack()
+
+	assert.True(t, started.Load(), "track should start a stopped daemon")
+	assert.False(t, repaired.Load(),
+		"track must never apply an update; that belongs to the daemon and gc")
 }
 
-func TestCheckDaemonDriftSampled_KillSwitch(t *testing.T) {
+// track spawns `daemon install`, which only starts the service.
+func TestLaunchDetachedDaemonStart_UsesInstallNotApplyUpdate(t *testing.T) {
 	driftTestEnv(t)
-	require.NoError(t, model.WriteDaemonUpdatePending("v0.1.90"))
-	t.Setenv(model.DisableAutoUpdateEnv, "1")
 
-	var spawned atomic.Bool
-	spawnDriftRepair = func() { spawned.Store(true) }
+	var gotArgs []string
+	prev := launchDetachedFn
+	t.Cleanup(func() { launchDetachedFn = prev })
+	launchDetachedFn = func(args ...string) { gotArgs = args }
 
-	checkDaemonDriftSampled()
-	assert.False(t, spawned.Load())
+	launchDetachedDaemonStart()
+	assert.Equal(t, []string{"daemon", "install"}, gotArgs)
+
+	launchDetachedApplyUpdate()
+	assert.Equal(t, []string{"daemon", "apply-update"}, gotArgs)
 }
 
-// The whole point of sampling is that `track` almost never does any work.
-func TestCheckDaemonDriftSampled_SamplingSkipsMostInvocations(t *testing.T) {
+// A user who ran `daemon uninstall` must not have it restarted by a shell hook.
+func TestMaybeStartDaemonFromTrack_SkipsWhenServiceFileAbsent(t *testing.T) {
 	driftTestEnv(t)
-	require.NoError(t, model.WriteDaemonUpdatePending("v0.1.90"))
-	updateDriftSampleRate = 64
 
-	var spawns atomic.Int32
-	spawnDriftRepair = func() { spawns.Add(1) }
+	var started atomic.Bool
+	spawnDaemonStart = func() { started.Store(true) }
 
-	const runs = 2000
-	for range runs {
-		checkDaemonDriftSampled()
+	maybeStartDaemonFromTrack()
+	assert.False(t, started.Load(), "no service file means the user removed it deliberately")
+}
+
+// A daemon that cannot start must not be respawned on every command.
+func TestMaybeStartDaemonFromTrack_RateLimited(t *testing.T) {
+	driftTestEnv(t)
+	installDaemonServiceFile(t)
+
+	now := time.Date(2026, 8, 7, 9, 0, 0, 0, time.UTC)
+	driftNow = func() time.Time { return now }
+
+	var starts atomic.Int32
+	spawnDaemonStart = func() { starts.Add(1) }
+
+	maybeStartDaemonFromTrack()
+	require.EqualValues(t, 1, starts.Load(), "first attempt should fire")
+
+	for range 50 {
+		maybeStartDaemonFromTrack()
+	}
+	assert.EqualValues(t, 1, starts.Load(), "must not respawn on every command")
+
+	driftNow = func() time.Time { return now.Add(2 * time.Hour) }
+	maybeStartDaemonFromTrack()
+	assert.EqualValues(t, 2, starts.Load(), "retries after the interval")
+}
+
+// Sampling keeps a spawn storm from forming while the daemon is down.
+func TestMaybeStartDaemonFromTrack_Sampled(t *testing.T) {
+	driftTestEnv(t)
+	installDaemonServiceFile(t)
+	trackDaemonStartSampleRate = 8
+
+	// Keep the rate limiter out of the way so we measure sampling alone: each
+	// call sees a clock far past the previous attempt.
+	base := time.Date(2026, 8, 7, 9, 0, 0, 0, time.UTC)
+	var clock atomic.Int64
+	driftNow = func() time.Time {
+		return base.Add(time.Duration(clock.Add(1)) * 2 * time.Hour)
 	}
 
-	got := spawns.Load()
-	// Expect ~31 of 2000. Generous bounds so this cannot flake.
-	assert.Greater(t, int(got), 0, "sampling should fire occasionally")
-	assert.Less(t, int(got), runs/8, "sampling should skip the vast majority of invocations")
+	var reached atomic.Int32
+	spawnDaemonStart = func() { reached.Add(1) }
+
+	const runs = 400
+	for range runs {
+		maybeStartDaemonFromTrack()
+	}
+
+	got := int(reached.Load())
+	assert.Greater(t, got, 0, "sampling should fire occasionally")
+	assert.Less(t, got, runs/2, "sampling should skip most invocations")
 }
 
 func TestMaybeRepairDaemonDrift_DisabledByConfig(t *testing.T) {

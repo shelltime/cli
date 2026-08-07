@@ -58,12 +58,6 @@ var TrackCommand *cli.Command = &cli.Command{
 }
 
 func commandTrack(c *cli.Context) error {
-	// Safety net for shells kept open for weeks, where `gc` never re-runs.
-	// Sampled at 1-in-N so the common path is a few nanoseconds and no syscalls;
-	// see checkDaemonDriftSampled for the cost breakdown. Runs before the span
-	// and logger setup so it cannot be slowed by them.
-	checkDaemonDriftSampled()
-
 	ctx, span := commandTracer.Start(c.Context, "track", trace.WithSpanKind(trace.SpanKindClient))
 	defer span.End()
 	SetupLogger(os.ExpandEnv("$HOME/" + model.COMMAND_BASE_STORAGE_FOLDER))
@@ -126,6 +120,16 @@ func commandTrack(c *cli.Context) error {
 	if config.SocketPath != model.DefaultSocketPath && daemon.IsSocketReady(ctx, config.SocketPath) {
 		return sendTrackEventToDaemon(ctx, span, config.SocketPath, cmdPhase, instance, result)
 	}
+
+	// Reaching here means no daemon is listening anywhere, which track has just
+	// established for free. Try to bring it back up — a dead daemon means no
+	// syncing and no update checks at all.
+	//
+	// This is the ONLY daemon-lifecycle action track ever takes. It never
+	// downloads, never swaps a binary, and never applies an update: that work
+	// belongs to the daemon (and to `gc`, which runs once per shell). The spawn
+	// is detached and its outcome is deliberately ignored.
+	maybeStartDaemonFromTrack()
 
 	// No daemon at all: persist to the local txt store and sync directly over HTTP.
 	if cmdPhase == "pre" {
