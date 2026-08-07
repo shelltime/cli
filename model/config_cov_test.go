@@ -40,6 +40,8 @@ func TestMergeConfig_AllOverrides(t *testing.T) {
 		LogCleanup:    &LogCleanup{Enabled: &truthy, ThresholdMB: 42},
 		SocketPath:    "/tmp/local.sock",
 		CodeTracking:  &CodeTracking{Token: "ct"},
+		Storage:       &StorageConfig{Engine: StorageEngineBolt},
+		AutoUpdate:    &AutoUpdate{Enabled: &on, IntervalHours: 6},
 	}
 
 	mergeConfig(base, local)
@@ -61,6 +63,56 @@ func TestMergeConfig_AllOverrides(t *testing.T) {
 	assert.EqualValues(t, 42, base.LogCleanup.ThresholdMB)
 	assert.Equal(t, "/tmp/local.sock", base.SocketPath)
 	require.NotNil(t, base.CodeTracking)
+	// Storage was missing from mergeConfig entirely, so a local
+	// `storage: {engine: bolt}` was silently dropped.
+	require.NotNil(t, base.Storage, "local storage override must be applied")
+	assert.Equal(t, StorageEngineBolt, base.Storage.Engine)
+	require.NotNil(t, base.AutoUpdate, "local autoUpdate override must be applied")
+	assert.Equal(t, 6, base.AutoUpdate.IntervalHours)
+}
+
+// TestReadConfigFile_AutoUpdateDefaults asserts auto-update is on by default and
+// that an explicit `enabled: false` survives defaulting (opt-out must stick).
+func TestReadConfigFile_AutoUpdateDefaults(t *testing.T) {
+	t.Run("absent section defaults to enabled", func(t *testing.T) {
+		dir := t.TempDir()
+		require.NoError(t, os.WriteFile(filepath.Join(dir, "config.yaml"),
+			[]byte("token: tok\n"), 0o644))
+
+		cfg, err := NewConfigService(dir).ReadConfigFile(context.Background())
+		require.NoError(t, err)
+		require.NotNil(t, cfg.AutoUpdate)
+		require.NotNil(t, cfg.AutoUpdate.Enabled)
+		assert.True(t, *cfg.AutoUpdate.Enabled)
+		require.NotNil(t, cfg.AutoUpdate.Homebrew)
+		assert.False(t, *cfg.AutoUpdate.Homebrew, "homebrew auto-upgrade must be opt-in")
+		assert.Equal(t, DefaultAutoUpdateIntervalHours, cfg.AutoUpdate.IntervalHours)
+		assert.Equal(t, AutoUpdateChannelStable, cfg.AutoUpdate.Channel)
+	})
+
+	t.Run("explicit false is preserved", func(t *testing.T) {
+		dir := t.TempDir()
+		require.NoError(t, os.WriteFile(filepath.Join(dir, "config.yaml"),
+			[]byte("token: tok\nautoUpdate:\n  enabled: false\n"), 0o644))
+
+		cfg, err := NewConfigService(dir).ReadConfigFile(context.Background())
+		require.NoError(t, err)
+		require.NotNil(t, cfg.AutoUpdate)
+		require.NotNil(t, cfg.AutoUpdate.Enabled)
+		assert.False(t, *cfg.AutoUpdate.Enabled, "opt-out must not be overwritten by defaults")
+		// Other fields still get backfilled.
+		assert.Equal(t, DefaultAutoUpdateIntervalHours, cfg.AutoUpdate.IntervalHours)
+	})
+
+	t.Run("interval is clamped", func(t *testing.T) {
+		dir := t.TempDir()
+		require.NoError(t, os.WriteFile(filepath.Join(dir, "config.yaml"),
+			[]byte("token: tok\nautoUpdate:\n  intervalHours: 0\n"), 0o644))
+
+		cfg, err := NewConfigService(dir).ReadConfigFile(context.Background())
+		require.NoError(t, err)
+		assert.Equal(t, DefaultAutoUpdateIntervalHours, cfg.AutoUpdate.IntervalHours)
+	})
 }
 
 // TestMergeConfig_CCOtelMigration covers the deprecated CCOtel -> AICodeOtel

@@ -2,6 +2,11 @@ package model
 
 const (
 	DefaultSocketPath = "/tmp/shelltime.sock"
+
+	// AutoUpdateChannelStable is the only release channel honored today.
+	AutoUpdateChannelStable = "stable"
+	// DefaultAutoUpdateIntervalHours is how often the daemon checks for a new release.
+	DefaultAutoUpdateIntervalHours = 24
 )
 
 type Endpoint struct {
@@ -41,6 +46,23 @@ type CodeTracking struct {
 	Enabled     *bool  `toml:"enabled" yaml:"enabled" json:"enabled"`
 	APIEndpoint string `toml:"apiEndpoint,omitempty" yaml:"apiEndpoint,omitempty" json:"apiEndpoint,omitempty"` // Custom API endpoint for heartbeats
 	Token       string `toml:"token,omitempty" yaml:"token,omitempty" json:"token,omitempty"`                   // Custom token for heartbeats
+}
+
+// AutoUpdate configures the daemon-driven CLI self-update. Enabled by default;
+// set `enabled: false` to opt out entirely.
+type AutoUpdate struct {
+	// Enabled turns the daily check off entirely. Default: true.
+	Enabled *bool `toml:"enabled" yaml:"enabled" json:"enabled"`
+	// Homebrew allows the daemon to run `brew upgrade --cask
+	// shelltime/tap/shelltime` on Homebrew installs. Default: false — we only
+	// record a notice, because brew can prompt and can touch files we don't own.
+	Homebrew *bool `toml:"homebrew" yaml:"homebrew" json:"homebrew"`
+	// NotifyOnly records an "update available" notice without downloading anything.
+	NotifyOnly *bool `toml:"notifyOnly,omitempty" yaml:"notifyOnly,omitempty" json:"notifyOnly,omitempty"`
+	// IntervalHours overrides the 24h check cadence (clamped to >= 1). Default: 24.
+	IntervalHours int `toml:"intervalHours,omitempty" yaml:"intervalHours,omitempty" json:"intervalHours,omitempty"`
+	// Channel is reserved for pre-release opt-in; only "stable" is honored today.
+	Channel string `toml:"channel,omitempty" yaml:"channel,omitempty" json:"channel,omitempty"`
 }
 
 // LogCleanup configuration for automatic log file cleanup
@@ -97,6 +119,9 @@ type ShellTimeConfig struct {
 	// LogCleanup configuration for automatic log file cleanup in daemon
 	LogCleanup *LogCleanup `toml:"logCleanup" yaml:"logCleanup" json:"logCleanup"`
 
+	// AutoUpdate configuration for the daemon-driven CLI self-update
+	AutoUpdate *AutoUpdate `toml:"autoUpdate" yaml:"autoUpdate" json:"autoUpdate"`
+
 	// Storage selects the local command buffering backend. When unset the
 	// always-available txt file store is used.
 	Storage *StorageConfig `toml:"storage" yaml:"storage,omitempty" json:"storage,omitempty"`
@@ -149,6 +174,12 @@ var DefaultConfig = ShellTimeConfig{
 		Enabled: new(true),
 	}),
 	LogCleanup: nil,
+	AutoUpdate: new(AutoUpdate{
+		Enabled:       new(true),
+		Homebrew:      new(false),
+		IntervalHours: 24,
+		Channel:       AutoUpdateChannelStable,
+	}),
 
 	SocketPath: DefaultSocketPath,
 }
