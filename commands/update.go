@@ -1,10 +1,8 @@
 package commands
 
 import (
-	"context"
 	"fmt"
 	"log/slog"
-	"os"
 	"path/filepath"
 	"runtime"
 
@@ -31,6 +29,10 @@ var UpdateCommand *cli.Command = &cli.Command{
 			Name:  "skip-daemon-reinstall",
 			Usage: "Skip refreshing the daemon service after replacing binaries",
 		},
+		&cli.BoolFlag{
+			Name:  "allow-unverified",
+			Usage: "Install even when no checksum is available (not recommended)",
+		},
 	},
 	Action: commandUpdate,
 }
@@ -42,6 +44,7 @@ func commandUpdate(c *cli.Context) error {
 	check := c.Bool("check")
 	force := c.Bool("force")
 	skipDaemonReinstall := c.Bool("skip-daemon-reinstall")
+	allowUnverified := c.Bool("allow-unverified")
 
 	color.Yellow.Println("🔍 Checking for updates...")
 
@@ -50,20 +53,40 @@ func commandUpdate(c *cli.Context) error {
 		return fmt.Errorf("resolve running binary path: %w", err)
 	}
 
-	switch model.DetectInstallKind(cliPath) {
-	case model.InstallKindHomebrew:
-		color.Yellow.Println("📦 Detected Homebrew installation.")
-		color.Yellow.Println("   Run: brew upgrade shelltime/tap/shelltime")
-		return nil
-	case model.InstallKindUnknown:
-		color.Yellow.Printf("⚠️  Binary at %s is not in a known auto-updatable location.\n", cliPath)
-		color.Yellow.Println("   Reinstall via the curl installer or Homebrew to enable in-place updates.")
-		return nil
+	installKind := model.DetectInstallKind(cliPath)
+
+	// Resolve the latest tag through the server when we can, so this works in
+	// regions that cannot reach github.com; fall back to the GitHub API.
+	cfg, cfgErr := configService.ReadConfigFile(ctx)
+	source := model.ReleaseSource{}
+	if cfgErr == nil {
+		source = model.NewReleaseSource(cfg.APIEndpoint)
 	}
 
-	latest, err := model.FetchLatestVersion(ctx)
-	if err != nil {
-		return fmt.Errorf("fetch latest release: %w", err)
+	var (
+		latest      string
+		assetSha    string
+		archiveName string
+	)
+	if cfgErr == nil && cfg.Token != "" {
+		if rel, relErr := model.FetchLatestCLIRelease(ctx, cfg); relErr == nil && rel.Tag != "" {
+			latest = rel.Tag
+			if rel.Asset != nil {
+				assetSha = rel.Asset.Sha256
+				archiveName = rel.Asset.Name
+			}
+		} else if relErr != nil {
+			slog.Debug("release lookup via API failed, falling back to GitHub", slog.Any("err", relErr))
+		}
+	}
+	if latest == "" {
+		latest, err = model.FetchLatestVersion(ctx)
+		if err != nil {
+			return fmt.Errorf("fetch latest release: %w", err)
+		}
+		// Without the API we have no proxy-provided checksum, and the proxy may
+		// not be reachable either; use GitHub for the download too.
+		source = model.ReleaseSource{}
 	}
 
 	current := commitID
@@ -85,6 +108,19 @@ func commandUpdate(c *cli.Context) error {
 		return nil
 	}
 
+	// Homebrew and unknown locations are reported after the version check, so
+	// `--check` still works there.
+	switch installKind {
+	case model.InstallKindHomebrew:
+		color.Yellow.Println("📦 Detected Homebrew installation.")
+		color.Yellow.Println("   Run: brew upgrade --cask shelltime/tap/shelltime")
+		return nil
+	case model.InstallKindUnknown:
+		color.Yellow.Printf("⚠️  Binary at %s is not in a known auto-updatable location.\n", cliPath)
+		color.Yellow.Println("   Reinstall via the curl installer or Homebrew to enable in-place updates.")
+		return nil
+	}
+
 	if current == "dev" && !force {
 		color.Yellow.Println("⚠️  Refusing to overwrite a dev build. Use --force to proceed anyway.")
 		return nil
@@ -95,66 +131,54 @@ func commandUpdate(c *cli.Context) error {
 		return nil
 	}
 
-	archiveName, err := model.BuildArchiveName(runtime.GOOS, runtime.GOARCH)
+	manageDaemon := shouldManageDaemon(skipDaemonReinstall)
+	// Snapshot this BEFORE the swap: it decides reinstall-vs-install, and the
+	// swap itself makes the running service unreachable.
+	daemonWasRunning := manageDaemon && daemonServiceIsRunning()
+
+	daemonDest := ""
+	if manageDaemon {
+		daemonDest = resolveDaemonDest()
+	}
+
+	color.Yellow.Printf("⬇️  Downloading %s ...\n", latest)
+	res, err := model.ApplyUpdate(ctx, model.UpdatePlan{
+		Tag:         latest,
+		ArchiveName: archiveName,
+		Source:      source,
+		ExpectedSha: assetSha,
+		CLIDest:     cliPath,
+		DaemonDest:  daemonDest,
+		// Interactive users may knowingly proceed without a checksum; the
+		// unattended daemon path never does.
+		AllowUnverified: allowUnverified,
+		BackupSuffix:    model.BackupSuffixUpdate,
+	})
 	if err != nil {
 		return err
 	}
-	downloadURL := model.BuildDownloadURL(latest, archiveName)
 
-	expectedSum, ok, err := model.FetchChecksum(ctx, latest, archiveName)
-	if err != nil {
-		color.Yellow.Printf("⚠️  Could not fetch checksums.txt: %v (proceeding without verification)\n", err)
-	} else if !ok {
-		color.Yellow.Println("⚠️  No checksum entry for this archive — proceeding without verification.")
+	if !res.Verified {
+		color.Yellow.Println("⚠️  Installed without checksum verification (--allow-unverified).")
 	}
-
-	tmpDir, err := os.MkdirTemp("", "shelltime-update-*")
-	if err != nil {
-		return fmt.Errorf("create temp dir: %w", err)
-	}
-	defer os.RemoveAll(tmpDir)
-
-	archivePath := filepath.Join(tmpDir, archiveName)
-	color.Yellow.Printf("⬇️  Downloading %s ...\n", archiveName)
-	if err := model.DownloadAndVerify(ctx, downloadURL, expectedSum, archivePath); err != nil {
-		return fmt.Errorf("download release: %w", err)
-	}
-
-	extractDir := filepath.Join(tmpDir, "extracted")
-	if err := os.MkdirAll(extractDir, 0o755); err != nil {
-		return err
-	}
-	binaries, err := model.ExtractBinaries(archivePath, extractDir)
-	if err != nil {
-		return fmt.Errorf("extract archive: %w", err)
-	}
-	if _, ok := binaries["shelltime"]; !ok {
-		return fmt.Errorf("archive %s did not contain a shelltime binary", archiveName)
-	}
-
-	color.Yellow.Println("🔄 Replacing binaries...")
-
-	if err := model.ReplaceBinary(binaries["shelltime"], cliPath); err != nil {
-		return fmt.Errorf("replace shelltime binary: %w", err)
+	if res.UsedFallback {
+		color.Yellow.Println("ℹ️  Release proxy was unavailable; downloaded from GitHub directly.")
 	}
 	color.Green.Printf("   shelltime -> %s\n", cliPath)
-
-	if daemonSrc, ok := binaries["shelltime-daemon"]; ok {
-		daemonDest := resolveDaemonDest()
-		if err := model.ReplaceBinary(daemonSrc, daemonDest); err != nil {
-			return fmt.Errorf("replace shelltime-daemon binary: %w", err)
-		}
+	if res.ReplacedDaemon {
 		color.Green.Printf("   shelltime-daemon -> %s\n", daemonDest)
 	}
 
-	if shouldReinstallDaemon(ctx, skipDaemonReinstall) {
+	if manageDaemon {
 		color.Yellow.Println("🔁 Refreshing daemon service...")
-		if err := commandDaemonReinstall(c); err != nil {
-			color.Yellow.Printf("⚠️  Daemon reinstall reported an error: %v\n", err)
-			color.Yellow.Println("   You can rerun `shelltime daemon reinstall` manually.")
+		if err := ensureDaemonRunning(c, daemonWasRunning); err != nil {
+			color.Yellow.Printf("⚠️  Daemon did not come back up: %v\n", err)
+			color.Yellow.Println("   Run `shelltime daemon install` to start it manually.")
+		} else {
+			color.Green.Println("   daemon service is running")
 		}
 	} else {
-		color.Yellow.Println("ℹ️  Skipping daemon reinstall. Run `shelltime daemon reinstall` to pick up the new binary.")
+		color.Yellow.Println("ℹ️  Skipping daemon refresh. Run `shelltime daemon reinstall` to pick up the new binary.")
 	}
 
 	color.Green.Printf("✅ Updated to %s. Restart your shell to use the new binary.\n", latest)
@@ -170,9 +194,14 @@ func resolveDaemonDest() string {
 	return filepath.Join(model.GetBinFolderPath(), "shelltime-daemon")
 }
 
-// shouldReinstallDaemon decides whether to call commandDaemonReinstall after a
-// binary swap.
-func shouldReinstallDaemon(_ context.Context, skipFlag bool) bool {
+// shouldManageDaemon reports whether this machine has a daemon we are
+// responsible for after a binary swap.
+//
+// It deliberately does NOT consider whether the service is currently running.
+// It used to, which meant a stopped daemon was left stopped forever — and since
+// the daemon drives the auto-update check, that also killed auto-update. Whether
+// it is running now only decides reinstall-vs-install; see ensureDaemonRunning.
+func shouldManageDaemon(skipFlag bool) bool {
 	if skipFlag {
 		return false
 	}
@@ -182,12 +211,8 @@ func shouldReinstallDaemon(_ context.Context, skipFlag bool) bool {
 	if _, err := model.ResolveDaemonBinaryPath(); err != nil {
 		return false
 	}
-	installer, err := model.NewDaemonInstaller("", "", "")
-	if err != nil {
-		slog.Debug("skip daemon reinstall: installer factory failed", slog.Any("err", err))
-		return false
-	}
-	if err := installer.Check(); err != nil {
+	if _, err := model.NewDaemonInstaller("", "", ""); err != nil {
+		slog.Debug("skip daemon management: installer factory failed", slog.Any("err", err))
 		return false
 	}
 	return true

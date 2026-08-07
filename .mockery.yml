@@ -30,3 +30,7 @@ packages:
         config:
           dir: "{{.InterfaceDir}}"
           filename: "mock_{{.InterfaceName}}.go"
+      DaemonInstaller:
+        config:
+          dir: "{{.InterfaceDir}}"
+          filename: "mock_{{.InterfaceName}}.go"

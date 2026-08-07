@@ -58,6 +58,12 @@ var TrackCommand *cli.Command = &cli.Command{
 }
 
 func commandTrack(c *cli.Context) error {
+	// Safety net for shells kept open for weeks, where `gc` never re-runs.
+	// Sampled at 1-in-N so the common path is a few nanoseconds and no syscalls;
+	// see checkDaemonDriftSampled for the cost breakdown. Runs before the span
+	// and logger setup so it cannot be slowed by them.
+	checkDaemonDriftSampled()
+
 	ctx, span := commandTracer.Start(c.Context, "track", trace.WithSpanKind(trace.SpanKindClient))
 	defer span.End()
 	SetupLogger(os.ExpandEnv("$HOME/" + model.COMMAND_BASE_STORAGE_FOLDER))

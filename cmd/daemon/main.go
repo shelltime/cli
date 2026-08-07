@@ -180,6 +180,17 @@ func main() {
 		}
 	}
 
+	// Start auto update service if enabled (enabled by default)
+	if cfg.AutoUpdate != nil && cfg.AutoUpdate.Enabled != nil && *cfg.AutoUpdate.Enabled {
+		autoUpdateService := daemon.NewAutoUpdateService(cfg)
+		if err := autoUpdateService.Start(ctx); err != nil {
+			slog.Error("Failed to start auto update service", slog.Any("err", err))
+		} else {
+			slog.Info("Auto update service started")
+			defer autoUpdateService.Stop()
+		}
+	}
+
 	// Create processor instance
 	processor := daemon.NewSocketHandler(&cfg, pubsub)
 

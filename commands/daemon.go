@@ -10,5 +10,6 @@ var DaemonCommand *cli.Command = &cli.Command{
 		DaemonInstallCommand,
 		DaemonUninstallCommand,
 		DaemonReinstallCommand,
+		DaemonApplyUpdateCommand,
 	},
 }

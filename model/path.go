@@ -125,6 +125,58 @@ func GetCurlInstallerDaemonPath() string {
 	return filepath.Join(GetBaseStoragePath(), "bin", "shelltime-daemon")
 }
 
+// GetUpdateStatePath returns the path to the self-update state file.
+func GetUpdateStatePath() string {
+	return GetStoragePath("update-state.json")
+}
+
+// GetUpdateLockPath returns the path to the self-update lock file.
+func GetUpdateLockPath() string {
+	return GetStoragePath("update.lock")
+}
+
+// GetDaemonUpdatePendingPath returns the marker the daemon writes after staging
+// a new daemon binary. The CLI hot path stats this file, so it must stay a
+// single cheap stat on a normally-absent path.
+func GetDaemonUpdatePendingPath() string {
+	return GetStoragePath("daemon-update.pending")
+}
+
+// GetStagedDaemonPath returns where a downloaded-but-not-yet-active daemon
+// binary is parked. Staging rather than activating means the running daemon
+// never rewrites the binary it is currently executing, and the CLI's later
+// repair is a local rename with no network access.
+func GetStagedDaemonPath() string {
+	return filepath.Join(GetBinFolderPath(), "shelltime-daemon.next")
+}
+
+// GetCurlInstallerCLIPath returns the curl-installer CLI location
+// (~/.shelltime/bin/shelltime).
+func GetCurlInstallerCLIPath() string {
+	return filepath.Join(GetBinFolderPath(), "shelltime")
+}
+
+// ResolveCLIBinaryPathFrom finds the shelltime CLI binary from a process that
+// may not have a useful PATH — notably the launchd/systemd-spawned daemon.
+// CommandService already probes the Homebrew bin dirs and falls back to a login
+// shell, which is exactly what is needed here.
+func ResolveCLIBinaryPathFrom(cs CommandService) (string, error) {
+	if cs != nil {
+		if p, err := cs.LookPath("shelltime"); err == nil && p != "" {
+			if resolved, rErr := filepath.EvalSymlinks(p); rErr == nil {
+				return resolved, nil
+			}
+			return p, nil
+		}
+	}
+
+	curlPath := GetCurlInstallerCLIPath()
+	if info, err := os.Stat(curlPath); err == nil && !info.IsDir() {
+		return curlPath, nil
+	}
+	return "", fmt.Errorf("shelltime binary not found on PATH or at %s", curlPath)
+}
+
 // daemonHomebrewSearchPaths lists explicit Homebrew/Linuxbrew bin dirs to
 // probe when PATH is stripped (e.g. launchd-spawned shells). Exposed as a var
 // so tests can swap it out.
