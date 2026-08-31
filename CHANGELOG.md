@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.1.90](https://github.com/shelltime/cli/compare/v0.1.89...v0.1.90) (2026-08-31)
+
+
+### Bug Fixes
+
+* **hooks:** detach fish hook from the tty ([3027b19](https://github.com/shelltime/cli/commit/3027b191c4324f5fee763d0e4f2ba2c7d413d0ae))
+* **hooks:** detach fish hook from the tty ([b5316cd](https://github.com/shelltime/cli/commit/b5316cdf404b726247c28150a94d954c0c2501e2))
+
+
+### Continuous Integration
+
+* **workflows:** move Claude Code and Claude Code Review jobs from jp-arm-oracle to ubuntu-latest ([#300](https://github.com/shelltime/cli/issues/300)) ([135d484](https://github.com/shelltime/cli/commit/135d484d4e990efe2f47cf9b4b65040aadc1bbf3))
+
 ## [0.1.89](https://github.com/shelltime/cli/compare/v0.1.88...v0.1.89) (2026-07-31)
 
 
