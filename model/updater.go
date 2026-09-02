@@ -15,6 +15,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strconv"
 	"strings"
 	"time"
 
@@ -155,10 +156,20 @@ func BuildChecksumsURL(tag string) string {
 	)
 }
 
-// FetchChecksum returns the expected SHA256 for archiveName. The bool reports
-// whether a checksum was found; callers may proceed without verification if false.
+// FetchChecksum returns the expected SHA256 for archiveName, fetched from
+// GitHub directly. The bool reports whether a checksum was found; callers may
+// proceed without verification if false.
 func FetchChecksum(ctx context.Context, tag, archiveName string) (string, bool, error) {
-	url := BuildChecksumsURL(tag)
+	return FetchChecksumFrom(ctx, ReleaseSource{}, tag, archiveName)
+}
+
+// FetchChecksumFrom returns the expected SHA256 for archiveName, fetched through
+// the given source (proxy or GitHub direct).
+func FetchChecksumFrom(ctx context.Context, src ReleaseSource, tag, archiveName string) (string, bool, error) {
+	return fetchChecksumURL(ctx, src.ChecksumsURL(tag), archiveName)
+}
+
+func fetchChecksumURL(ctx context.Context, url, archiveName string) (string, bool, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
 		return "", false, err
@@ -235,8 +246,15 @@ func DownloadAndVerify(ctx context.Context, url, expectedSha256, destPath string
 	defer out.Close()
 
 	hasher := sha256.New()
-	if _, err := io.Copy(out, io.TeeReader(resp.Body, hasher)); err != nil {
+	written, err := io.Copy(out, io.TeeReader(resp.Body, hasher))
+	if err != nil {
 		return fmt.Errorf("write archive: %w", err)
+	}
+
+	// A proxy (or a flaky link) can close the stream early. Without a checksum
+	// that truncation would otherwise sail through to the extract step.
+	if resp.ContentLength >= 0 && written != resp.ContentLength {
+		return fmt.Errorf("truncated download %s: got %d bytes, expected %d", url, written, resp.ContentLength)
 	}
 
 	if expectedSha256 != "" {
@@ -368,27 +386,132 @@ func stripExe(name string) string {
 	return strings.TrimSuffix(name, ".exe")
 }
 
-// ReplaceBinary swaps a freshly-downloaded binary into destPath, renaming any
-// existing destPath to destPath+".bak" (overwriting a previous .bak). On Unix
-// this is safe even while the binary is running because the kernel keeps the
-// old inode alive for the current process.
+// BackupSuffixLegacy is the historical backup suffix written by ReplaceBinary.
+//
+// WARNING: commands/daemon.install.go treats "<daemon>.bak" as "a NEWER daemon
+// that should be restored", which is the opposite of what ReplaceBinary means by
+// it. Any code path that replaces the daemon binary and then runs
+// `daemon install`/`daemon reinstall` MUST use BackupSuffixUpdate instead, or the
+// install step will restore the binary that was just replaced.
+const BackupSuffixLegacy = ".bak"
+
+// BackupSuffixUpdate is the backup suffix used by the self-update paths. It is
+// deliberately distinct from BackupSuffixLegacy so the daemon installer's
+// ".bak means restore me" recovery branch never fires on an update backup.
+const BackupSuffixUpdate = ".prev"
+
+// ReplaceBinary swaps a freshly-downloaded binary into destPath, keeping the
+// previous binary at destPath+".bak".
+//
+// Prefer ReplaceBinaryWithBackupSuffix with BackupSuffixUpdate for the daemon
+// binary; see BackupSuffixLegacy for why.
 func ReplaceBinary(srcPath, destPath string) error {
-	bak := destPath + ".bak"
-	_ = os.Remove(bak)
+	return ReplaceBinaryWithBackupSuffix(srcPath, destPath, BackupSuffixLegacy)
+}
+
+// ReplaceBinaryWithBackupSuffix swaps srcPath into destPath, preserving the
+// previous binary at destPath+suffix (overwriting any previous backup).
+//
+// On Unix the swap is atomic: the old binary is *copied* to the backup, the new
+// binary is staged alongside destPath, and a single rename(2) puts it in place.
+// destPath therefore never disappears — which matters because the shell hook
+// execs `shelltime` by name on every command, and a hook landing in a gap would
+// print "command not found". Replacing a running binary is safe because the
+// kernel keeps the old inode alive for processes that already opened it.
+//
+// Windows cannot rename over a running .exe, so it keeps the historical
+// move-the-old-one-away-first order.
+func ReplaceBinaryWithBackupSuffix(srcPath, destPath, suffix string) error {
+	if suffix == "" {
+		suffix = BackupSuffixUpdate
+	}
+	backup := destPath + suffix
+
+	if runtime.GOOS == "windows" {
+		return replaceBinaryViaRenameAway(srcPath, destPath, backup)
+	}
+	return replaceBinaryAtomic(srcPath, destPath, backup)
+}
+
+// replaceBinaryAtomic never leaves destPath absent. Used on all Unix platforms.
+func replaceBinaryAtomic(srcPath, destPath, backup string) error {
 	if _, err := os.Stat(destPath); err == nil {
-		if err := os.Rename(destPath, bak); err != nil {
-			return fmt.Errorf("rename %s -> %s: %w", destPath, bak, err)
+		_ = os.Remove(backup)
+		if err := copyFile(destPath, backup); err != nil {
+			return fmt.Errorf("back up %s -> %s: %w", destPath, backup, err)
+		}
+	}
+
+	// Stage in the destination directory so the final rename cannot cross a
+	// filesystem boundary (rename(2) fails with EXDEV across mounts).
+	staged := destPath + ".new"
+	_ = os.Remove(staged)
+	if err := copyFile(srcPath, staged); err != nil {
+		_ = os.Remove(staged)
+		return fmt.Errorf("stage %s -> %s: %w", srcPath, staged, err)
+	}
+	if err := os.Chmod(staged, 0o755); err != nil {
+		_ = os.Remove(staged)
+		return err
+	}
+	if err := os.Rename(staged, destPath); err != nil {
+		_ = os.Remove(staged)
+		return fmt.Errorf("activate %s -> %s: %w", staged, destPath, err)
+	}
+	_ = os.Remove(srcPath)
+	return nil
+}
+
+// replaceBinaryViaRenameAway is the Windows path: a running .exe cannot be
+// renamed over, but it can be renamed away.
+func replaceBinaryViaRenameAway(srcPath, destPath, backup string) error {
+	_ = os.Remove(backup)
+	if _, err := os.Stat(destPath); err == nil {
+		if err := os.Rename(destPath, backup); err != nil {
+			return fmt.Errorf("rename %s -> %s: %w", destPath, backup, err)
 		}
 	}
 	if err := moveFile(srcPath, destPath); err != nil {
-		// Try to restore .bak on failure so we don't leave the user without a binary.
-		_ = os.Rename(bak, destPath)
+		// Try to restore the backup so we don't leave the user without a binary.
+		_ = os.Rename(backup, destPath)
 		return err
 	}
-	if err := os.Chmod(destPath, 0o755); err != nil {
+	return os.Chmod(destPath, 0o755)
+}
+
+// RestoreBinaryBackup puts the backup at destPath+suffix back at destPath. Used
+// to roll back when a freshly-installed binary fails its post-swap smoke test.
+func RestoreBinaryBackup(destPath, suffix string) error {
+	if suffix == "" {
+		suffix = BackupSuffixUpdate
+	}
+	backup := destPath + suffix
+	if _, err := os.Stat(backup); err != nil {
+		return fmt.Errorf("no backup at %s: %w", backup, err)
+	}
+	if runtime.GOOS == "windows" {
+		_ = os.Remove(destPath)
+		return os.Rename(backup, destPath)
+	}
+	return replaceBinaryAtomic(backup, destPath, destPath+".rollback")
+}
+
+// copyFile copies src to dst with mode 0755, truncating dst if it exists.
+func copyFile(src, dst string) error {
+	in, err := os.Open(src)
+	if err != nil {
 		return err
 	}
-	return nil
+	defer in.Close()
+	out, err := os.OpenFile(dst, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0o755)
+	if err != nil {
+		return err
+	}
+	if _, err := io.Copy(out, in); err != nil {
+		out.Close()
+		return err
+	}
+	return out.Close()
 }
 
 // moveFile renames src to dst, falling back to copy+remove when crossing
@@ -421,6 +544,53 @@ func NormalizeVersion(v string) string {
 	return strings.TrimPrefix(strings.TrimSpace(v), "v")
 }
 
+// CompareVersions compares two dotted numeric versions, ignoring a leading "v"
+// and any pre-release suffix ("1.2.3-rc1" compares as "1.2.3"). It returns -1 if
+// a < b, 0 if equal, and 1 if a > b. Non-numeric or missing segments count as 0,
+// so it never panics on malformed input from the server.
+//
+// The unattended update path uses this to guarantee it only ever moves forward:
+// a server bug that reports an old tag must not downgrade the user.
+func CompareVersions(a, b string) int {
+	as := versionSegments(a)
+	bs := versionSegments(b)
+	n := max(len(as), len(bs))
+	for i := range n {
+		var av, bv int
+		if i < len(as) {
+			av = as[i]
+		}
+		if i < len(bs) {
+			bv = bs[i]
+		}
+		if av != bv {
+			if av < bv {
+				return -1
+			}
+			return 1
+		}
+	}
+	return 0
+}
+
+func versionSegments(v string) []int {
+	v = NormalizeVersion(v)
+	// Drop pre-release/build metadata: "1.2.3-rc1+deadbeef" -> "1.2.3".
+	if i := strings.IndexAny(v, "-+"); i >= 0 {
+		v = v[:i]
+	}
+	parts := strings.Split(v, ".")
+	out := make([]int, 0, len(parts))
+	for _, p := range parts {
+		n, err := strconv.Atoi(strings.TrimSpace(p))
+		if err != nil {
+			n = 0
+		}
+		out = append(out, n)
+	}
+	return out
+}
+
 // ResolveCLIBinaryPath returns the real (symlink-resolved) path of the running
 // CLI binary.
 func ResolveCLIBinaryPath() (string, error) {
@@ -448,7 +618,13 @@ const (
 // install ($HOME/.shelltime/bin), or unknown.
 func DetectInstallKind(binPath string) InstallKind {
 	clean := filepath.Clean(binPath)
-	if strings.Contains(clean, string(filepath.Separator)+"Cellar"+string(filepath.Separator)) ||
+	sep := string(filepath.Separator)
+	// goreleaser publishes a Cask, so an EvalSymlinks'd path lands in
+	// .../Caskroom/... — /opt/homebrew/Caskroom on Apple Silicon (already matched
+	// by the prefix below) but /usr/local/Caskroom on Intel, which matches
+	// neither the Cellar nor the prefix checks.
+	if strings.Contains(clean, sep+"Cellar"+sep) ||
+		strings.Contains(clean, sep+"Caskroom"+sep) ||
 		strings.HasPrefix(clean, "/opt/homebrew/") ||
 		strings.HasPrefix(clean, "/home/linuxbrew/.linuxbrew/") {
 		return InstallKindHomebrew

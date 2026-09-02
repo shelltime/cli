@@ -364,6 +364,53 @@ logCleanup:
 
 Cleanup runs every 24 hours when daemon is active.
 
+### Auto Update
+
+The daemon checks once a day for a new CLI release and installs it in place.
+Enabled by default.
+
+| Option | Type | Default | Description |
+|--------|------|---------|-------------|
+| `autoUpdate.enabled` | boolean | `true` | Enable the daily check. Set `false` to opt out entirely |
+| `autoUpdate.homebrew` | boolean | `false` | Allow the daemon to run `brew upgrade --cask` on Homebrew installs |
+| `autoUpdate.notifyOnly` | boolean | `false` | Report available updates without downloading anything |
+| `autoUpdate.intervalHours` | integer | `24` | How often to check (minimum 1) |
+| `autoUpdate.channel` | string | `stable` | Reserved for pre-release opt-in |
+
+```yaml
+autoUpdate:
+  enabled: true
+  homebrew: false     # opt in to automatic `brew upgrade --cask`
+  notifyOnly: false
+  intervalHours: 24
+```
+
+**How it works:**
+
+1. The daemon asks the shelltime API for the latest release once a day.
+2. Binaries are downloaded through `api.shelltime.xyz`, not `github.com`, so
+   updating works in regions where GitHub is unreachable. If the proxy is
+   unavailable the CLI falls back to GitHub.
+3. The download is checksum-verified and the new binary must report its own
+   version before it is installed. The unattended path refuses to install
+   anything it could not verify.
+4. The `shelltime` binary is replaced in place; the new daemon binary is staged
+   at `~/.shelltime/bin/shelltime-daemon.next`.
+5. On your next new shell the CLI activates the staged daemon and restarts the
+   service. If the daemon is not running at that point, it is started.
+
+**Notes:**
+
+- Homebrew installs only print an upgrade hint unless `autoUpdate.homebrew` is
+  `true`; `brew` can prompt and touches files the daemon does not own.
+- Binaries in unrecognized locations are never overwritten — you get a notice
+  instead. The daemon never uses `sudo`.
+- Dev builds are never auto-updated, and an older release is never installed
+  over a newer one.
+- `SHELLTIME_DISABLE_AUTO_UPDATE=1` disables everything without a config edit.
+- `shelltime update` still works for on-demand updates; `shelltime update
+  --check` only reports.
+
 ### Metrics Collection
 
 | Option | Type | Default |
@@ -436,6 +483,12 @@ codeTracking:
 logCleanup:
   enabled: true
   thresholdMB: 100
+
+# --- Auto Update ---
+autoUpdate:
+  enabled: true
+  homebrew: false      # opt in to automatic `brew upgrade --cask`
+  intervalHours: 24
 
 # --- Advanced ---
 socketPath: "/tmp/shelltime.sock"

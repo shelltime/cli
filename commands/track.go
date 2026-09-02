@@ -121,6 +121,16 @@ func commandTrack(c *cli.Context) error {
 		return sendTrackEventToDaemon(ctx, span, config.SocketPath, cmdPhase, instance, result)
 	}
 
+	// Reaching here means no daemon is listening anywhere, which track has just
+	// established for free. Try to bring it back up — a dead daemon means no
+	// syncing and no update checks at all.
+	//
+	// This is the ONLY daemon-lifecycle action track ever takes. It never
+	// downloads, never swaps a binary, and never applies an update: that work
+	// belongs to the daemon (and to `gc`, which runs once per shell). The spawn
+	// is detached and its outcome is deliberately ignored.
+	maybeStartDaemonFromTrack()
+
 	// No daemon at all: persist to the local txt store and sync directly over HTTP.
 	if cmdPhase == "pre" {
 		span.SetAttributes(attribute.Int("phase", 0))

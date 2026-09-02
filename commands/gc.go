@@ -216,6 +216,12 @@ func commandGC(c *cli.Context) error {
 		}
 	}
 
+	// gc runs once per new shell, which makes it the right place for the
+	// deterministic half of the self-update flow: apply a staged daemon update,
+	// surface an update notice, or restart a daemon that has stayed down.
+	// It never returns an error — a broken update must not break `gc`.
+	maybeRepairDaemonDrift(ctx, cfg)
+
 	// TODO: delete $HOME/.config/malamtime/ folder
 
 	return nil

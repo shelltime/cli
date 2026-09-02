@@ -171,8 +171,11 @@ func mergeConfig(base, local *ShellTimeConfig) {
 	if local.CodeTracking != nil {
 		base.CodeTracking = local.CodeTracking
 	}
-	if local.LogCleanup != nil {
-		base.LogCleanup = local.LogCleanup
+	if local.Storage != nil {
+		base.Storage = local.Storage
+	}
+	if local.AutoUpdate != nil {
+		base.AutoUpdate = local.AutoUpdate
 	}
 }
 
@@ -294,6 +297,33 @@ func (cs *configService) ReadConfigFile(ctx context.Context, opts ...ReadConfigO
 		}
 		if config.LogCleanup.ThresholdMB == 0 {
 			config.LogCleanup.ThresholdMB = 100
+		}
+	}
+
+	// Initialize AutoUpdate with defaults if not present. Enabled by default so
+	// existing installs pick up updates; opt out with `autoUpdate.enabled: false`.
+	// Homebrew stays opt-in because `brew upgrade` can prompt and touches files
+	// we don't own.
+	falsy := false
+	if config.AutoUpdate == nil {
+		config.AutoUpdate = &AutoUpdate{
+			Enabled:       &truthy,
+			Homebrew:      &falsy,
+			IntervalHours: DefaultAutoUpdateIntervalHours,
+			Channel:       AutoUpdateChannelStable,
+		}
+	} else {
+		if config.AutoUpdate.Enabled == nil {
+			config.AutoUpdate.Enabled = &truthy
+		}
+		if config.AutoUpdate.Homebrew == nil {
+			config.AutoUpdate.Homebrew = &falsy
+		}
+		if config.AutoUpdate.Channel == "" {
+			config.AutoUpdate.Channel = AutoUpdateChannelStable
+		}
+		if config.AutoUpdate.IntervalHours < 1 {
+			config.AutoUpdate.IntervalHours = DefaultAutoUpdateIntervalHours
 		}
 	}
 
