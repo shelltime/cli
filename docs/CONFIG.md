@@ -289,15 +289,6 @@ Quota sync is automatic and has no configuration switch. It runs only when:
 
 The Codex access token never goes to ShellTime. The daemon uses it only for the direct Codex request, then sends ShellTime a summary containing the plan, the windows Codex returned, their usage percentages and reset times, and credit status. The set and duration of windows are dynamic; for example, an account may return only a weekly window, so ShellTime does not synthesize a 5-hour window.
 
-### CCUsage (Legacy)
-
-CLI-based collection (older method):
-
-```yaml
-ccusage:
-  enabled: false
-```
-
 ### Code Tracking
 
 Track coding activity heartbeats:
@@ -357,7 +348,7 @@ Credentials can be embedded in the URL, e.g. `http://user:pass@proxy:8080` or `s
 - SOCKS4 is not supported.
 - An invalid proxy URL is logged as a warning, and the environment-variable proxy is used instead.
 - The daemon reads the proxy on startup, so restart it after changing this setting.
-- The optional OTEL metrics exporter (`enableMetrics`) and the `ccusage` subprocess only honor the environment variables.
+- The optional OTEL metrics exporter (`enableMetrics`) only honors the environment variables.
 - Put a machine-specific proxy in `config.local.yaml` to keep it out of a shared config.
 
 ---
@@ -466,9 +457,6 @@ aiCodeOtel:
   grpcPort: 54027
   debug: false
 
-ccusage:
-  enabled: false
-
 codeTracking:
   enabled: false
   # apiEndpoint: "https://api.custom-heartbeat.com"  # Optional: custom endpoint
@@ -534,16 +522,6 @@ Or unset your token:
 ```yaml
 token: ""
 ```
-
-### What's the difference between AICodeOtel and CCUsage?
-
-| Feature | AICodeOtel | CCUsage |
-|---------|------------|---------|
-| Method | gRPC passthrough | CLI parsing |
-| Performance | Better | More overhead |
-| Data richness | Full OTEL data | Basic metrics |
-| Sources | Claude Code, Codex, etc. | Claude Code only |
-| Recommended | Yes | Legacy |
 
 ### How do I test my exclude patterns?
 

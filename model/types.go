@@ -24,10 +24,6 @@ type AIConfig struct {
 	ShareContext *bool `toml:"shareContext,omitempty" yaml:"shareContext,omitempty" json:"shareContext,omitempty"`
 }
 
-type CCUsage struct {
-	Enabled *bool `toml:"enabled" yaml:"enabled" json:"enabled"`
-}
-
 // AICodeOtel configuration for OTEL-based AI CLI tracking (Claude Code, Codex, etc.)
 // The processor auto-detects the source from service.name attribute
 type AICodeOtel struct {
@@ -80,13 +76,6 @@ type ShellTimeConfig struct {
 	// Exclude patterns - regular expressions to exclude commands from being saved
 	// Commands matching any of these patterns will not be synced to the server
 	Exclude []string `toml:"exclude,omitempty" yaml:"exclude,omitempty" json:"exclude,omitempty"`
-
-	// CCUsage configuration for Claude Code usage tracking (v1 - ccusage CLI based)
-	CCUsage *CCUsage `toml:"ccusage" yaml:"ccusage" json:"ccusage"`
-
-	// CCOtel is deprecated, use AICodeOtel instead
-	// Deprecated: This field will be removed in a future version
-	CCOtel *AICodeOtel `toml:"ccotel" yaml:"ccotel" json:"ccotel"`
 
 	// AICodeOtel configuration for OTEL-based AI CLI tracking (Claude Code, Codex, etc.)
 	AICodeOtel *AICodeOtel `toml:"aiCodeOtel" yaml:"aiCodeOtel" json:"aiCodeOtel"`
@@ -151,10 +140,6 @@ var DefaultConfig = ShellTimeConfig{
 	Encrypted:     new(true),
 	AI:            DefaultAIConfig,
 	Exclude:       []string{},
-	CCUsage: new(CCUsage{
-		Enabled: new(true),
-	}),
-	CCOtel: nil,
 	AICodeOtel: new(AICodeOtel{
 		Enabled:  new(true),
 		GRPCPort: 54027,
