@@ -101,9 +101,24 @@ type ShellTimeConfig struct {
 	// always-available txt file store is used.
 	Storage *StorageConfig `toml:"storage" yaml:"storage,omitempty" json:"storage,omitempty"`
 
+	// Proxy routes all outbound HTTP(S) traffic through a proxy.
+	// When unset, the HTTP_PROXY / HTTPS_PROXY / NO_PROXY env vars are honored.
+	Proxy *ProxyConfig `toml:"proxy,omitempty" yaml:"proxy,omitempty" json:"proxy,omitempty"`
+
 	// SocketPath is the path to the Unix domain socket used for communication
 	// between the CLI and the daemon.
 	SocketPath string `toml:"socketPath" yaml:"socketPath" json:"socketPath"`
+}
+
+// ProxyConfig configures the proxy used for outbound HTTP(S) requests.
+type ProxyConfig struct {
+	// URL of the proxy. Supported schemes: http, https, socks5, socks5h.
+	// Credentials may be embedded, e.g. socks5://user:pass@127.0.0.1:1080.
+	// A bare "host:port" is treated as http://host:port.
+	URL string `toml:"url" yaml:"url" json:"url"`
+	// NoProxy lists hosts that bypass the proxy, using NO_PROXY syntax:
+	// "localhost", ".internal.corp", "10.0.0.0/8", "*.example.com".
+	NoProxy []string `toml:"noProxy,omitempty" yaml:"noProxy,omitempty" json:"noProxy,omitempty"`
 }
 
 // StorageConfig selects which CommandStore backend buffers tracked commands

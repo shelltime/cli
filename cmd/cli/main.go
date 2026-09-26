@@ -43,6 +43,11 @@ func main() {
 	}
 
 	cfg, err := configService.ReadConfigFile(ctx)
+	if err == nil {
+		if proxyErr := model.ConfigureProxy(cfg.Proxy); proxyErr != nil {
+			slog.Warn("invalid proxy config, falling back to environment proxy", slog.Any("err", proxyErr))
+		}
+	}
 	if err != nil ||
 		cfg.EnableMetrics == nil ||
 		*cfg.EnableMetrics == false ||

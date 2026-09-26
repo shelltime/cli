@@ -52,6 +52,12 @@ func main() {
 
 	slog.DebugContext(ctx, "daemon.config", slog.Any("config", cfg))
 
+	if err := model.ConfigureProxy(cfg.Proxy); err != nil {
+		slog.Warn("invalid proxy config, falling back to environment proxy", slog.Any("err", err))
+	} else if cfg.Proxy != nil && cfg.Proxy.URL != "" {
+		slog.Info("proxy enabled", slog.String("url", model.RedactProxyURL(cfg.Proxy.URL)))
+	}
+
 	uptraceOptions := []uptrace.Option{
 		uptrace.WithDSN(uptraceDsn),
 		uptrace.WithServiceName("cli-daemon"),

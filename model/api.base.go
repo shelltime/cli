@@ -10,8 +10,6 @@ import (
 	"log/slog"
 	"net/http"
 	"time"
-
-	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 )
 
 // HTTPRequestOptions contains all options for sending an HTTP request
@@ -42,10 +40,7 @@ func SendHTTPRequestJSON[T any, R any](opts HTTPRequestOptions[T, R]) error {
 		timeout = opts.Timeout
 	}
 
-	client := &http.Client{
-		Timeout:   timeout,
-		Transport: otelhttp.NewTransport(http.DefaultTransport),
-	}
+	client := NewHTTPClient(timeout)
 
 	req, err := http.NewRequestWithContext(ctx, opts.Method, opts.Endpoint.APIEndpoint+opts.Path, bytes.NewBuffer(jsonData))
 	if err != nil {

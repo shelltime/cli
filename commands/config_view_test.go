@@ -161,6 +161,17 @@ func TestFlattenConfig_NestedTokenMasking(t *testing.T) {
 	assert.Contains(t, v, "supersecrettoken")
 }
 
+func TestFlattenConfig_ProxyURLPasswordRedacted(t *testing.T) {
+	cfg := model.ShellTimeConfig{
+		Proxy: &model.ProxyConfig{URL: "socks5h://alice:hunter2@127.0.0.1:1080"},
+	}
+	pairs := flattenConfig(cfg, "")
+	v, ok := findPair(pairs, "proxy.url")
+	require.True(t, ok)
+	assert.NotContains(t, v, "hunter2")
+	assert.Equal(t, "socks5h://alice:xxxxx@127.0.0.1:1080", v)
+}
+
 func TestFlattenConfig_NonStructReturnsEmpty(t *testing.T) {
 	assert.Empty(t, flattenConfig(42, ""))
 	assert.Empty(t, flattenConfig("just a string", ""))

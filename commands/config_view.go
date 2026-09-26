@@ -156,6 +156,8 @@ func flattenConfig(v interface{}, prefix string) []keyValuePair {
 				} else {
 					value = "****"
 				}
+			} else if fullKey == "proxy.url" {
+				value = model.RedactProxyURL(value)
 			}
 			pairs = append(pairs, keyValuePair{key: fullKey, value: value})
 		default:

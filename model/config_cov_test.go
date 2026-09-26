@@ -40,6 +40,7 @@ func TestMergeConfig_AllOverrides(t *testing.T) {
 		LogCleanup:    &LogCleanup{Enabled: &truthy, ThresholdMB: 42},
 		SocketPath:    "/tmp/local.sock",
 		CodeTracking:  &CodeTracking{Token: "ct"},
+		Proxy:         &ProxyConfig{URL: "socks5://127.0.0.1:1080"},
 	}
 
 	mergeConfig(base, local)
@@ -61,6 +62,8 @@ func TestMergeConfig_AllOverrides(t *testing.T) {
 	assert.EqualValues(t, 42, base.LogCleanup.ThresholdMB)
 	assert.Equal(t, "/tmp/local.sock", base.SocketPath)
 	require.NotNil(t, base.CodeTracking)
+	require.NotNil(t, base.Proxy)
+	assert.Equal(t, "socks5://127.0.0.1:1080", base.Proxy.URL)
 }
 
 // TestMergeConfig_CCOtelMigration covers the deprecated CCOtel -> AICodeOtel

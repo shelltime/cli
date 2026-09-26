@@ -13,6 +13,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/malamtime/cli/model"
 )
 
 const anthropicUsageCacheTTL = 10 * time.Minute
@@ -176,7 +178,7 @@ func fetchAnthropicUsage(ctx context.Context, token, version string) (*Anthropic
 	req.Header.Set("User-Agent", "claude-code/"+version)
 	req.Header.Set("Content-Type", "application/json")
 
-	client := &http.Client{Timeout: 5 * time.Second}
+	client := &http.Client{Timeout: 5 * time.Second, Transport: model.HTTPTransport()}
 	resp, err := client.Do(req)
 	if err != nil {
 		return nil, err

@@ -127,6 +127,7 @@ ShellTime stores data under `~/.shelltime/`.
 - Local overrides: `~/.shelltime/config.local.yaml`
 - Also supported: `config.yml`, `config.toml`, `config.local.yml`, `config.local.toml`
 - Generated schema: `~/.shelltime/config-schema.json`
+- Proxy: set `proxy.url` (`http`, `https`, `socks5`, `socks5h`) to route all outbound traffic through a proxy. See [Network Proxy](docs/CONFIG.md#network-proxy)
 
 Minimal example:
 
