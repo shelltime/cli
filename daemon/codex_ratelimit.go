@@ -13,6 +13,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/malamtime/cli/model"
 )
 
 const codexUsageCacheTTL = 10 * time.Minute
@@ -211,7 +213,7 @@ type whamRateLimitWindow struct {
 
 // fetchCodexUsage calls the Codex usage API and returns rate limit data.
 func fetchCodexUsage(ctx context.Context, auth *codexAuthData) (*CodexRateLimitData, error) {
-	client := &http.Client{Timeout: 5 * time.Second}
+	client := &http.Client{Timeout: 5 * time.Second, Transport: model.HTTPTransport()}
 	return fetchCodexUsageFromEndpoint(ctx, auth, codexUsageEndpoint, client)
 }
 

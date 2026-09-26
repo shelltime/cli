@@ -11,8 +11,6 @@ import (
 	"net/http"
 	"os"
 	"time"
-
-	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 )
 
 type handshakeResponse struct {
@@ -39,10 +37,7 @@ func NewHandshakeService(config ShellTimeConfig) HandshakeService {
 }
 
 func (hs handshakeService) send(ctx context.Context, path string, jsonData []byte) (result handshakeResponse, errResp errorResponse, err error) {
-	hc := http.Client{
-		Timeout:   time.Second * 30,
-		Transport: otelhttp.NewTransport(http.DefaultTransport),
-	}
+	hc := NewHTTPClient(time.Second * 30)
 
 	req, err := http.NewRequestWithContext(ctx, "POST", hs.config.APIEndpoint+"/api/v1/handshake"+path, bytes.NewBuffer(jsonData))
 	if err != nil {

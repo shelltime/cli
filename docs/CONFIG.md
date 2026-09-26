@@ -12,6 +12,7 @@ This guide covers every configuration option in ShellTime CLI. ShellTime runs fi
 - [AI Features](#ai-features)
 - [Claude Code Integration](#claude-code-integration)
 - [Codex Usage Tracking](#codex-usage-tracking)
+- [Network Proxy](#network-proxy)
 - [Advanced Settings](#advanced-settings)
 - [Complete Example](#complete-example)
 - [FAQ](#faq)
@@ -320,6 +321,47 @@ When `apiEndpoint` or `token` is set under `codeTracking`, heartbeats use those 
 
 ---
 
+## Network Proxy
+
+Send all outbound HTTP(S) traffic from the CLI and the daemon through a proxy. This covers syncing to shelltime.xyz, the AI command suggestions, `shelltime update`, and the Claude Code / Codex quota lookups.
+
+| Option | Type | Default | Description |
+|--------|------|---------|-------------|
+| `proxy.url` | string | - | Proxy URL. Schemes: `http`, `https`, `socks5`, `socks5h` |
+| `proxy.noProxy` | string[] | `[]` | Hosts that bypass the proxy (`NO_PROXY` syntax) |
+
+```yaml
+proxy:
+  url: "socks5h://127.0.0.1:7890"
+  noProxy:
+    - "localhost"
+    - ".corp.example.com"   # domain and all subdomains
+    - "10.0.0.0/8"          # CIDR ranges
+```
+
+**Supported proxy URLs:**
+
+| Scheme | Example | Notes |
+|--------|---------|-------|
+| `http` | `http://127.0.0.1:8080` | Plain HTTP proxy. HTTPS requests are tunneled with `CONNECT` |
+| `https` | `https://proxy.corp.com:443` | TLS connection to the proxy itself |
+| `socks5` | `socks5://127.0.0.1:1080` | SOCKS5. Hostnames are resolved by the proxy |
+| `socks5h` | `socks5h://127.0.0.1:1080` | Same as `socks5` |
+| _(none)_ | `127.0.0.1:7890` | Treated as `http://127.0.0.1:7890` |
+
+Credentials can be embedded in the URL, e.g. `http://user:pass@proxy:8080` or `socks5://user:pass@127.0.0.1:1080`. `shelltime config view` masks the password.
+
+**Notes:**
+- When `proxy` is not set, the standard `HTTP_PROXY` / `HTTPS_PROXY` / `NO_PROXY` environment variables are used. When it is set, it takes precedence over them.
+- Requests to `localhost` and loopback addresses never go through the proxy.
+- SOCKS4 is not supported.
+- An invalid proxy URL is logged as a warning, and the environment-variable proxy is used instead.
+- The daemon reads the proxy on startup, so restart it after changing this setting.
+- The optional OTEL metrics exporter (`enableMetrics`) and the `ccusage` subprocess only honor the environment variables.
+- Put a machine-specific proxy in `config.local.yaml` to keep it out of a shared config.
+
+---
+
 ## Advanced Settings
 
 ### Multiple Endpoints
@@ -436,6 +478,11 @@ codeTracking:
 logCleanup:
   enabled: true
   thresholdMB: 100
+
+# --- Network Proxy ---
+# proxy:
+#   url: "socks5h://127.0.0.1:7890"   # http, https, socks5, socks5h
+#   noProxy: ["localhost", ".corp.example.com"]
 
 # --- Advanced ---
 socketPath: "/tmp/shelltime.sock"

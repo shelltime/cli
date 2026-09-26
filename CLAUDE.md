@@ -100,6 +100,7 @@ Services initialize in `cmd/daemon/main.go`: check enabled flag → create → s
 - Local overrides: `$HOME/.shelltime/config.local.yaml` (merged over the base, gitignored)
 - Daemon socket: `/tmp/shelltime.sock` (configurable via `socketPath`)
 - AICodeOtel gRPC port: configurable via `aiCodeOtel.grpcPort` (default: 54027)
+- Outbound proxy: `proxy.url` / `proxy.noProxy` (http, https, socks5, socks5h). Applied once at startup via `model.ConfigureProxy`; every outbound HTTP client must use `model.NewHTTPClient` or `model.HTTPTransport()` so the proxy applies
 
 ## Commit Rules
 

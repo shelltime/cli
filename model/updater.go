@@ -17,8 +17,6 @@ import (
 	"runtime"
 	"strings"
 	"time"
-
-	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 )
 
 const (
@@ -58,10 +56,7 @@ type LatestRelease struct {
 }
 
 func newUpdaterHTTPClient(timeout time.Duration) *http.Client {
-	return &http.Client{
-		Timeout:   timeout,
-		Transport: otelhttp.NewTransport(http.DefaultTransport),
-	}
+	return NewHTTPClient(timeout)
 }
 
 func updaterUserAgent() string {

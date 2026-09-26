@@ -578,3 +578,50 @@ token = 'local-heartbeat-token'`
 	assert.Equal(t, "https://api.local-heartbeat.com", config.CodeTracking.APIEndpoint)
 	assert.Equal(t, "local-heartbeat-token", config.CodeTracking.Token)
 }
+
+func TestReadConfig_Proxy(t *testing.T) {
+	t.Run("yaml with local override", func(t *testing.T) {
+		tmpDir := t.TempDir()
+		yamlConfig := `token: yaml-token
+proxy:
+  url: http://proxy.base:8080
+  noProxy:
+    - localhost
+    - .corp.example.com`
+		require.NoError(t, os.WriteFile(filepath.Join(tmpDir, "config.yaml"), []byte(yamlConfig), 0644))
+		localConfig := `proxy:
+  url: socks5h://user:pass@127.0.0.1:1080`
+		require.NoError(t, os.WriteFile(filepath.Join(tmpDir, "config.local.yaml"), []byte(localConfig), 0644))
+
+		config, err := NewConfigService(tmpDir).ReadConfigFile(context.Background())
+		require.NoError(t, err)
+		require.NotNil(t, config.Proxy)
+		assert.Equal(t, "socks5h://user:pass@127.0.0.1:1080", config.Proxy.URL)
+		assert.Empty(t, config.Proxy.NoProxy, "local proxy block replaces the base block")
+	})
+
+	t.Run("toml", func(t *testing.T) {
+		tmpDir := t.TempDir()
+		tomlConfig := `Token = 'toml-token'
+
+[proxy]
+url = 'socks5://127.0.0.1:1080'
+noProxy = ['localhost', '10.0.0.0/8']`
+		require.NoError(t, os.WriteFile(filepath.Join(tmpDir, "config.toml"), []byte(tomlConfig), 0644))
+
+		config, err := NewConfigService(tmpDir).ReadConfigFile(context.Background())
+		require.NoError(t, err)
+		require.NotNil(t, config.Proxy)
+		assert.Equal(t, "socks5://127.0.0.1:1080", config.Proxy.URL)
+		assert.Equal(t, []string{"localhost", "10.0.0.0/8"}, config.Proxy.NoProxy)
+	})
+
+	t.Run("unset", func(t *testing.T) {
+		tmpDir := t.TempDir()
+		require.NoError(t, os.WriteFile(filepath.Join(tmpDir, "config.yaml"), []byte("token: t"), 0644))
+
+		config, err := NewConfigService(tmpDir).ReadConfigFile(context.Background())
+		require.NoError(t, err)
+		assert.Nil(t, config.Proxy)
+	})
+}

@@ -51,7 +51,7 @@ func (s *sseAIService) QueryCommandStream(
 	req.Header.Set("Accept", "text/event-stream")
 	req.Header.Set("Authorization", "CLI "+endpoint.Token)
 
-	client := &http.Client{Timeout: 2 * time.Minute}
+	client := &http.Client{Timeout: 2 * time.Minute, Transport: HTTPTransport()}
 	resp, err := client.Do(req)
 	if err != nil {
 		return fmt.Errorf("failed to send request: %w", err)

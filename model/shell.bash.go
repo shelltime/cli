@@ -21,7 +21,7 @@ func ensureBashPreexec(hooksDir string) error {
 		return nil // already exists
 	}
 
-	client := &http.Client{Timeout: 1 * time.Minute}
+	client := &http.Client{Timeout: 1 * time.Minute, Transport: HTTPTransport()}
 	resp, err := client.Get(bashPreexecURL)
 	if err != nil {
 		return fmt.Errorf("failed to download bash-preexec.sh: %w", err)
