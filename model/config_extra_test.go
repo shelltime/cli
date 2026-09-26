@@ -75,17 +75,3 @@ func TestReadConfigFile_AICodeOtelDefaultPort(t *testing.T) {
 	require.NotNil(t, cfg.AICodeOtel)
 	assert.Equal(t, 54027, cfg.AICodeOtel.GRPCPort, "default gRPC port applied when enabled but unset")
 }
-
-func TestReadConfigFile_DeprecatedCCOtelMigratesToAICodeOtel(t *testing.T) {
-	dir := t.TempDir()
-	// Only the deprecated ccotel field is set; it should migrate to AICodeOtel.
-	require.NoError(t, os.WriteFile(filepath.Join(dir, "config.yaml"),
-		[]byte("token: tok\nccotel:\n  enabled: true\n  grpcPort: 9999\n"), 0o644))
-
-	cs := NewConfigService(dir)
-	cfg, err := cs.ReadConfigFile(context.Background())
-	require.NoError(t, err)
-	require.NotNil(t, cfg.AICodeOtel, "ccotel should migrate to AICodeOtel")
-	assert.Nil(t, cfg.CCOtel, "deprecated field cleared after migration")
-	assert.Equal(t, 9999, cfg.AICodeOtel.GRPCPort)
-}

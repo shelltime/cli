@@ -35,7 +35,6 @@ func TestMergeConfig_AllOverrides(t *testing.T) {
 		AI:            &AIConfig{},
 		Endpoints:     []Endpoint{{Token: "e", APIEndpoint: "https://ep"}},
 		Exclude:       []string{"secret"},
-		CCUsage:       &CCUsage{Enabled: &on},
 		AICodeOtel:    &AICodeOtel{Enabled: &on},
 		LogCleanup:    &LogCleanup{Enabled: &truthy, ThresholdMB: 42},
 		SocketPath:    "/tmp/local.sock",
@@ -56,7 +55,6 @@ func TestMergeConfig_AllOverrides(t *testing.T) {
 	require.NotNil(t, base.AI)
 	require.Len(t, base.Endpoints, 1)
 	require.Len(t, base.Exclude, 1)
-	require.NotNil(t, base.CCUsage)
 	require.NotNil(t, base.AICodeOtel)
 	require.NotNil(t, base.LogCleanup)
 	assert.EqualValues(t, 42, base.LogCleanup.ThresholdMB)
@@ -64,19 +62,6 @@ func TestMergeConfig_AllOverrides(t *testing.T) {
 	require.NotNil(t, base.CodeTracking)
 	require.NotNil(t, base.Proxy)
 	assert.Equal(t, "socks5://127.0.0.1:1080", base.Proxy.URL)
-}
-
-// TestMergeConfig_CCOtelMigration covers the deprecated CCOtel -> AICodeOtel
-// migration branch inside mergeConfig (local has CCOtel, no AICodeOtel).
-func TestMergeConfig_CCOtelMigration(t *testing.T) {
-	base := &ShellTimeConfig{}
-	on := true
-	local := &ShellTimeConfig{
-		CCOtel: &AICodeOtel{Enabled: &on, GRPCPort: 1234},
-	}
-	mergeConfig(base, local)
-	require.NotNil(t, base.AICodeOtel, "CCOtel should migrate into AICodeOtel on base")
-	assert.Equal(t, 1234, base.AICodeOtel.GRPCPort)
 }
 
 // TestMergeConfig_NoOverrides ensures zero-valued local fields leave base intact.

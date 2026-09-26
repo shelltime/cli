@@ -86,7 +86,6 @@ func main() {
 
 	daemon.Init(daemonConfigService, version)
 	model.InjectVar(version)
-	cmdService := model.NewCommandService()
 
 	// When the bolt storage engine is enabled, the daemon owns the bolt-backed
 	// command store for its lifetime (bbolt holds an exclusive file lock).
@@ -131,17 +130,6 @@ func main() {
 	}
 
 	go daemon.SocketTopicProcessor(msg)
-
-	// Start CCUsage service if enabled (v1 - ccusage CLI based)
-	if cfg.CCUsage != nil && cfg.CCUsage.Enabled != nil && *cfg.CCUsage.Enabled {
-		ccUsageService := model.NewCCUsageService(cfg, cmdService)
-		if err := ccUsageService.Start(ctx); err != nil {
-			slog.Error("Failed to start CCUsage service", slog.Any("err", err))
-		} else {
-			slog.Info("CCUsage service started")
-			defer ccUsageService.Stop()
-		}
-	}
 
 	// Start AICodeOtel service if enabled (OTEL gRPC passthrough for Claude Code, Codex, etc.)
 	var aiCodeOtelServer *daemon.AICodeOtelServer

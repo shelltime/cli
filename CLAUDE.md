@@ -85,7 +85,6 @@ Optional daemon services (feature-gated via config):
 - **AICodeOtelServer**: gRPC OTEL collector for AI coding CLI metrics/logs (Claude Code, Codex)
 - **HeartbeatResyncService**: Periodic resync of failed heartbeats (30-min interval)
 - **CleanupTimerService**: Periodic log file cleanup (24-hour interval)
-- **CCUsageService**: Integration with ccusage CLI
 
 Services initialize in `cmd/daemon/main.go`: check enabled flag → create → start → defer stop. All run concurrently with graceful shutdown on SIGINT/SIGTERM.
 
