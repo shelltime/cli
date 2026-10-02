@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -123,9 +124,9 @@ func (s *apiTestSuite) TestSendLocalDataToServer() {
 	})
 
 	s.T().Run("multiple endpoints", func(t *testing.T) {
-		requestCount := 0
+		var requestCount atomic.Int32
 		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			requestCount++
+			requestCount.Add(1)
 			w.WriteHeader(http.StatusNoContent)
 		}))
 		defer server.Close()
@@ -167,7 +168,7 @@ func (s *apiTestSuite) TestSendLocalDataToServer() {
 			Meta:     meta,
 		})
 		assert.NoError(t, err)
-		assert.Equal(t, 3, requestCount) // Main endpoint + 2 additional endpoints
+		assert.Equal(t, int32(3), requestCount.Load()) // Main endpoint + 2 additional endpoints
 	})
 
 	s.T().Run("partial failure", func(t *testing.T) {

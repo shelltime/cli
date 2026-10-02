@@ -62,6 +62,8 @@ func (s *trackTestSuite) TestMultipTrackWithPre() {
 
 	times := 10
 
+	// urfave/cli mutates App and flags during dispatch; production dispatch is serial.
+	var appMu sync.Mutex
 	var wg sync.WaitGroup
 	wg.Add(times)
 
@@ -77,7 +79,9 @@ func (s *trackTestSuite) TestMultipTrackWithPre() {
 			"-p=pre",
 		}
 		go func(cmd []string) {
+			appMu.Lock()
 			err := app.Run(cmd)
+			appMu.Unlock()
 			assert.Nil(s.T(), err)
 			wg.Done()
 		}(command)
@@ -155,6 +159,8 @@ func (s *trackTestSuite) TestTrackWithSendData() {
 
 	times := 16
 
+	// urfave/cli mutates App and flags during dispatch; production dispatch is serial.
+	var appMu sync.Mutex
 	var wg sync.WaitGroup
 	wg.Add(times)
 
@@ -190,10 +196,14 @@ func (s *trackTestSuite) TestTrackWithSendData() {
 			"-p=post",
 		}
 		go func(cmd []string, pc []string) {
+			appMu.Lock()
 			err := app.Run(cmd)
+			appMu.Unlock()
 			assert.Nil(s.T(), err)
 			time.Sleep(time.Millisecond * 100)
+			appMu.Lock()
 			err = app.Run(pc)
+			appMu.Unlock()
 			assert.Nil(s.T(), err)
 			wg.Done()
 		}(command, postCommand)
