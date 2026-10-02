@@ -6,12 +6,29 @@ import (
 	"compress/gzip"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
+
+func TestWriteBinaryRestoresExistingExecutablePermissions(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("Unix executable permission bits")
+	}
+	target := filepath.Join(t.TempDir(), "shelltime")
+	require.NoError(t, os.WriteFile(target, []byte("old"), 0o600))
+	require.NoError(t, os.Chmod(target, 0o600))
+	require.NoError(t, writeBinary(target, strings.NewReader("updated binary")))
+	info, err := os.Stat(target)
+	require.NoError(t, err)
+	assert.Equal(t, os.FileMode(0o755), info.Mode().Perm())
+	body, err := os.ReadFile(target)
+	require.NoError(t, err)
+	assert.Equal(t, "updated binary", string(body))
+}
 
 func TestBuildArchiveName(t *testing.T) {
 	tests := []struct {

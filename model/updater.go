@@ -340,12 +340,12 @@ func extractTarGzBinaries(archivePath, tmpDir string) (map[string]string, error)
 	return out, nil
 }
 
-func writeBinary(target string, src io.Reader) error {
+func writeBinary(target string, src io.Reader) (err error) {
 	dst, err := os.OpenFile(target, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0o755)
 	if err != nil {
 		return err
 	}
-	defer dst.Close()
+	defer func() { err = errors.Join(err, dst.Close()) }()
 	if _, err := io.Copy(dst, io.LimitReader(src, maxArchiveEntrySize+1)); err != nil {
 		return err
 	}
@@ -357,10 +357,7 @@ func writeBinary(target string, src io.Reader) error {
 		return fmt.Errorf("archive entry %s exceeds max size %d", target, maxArchiveEntrySize)
 	}
 	// OpenFile's mode is filtered by umask and does not update existing files.
-	if err := dst.Chmod(0o755); err != nil {
-		return err
-	}
-	return dst.Close()
+	return dst.Chmod(0o755)
 }
 
 func stripExe(name string) string {
