@@ -3,7 +3,9 @@ package commands
 // Basic imports
 import (
 	"bytes"
+	"context"
 	"encoding/json"
+	"flag"
 	"fmt"
 	"io"
 	"net/http"
@@ -27,12 +29,14 @@ import (
 
 type trackTestSuite struct {
 	suite.Suite
-	baseTimeFolder string
+	baseTimeFolder        string
+	originalStorageFolder string
 }
 
 // before each test
 func (s *trackTestSuite) SetupSuite() {
-	s.baseTimeFolder = strconv.Itoa(int(time.Now().Unix()))
+	s.originalStorageFolder = model.COMMAND_BASE_STORAGE_FOLDER
+	s.baseTimeFolder = strconv.FormatInt(time.Now().UnixNano(), 10)
 	otel.SetTracerProvider(noop.NewTracerProvider())
 	SKIP_LOGGER_SETTINGS = true
 }
@@ -51,19 +55,8 @@ func (s *trackTestSuite) TestMultipTrackWithPre() {
 	err := os.MkdirAll(p, os.ModePerm)
 	assert.Nil(s.T(), err)
 
-	app := &cli.App{
-		// mtt for malamtime-testing
-		Name:  "mtt",
-		Usage: "just for testing",
-		Commands: []*cli.Command{
-			TrackCommand,
-		},
-	}
-
 	times := 10
 
-	// urfave/cli mutates App and flags during dispatch; production dispatch is serial.
-	var appMu sync.Mutex
 	var wg sync.WaitGroup
 	wg.Add(times)
 
@@ -79,9 +72,7 @@ func (s *trackTestSuite) TestMultipTrackWithPre() {
 			"-p=pre",
 		}
 		go func(cmd []string) {
-			appMu.Lock()
-			err := app.Run(cmd)
-			appMu.Unlock()
+			err := commandTrack(trackActionContext(cmd))
 			assert.Nil(s.T(), err)
 			wg.Done()
 		}(command)
@@ -104,6 +95,7 @@ func (s *trackTestSuite) TestMultipTrackWithPre() {
 
 func (s *trackTestSuite) TestTrackWithSendData() {
 	reqCursor := make([]int64, 0)
+	var cursorMu sync.Mutex
 
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		authorizationHeader := r.Header.Get("Authorization")
@@ -122,7 +114,9 @@ func (s *trackTestSuite) TestTrackWithSendData() {
 		assert.Contains(s.T(), string(body), "fish")
 		assert.EqualValues(s.T(), "CLI TOKEN001", authorizationHeader)
 		w.WriteHeader(http.StatusNoContent)
+		cursorMu.Lock()
 		reqCursor = append(reqCursor, payload.CursorID)
+		cursorMu.Unlock()
 	}))
 	defer server.Close()
 	cs := model.NewMockConfigService(s.T())
@@ -159,8 +153,6 @@ func (s *trackTestSuite) TestTrackWithSendData() {
 
 	times := 16
 
-	// urfave/cli mutates App and flags during dispatch; production dispatch is serial.
-	var appMu sync.Mutex
 	var wg sync.WaitGroup
 	wg.Add(times)
 
@@ -196,14 +188,10 @@ func (s *trackTestSuite) TestTrackWithSendData() {
 			"-p=post",
 		}
 		go func(cmd []string, pc []string) {
-			appMu.Lock()
-			err := app.Run(cmd)
-			appMu.Unlock()
+			err := commandTrack(trackActionContext(cmd))
 			assert.Nil(s.T(), err)
 			time.Sleep(time.Millisecond * 100)
-			appMu.Lock()
-			err = app.Run(pc)
-			appMu.Unlock()
+			err = commandTrack(trackActionContext(pc))
 			assert.Nil(s.T(), err)
 			wg.Done()
 		}(command, postCommand)
@@ -313,13 +301,40 @@ func (s *trackTestSuite) TestTrackWithSendData() {
 }
 
 func (s *trackTestSuite) TearDownSuite() {
-	// Delete the test folder
-	err := os.RemoveAll(os.ExpandEnv("$HOME/" + model.COMMAND_BASE_STORAGE_FOLDER + "-withPre"))
-	assert.Nil(s.T(), err)
+	for _, suffix := range []string{"withPre", "sendData"} {
+		folder := fmt.Sprintf(".shelltime-%s-%s", s.baseTimeFolder, suffix)
+		assert.NoError(s.T(), os.RemoveAll(filepath.Join(os.Getenv("HOME"), folder)))
+	}
+	model.COMMAND_BASE_STORAGE_FOLDER = s.originalStorageFolder
+	model.InitFolder("")
+}
 
-	// Delete the test folder
-	err = os.RemoveAll(os.ExpandEnv("$HOME/" + model.COMMAND_BASE_STORAGE_FOLDER + "-sendData"))
-	assert.Nil(s.T(), err)
+// Each hook process has independent parsing state. Exercise the same concurrent
+// action calls here without sharing urfave/cli's mutable App or flag objects.
+func trackActionContext(args []string) *cli.Context {
+	flags := flag.NewFlagSet("track", flag.ContinueOnError)
+	flags.String("shell", "", "")
+	flags.Int64("sessionId", 0, "")
+	flags.String("command", "", "")
+	flags.String("phase", "", "")
+	flags.Int("result", 0, "")
+	flags.Int("ppid", 0, "")
+	aliases := map[string]string{"s": "shell", "id": "sessionId", "cmd": "command", "p": "phase"}
+	for _, arg := range args[2:] {
+		name, value, ok := strings.Cut(strings.TrimPrefix(arg, "-"), "=")
+		if !ok {
+			panic("tracking argument is missing its value")
+		}
+		if canonical, ok := aliases[name]; ok {
+			name = canonical
+		}
+		if err := flags.Set(name, value); err != nil {
+			panic(err)
+		}
+	}
+	ctx := cli.NewContext(nil, flags, nil)
+	ctx.Context = context.Background()
+	return ctx
 }
 
 func TestTrackTestSuite(t *testing.T) {
