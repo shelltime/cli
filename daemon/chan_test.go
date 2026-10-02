@@ -116,7 +116,9 @@ func (s *chanTestSuite) TestSubscriberContextCancellation() {
 	time.Sleep(100 * time.Millisecond)
 
 	// Verify subscriber was removed
+	pubSub.subscribersLock.RLock()
 	assert.Empty(s.T(), pubSub.subscribers[topic])
+	pubSub.subscribersLock.RUnlock()
 }
 
 func (s *chanTestSuite) TestCloseWithActiveSubscribers() {

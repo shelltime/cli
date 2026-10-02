@@ -111,11 +111,12 @@ func commandCCStatusline(c *cli.Context) error {
 }
 
 func readStdinWithTimeout(ctx context.Context) ([]byte, error) {
+	stdin := os.Stdin
 	resultCh := make(chan []byte, 1)
 	errCh := make(chan error, 1)
 
 	go func() {
-		reader := bufio.NewReader(os.Stdin)
+		reader := bufio.NewReader(stdin)
 		var data []byte
 		for {
 			line, err := reader.ReadBytes('\n')
