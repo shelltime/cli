@@ -356,7 +356,11 @@ func writeBinary(target string, src io.Reader) error {
 	if info.Size() > maxArchiveEntrySize {
 		return fmt.Errorf("archive entry %s exceeds max size %d", target, maxArchiveEntrySize)
 	}
-	return nil
+	// OpenFile's mode is filtered by umask and does not update existing files.
+	if err := dst.Chmod(0o755); err != nil {
+		return err
+	}
+	return dst.Close()
 }
 
 func stripExe(name string) string {
