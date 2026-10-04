@@ -74,6 +74,7 @@ func TestX3CodexUsageSyncService_SyncSkipsOnKnownReason(t *testing.T) {
 	loadCodexAuthFunc = func() (*codexAuthData, error) {
 		return nil, errCodexAuthInvalid
 	}
+	withRunningProcesses(t, "codex")
 
 	svc := NewCodexUsageSyncService(model.ShellTimeConfig{Token: "tok", SocketPath: filepath.Join(t.TempDir(), "x.sock")})
 	assert.NotPanics(t, func() { svc.sync() })

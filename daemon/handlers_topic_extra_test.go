@@ -144,6 +144,7 @@ func TestCodexUsageSyncService_SyncBranches(t *testing.T) {
 		loadCodexAuthFunc = prevLoad
 		fetchCodexUsageFunc = prevFetch
 	})
+	withRunningProcesses(t, "codex")
 
 	t.Run("no token returns early", func(t *testing.T) {
 		loadCodexAuthFunc = func() (*codexAuthData, error) {

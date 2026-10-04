@@ -9,11 +9,11 @@ import (
 	"github.com/malamtime/cli/model"
 )
 
-var CodexUsageSyncInterval = 10 * time.Minute
-
-// CodexUsageSyncService periodically fetches Codex usage and syncs it to the server.
+// CodexUsageSyncService periodically fetches Codex usage and syncs it to the server
+// while a Codex (or ChatGPT) process is running.
 type CodexUsageSyncService struct {
 	config   model.ShellTimeConfig
+	interval time.Duration
 	ticker   *time.Ticker
 	stopChan chan struct{}
 	wg       sync.WaitGroup
@@ -23,13 +23,14 @@ type CodexUsageSyncService struct {
 func NewCodexUsageSyncService(config model.ShellTimeConfig) *CodexUsageSyncService {
 	return &CodexUsageSyncService{
 		config:   config,
+		interval: usageSyncInterval,
 		stopChan: make(chan struct{}),
 	}
 }
 
 // Start begins the periodic Codex usage sync job.
 func (s *CodexUsageSyncService) Start(ctx context.Context) error {
-	s.ticker = time.NewTicker(CodexUsageSyncInterval)
+	s.ticker = time.NewTicker(s.interval)
 	s.wg.Add(1)
 
 	go func() {
@@ -49,7 +50,7 @@ func (s *CodexUsageSyncService) Start(ctx context.Context) error {
 		}
 	}()
 
-	slog.Info("Codex usage sync service started", slog.Duration("interval", CodexUsageSyncInterval))
+	slog.Info("Codex usage sync service started", slog.Duration("interval", s.interval))
 	return nil
 }
 
@@ -65,6 +66,11 @@ func (s *CodexUsageSyncService) Stop() {
 
 func (s *CodexUsageSyncService) sync() {
 	if s.config.Token == "" {
+		return
+	}
+
+	if !isCodexRunning() {
+		slog.Debug("Skipping codex usage sync", slog.String("reason", "codex_not_running"))
 		return
 	}
 
