@@ -134,13 +134,28 @@ var daemonHomebrewSearchPaths = []string{
 	"/home/linuxbrew/.linuxbrew/bin",
 }
 
+// currentCLIBinaryPath resolves the running CLI binary. Exposed as a var so
+// tests can pretend to be a curl-installer or Homebrew CLI.
+var currentCLIBinaryPath = ResolveCLIBinaryPath
+
 // ResolveDaemonBinaryPath finds the shelltime-daemon binary.
-// It prefers a system-managed binary (Homebrew or anything on PATH) over the
-// legacy curl-installer location, so that `brew upgrade shelltime` is what
-// actually drives the running daemon.
+// When the running CLI is the curl-installer copy, the daemon next to it wins,
+// so a stale or unmanaged daemon in a Homebrew dir can't shadow the one that
+// was just installed alongside the CLI. Otherwise it prefers a system-managed
+// binary (Homebrew or anything on PATH) over the legacy curl-installer
+// location, so that `brew upgrade shelltime` is what actually drives the
+// running daemon.
 func ResolveDaemonBinaryPath() (string, error) {
 	const binaryName = "shelltime-daemon"
 	curlPath := GetCurlInstallerDaemonPath()
+
+	// 0. Curl-installer CLI: use its sibling daemon so CLI and daemon stay in
+	// lockstep across `curl … | bash` reinstalls and `shelltime update`.
+	if cliPath, err := currentCLIBinaryPath(); err == nil && DetectInstallKind(cliPath) == InstallKindCurl {
+		if info, err := os.Stat(curlPath); err == nil && !info.IsDir() {
+			return curlPath, nil
+		}
+	}
 
 	// 1. Check PATH (covers Homebrew and other package managers). Ignore the
 	// result if it is the same on-disk file as the curl-installer binary

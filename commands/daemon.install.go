@@ -29,14 +29,13 @@ func commandDaemonInstall(c *cli.Context) error {
 	baseFolder := filepath.Join(currentUser.HomeDir, ".shelltime")
 	username := currentUser.Username
 
-	// Handle .bak upgrade for curl-installer users
-	bakPath := filepath.Join(baseFolder, "bin/shelltime-daemon.bak")
-	if _, err := os.Stat(bakPath); err == nil {
-		color.Yellow.Println("🔄 Found latest daemon file, restoring...")
-		_ = os.Remove(filepath.Join(baseFolder, "bin/shelltime-daemon"))
-		if err := os.Rename(bakPath, filepath.Join(baseFolder, "bin/shelltime-daemon")); err != nil {
-			return fmt.Errorf("failed to restore latest daemon: %w", err)
-		}
+	// Bring back a curl-installer daemon preserved as .bak by a previous install
+	restored, err := restoreCurlDaemonBak(filepath.Join(baseFolder, "bin", "shelltime-daemon"))
+	if err != nil {
+		return err
+	}
+	if restored {
+		color.Yellow.Println("🔄 Restored preserved curl-installer daemon from .bak")
 	}
 
 	// Resolve daemon binary (Homebrew/PATH preferred, curl-installer fallback).
@@ -104,6 +103,24 @@ func commandDaemonInstall(c *cli.Context) error {
 	color.Green.Println("✅ Daemon service has been installed and started successfully!")
 	color.Green.Println("💡 Your commands will now be automatically synced to shelltime.xyz faster")
 	return nil
+}
+
+// restoreCurlDaemonBak moves curlDaemonPath+".bak" back to curlDaemonPath, but
+// only when curlDaemonPath itself is missing. A live daemon there is whatever
+// the installer or `shelltime update` just put down; overwriting it with an
+// older .bak is how a reinstall ended up running the previous release.
+func restoreCurlDaemonBak(curlDaemonPath string) (bool, error) {
+	bakPath := curlDaemonPath + ".bak"
+	if _, err := os.Stat(bakPath); err != nil {
+		return false, nil
+	}
+	if _, err := os.Stat(curlDaemonPath); err == nil {
+		return false, nil
+	}
+	if err := os.Rename(bakPath, curlDaemonPath); err != nil {
+		return false, fmt.Errorf("failed to restore daemon from %s: %w", bakPath, err)
+	}
+	return true, nil
 }
 
 // shouldPreserveCurlDaemon reports whether the curl-installer daemon at
