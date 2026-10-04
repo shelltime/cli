@@ -182,6 +182,10 @@ func main() {
 		slog.Error("Failed to start processor", slog.Any("err", err))
 	}
 
+	// Sync Claude Code usage even when no `shelltime cc statusline` polls the daemon
+	// (statusline mods, the desktop app, idle sessions).
+	processor.StartAnthropicUsageSync()
+
 	// Handle shutdown gracefully
 	sigChan := make(chan os.Signal, 1)
 	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)

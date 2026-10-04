@@ -229,3 +229,125 @@ func TestFetchRateLimit_Forbidden403SetsScopeError(t *testing.T) {
 	service.rateLimitCache.mu.RUnlock()
 	assert.True(t, backoff.After(time.Now()), "403 should set a backoff window")
 }
+
+// withStubOAuthToken replaces the Keychain / credentials-file lookup.
+func withStubOAuthToken(t *testing.T, token string, scopes []string) {
+	t.Helper()
+	orig := fetchClaudeCodeOAuthTokenFunc
+	fetchClaudeCodeOAuthTokenFunc = func() (string, []string, error) {
+		return token, scopes, nil
+	}
+	t.Cleanup(func() { fetchClaudeCodeOAuthTokenFunc = orig })
+}
+
+func withUsageSyncCheckInterval(t *testing.T, d time.Duration) {
+	t.Helper()
+	orig := AnthropicUsageSyncCheckInterval
+	AnthropicUsageSyncCheckInterval = d
+	t.Cleanup(func() { AnthropicUsageSyncCheckInterval = orig })
+}
+
+// newUsageSyncServers starts a fake Anthropic usage endpoint and a fake ShellTime API that records
+// the pushed usage payloads. Assertions use the per-test API server rather than the usage endpoint,
+// because timers leaked by other tests may also reach the (global) usage URL.
+func newUsageSyncServers(t *testing.T) (pushed chan map[string]any, apiURL string) {
+	t.Helper()
+	usage := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"five_hour":{"utilization":42,"resets_at":"2026-10-04T18:00:00Z"},"seven_day":{"utilization":70,"resets_at":"2026-10-08T00:00:00Z"}}`))
+	}))
+	t.Cleanup(usage.Close)
+	withTestUsageURL(t, usage.URL)
+
+	pushed = make(chan map[string]any, 8)
+	api := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/api/v1/anthropic-usage" && r.Method == http.MethodPost {
+			var body map[string]any
+			_ = json.NewDecoder(r.Body).Decode(&body)
+			pushed <- body
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{}`))
+	}))
+	t.Cleanup(api.Close)
+
+	return pushed, api.URL
+}
+
+func TestStartUsageSync_SyncsWithoutStatuslineActivity(t *testing.T) {
+	if runtime.GOOS != "darwin" && runtime.GOOS != "linux" {
+		t.Skip("fetchRateLimit only runs on darwin/linux")
+	}
+	withStubOAuthToken(t, "sk-login", []string{"user:profile"})
+	withUsageSyncCheckInterval(t, 10*time.Millisecond)
+	pushed, apiURL := newUsageSyncServers(t)
+
+	service := NewCCInfoTimerService(&model.ShellTimeConfig{Token: "tok", APIEndpoint: apiURL})
+	service.StartUsageSync()
+	defer service.Stop()
+
+	// No NotifyActivity: the statusline timer never starts, yet usage is fetched and pushed.
+	select {
+	case body := <-pushed:
+		fiveHour, ok := body["five_hour"].(map[string]any)
+		require.True(t, ok, "payload should carry five_hour")
+		assert.Equal(t, float64(42), fiveHour["utilization"])
+	case <-time.After(2 * time.Second):
+		t.Fatal("usage was not pushed to the server")
+	}
+
+	rl := service.GetCachedRateLimit()
+	require.NotNil(t, rl)
+	assert.Equal(t, float64(70), rl.SevenDayUtilization)
+
+	service.timerMu.Lock()
+	assert.False(t, service.timerRunning, "statusline timer should not be started by the usage sync")
+	service.timerMu.Unlock()
+}
+
+func TestStartUsageSync_HonorsCacheTTL(t *testing.T) {
+	if runtime.GOOS != "darwin" && runtime.GOOS != "linux" {
+		t.Skip("fetchRateLimit only runs on darwin/linux")
+	}
+	withStubOAuthToken(t, "sk-login", []string{"user:profile"})
+	withUsageSyncCheckInterval(t, 10*time.Millisecond)
+	pushed, apiURL := newUsageSyncServers(t)
+
+	service := NewCCInfoTimerService(&model.ShellTimeConfig{Token: "tok", APIEndpoint: apiURL})
+	service.StartUsageSync()
+	defer service.Stop()
+
+	select {
+	case <-pushed:
+	case <-time.After(2 * time.Second):
+		t.Fatal("usage was not pushed to the server")
+	}
+
+	// Many ticks pass, but the 10-minute TTL keeps the service from fetching and pushing again.
+	time.Sleep(100 * time.Millisecond)
+	assert.Empty(t, pushed, "usage should be pushed only once within the TTL")
+}
+
+func TestStartUsageSync_NoTokenDoesNothing(t *testing.T) {
+	withUsageSyncCheckInterval(t, 10*time.Millisecond)
+
+	service := NewCCInfoTimerService(&model.ShellTimeConfig{})
+	service.StartUsageSync()
+	time.Sleep(50 * time.Millisecond)
+
+	done := make(chan struct{})
+	go func() {
+		service.Stop()
+		close(done)
+	}()
+	select {
+	case <-done:
+	case <-time.After(time.Second):
+		t.Fatal("Stop did not return")
+	}
+
+	service.rateLimitCache.mu.RLock()
+	lastAttempt := service.rateLimitCache.lastAttemptAt
+	service.rateLimitCache.mu.RUnlock()
+	assert.True(t, lastAttempt.IsZero(), "no usage fetch should be attempted without a ShellTime token")
+}

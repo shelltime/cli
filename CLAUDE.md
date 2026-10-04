@@ -80,7 +80,7 @@ Injection happens in `cmd/*/main.go` via `commands.InjectVar()` and `commands.In
 3. **SocketTopicProcessor**: Consumes messages and routes to appropriate handlers
 
 Optional daemon services (feature-gated via config):
-- **CCInfoTimerService**: Lazy-fetch background timer for Claude Code statusline data (cost, quota, git info)
+- **CCInfoTimerService**: Lazy-fetch background timer for Claude Code statusline data (cost, quota, git info), plus an always-on Anthropic usage sync (TTL-gated, ~10 min) that pushes quota to `/api/v1/anthropic-usage` without needing statusline activity
 - **SyncCircuitBreakerService**: Retry failed syncs with file-based persistence (`sync_pending.log`) and hourly recovery timer
 - **AICodeOtelServer**: gRPC OTEL collector for AI coding CLI metrics/logs (Claude Code, Codex)
 - **HeartbeatResyncService**: Periodic resync of failed heartbeats (30-min interval)
