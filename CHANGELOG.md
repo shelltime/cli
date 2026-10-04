@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.91](https://github.com/shelltime/cli/compare/v0.1.90...v0.1.91) (2026-10-04)
+
+
+### Bug Fixes
+
+* **daemon:** keep daemon binary in lockstep with curl-installed CLI ([#308](https://github.com/shelltime/cli/issues/308)) ([8291ec5](https://github.com/shelltime/cli/commit/8291ec56eb2c599f6eb6bcbe22f309837b336862))
+
 ## [0.1.90](https://github.com/shelltime/cli/compare/v0.1.89...v0.1.90) (2026-10-04)
 
 
