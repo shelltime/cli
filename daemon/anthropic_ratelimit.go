@@ -17,7 +17,10 @@ import (
 	"github.com/malamtime/cli/model"
 )
 
-const anthropicUsageCacheTTL = 10 * time.Minute
+// anthropicUsageCacheTTL is a minute shorter than usageSyncInterval. lastAttemptAt and fetchedAt are
+// stamped just after a sync tick, so with a TTL equal to the interval the next tick would land just
+// before it expires and skip every other cycle.
+const anthropicUsageCacheTTL = usageSyncInterval - time.Minute
 
 // anthropicRateLimitBackoff is the minimum cooldown applied after a 429 from the usage API,
 // used when the response carries no (or a shorter) Retry-After. It is longer than the normal

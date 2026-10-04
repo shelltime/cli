@@ -17,11 +17,6 @@ import (
 var (
 	CCInfoFetchInterval     = 3 * time.Second
 	CCInfoInactivityTimeout = 3 * time.Minute
-
-	// AnthropicUsageSyncCheckInterval is how often the usage sync loop checks the rate-limit cache.
-	// It must be shorter than anthropicUsageCacheTTL: the TTL decides when a fetch actually happens,
-	// and a tick equal to the TTL would land just before it expires and skip every other cycle.
-	AnthropicUsageSyncCheckInterval = time.Minute
 )
 
 // CCInfoCache holds the cached cost data for a time range
@@ -69,17 +64,21 @@ type CCInfoTimerService struct {
 
 	// Claude Code version reported by the statusline client, used for the Anthropic usage User-Agent
 	claudeCodeVersion string
+
+	// How often StartUsageSync runs; usageSyncInterval outside of tests
+	usageSyncInterval time.Duration
 }
 
 // NewCCInfoTimerService creates a new CC info timer service
 func NewCCInfoTimerService(config *model.ShellTimeConfig) *CCInfoTimerService {
 	return &CCInfoTimerService{
-		config:         config,
-		cache:          make(map[CCInfoTimeRange]CCInfoCache),
-		activeRanges:   make(map[CCInfoTimeRange]bool),
-		gitCache:       make(map[string]*GitCacheEntry),
-		rateLimitCache: &anthropicRateLimitCache{},
-		stopChan:       make(chan struct{}),
+		config:            config,
+		cache:             make(map[CCInfoTimeRange]CCInfoCache),
+		activeRanges:      make(map[CCInfoTimeRange]bool),
+		gitCache:          make(map[string]*GitCacheEntry),
+		rateLimitCache:    &anthropicRateLimitCache{},
+		stopChan:          make(chan struct{}),
+		usageSyncInterval: usageSyncInterval,
 	}
 }
 
@@ -389,7 +388,7 @@ func (s *CCInfoTimerService) cleanupStaleGitCache() {
 // StartUsageSync starts a background loop that keeps the Anthropic usage cache fresh, which also
 // pushes each fresh reading to the server. Without it usage only syncs while `shelltime cc statusline`
 // polls the daemon, so it goes stale for statusline mods, the desktop app and idle periods.
-// The loop is stopped by Stop.
+// Fetches are skipped while no Claude process is running. The loop is stopped by Stop.
 func (s *CCInfoTimerService) StartUsageSync() {
 	if s.config.Token == "" {
 		return
@@ -399,7 +398,7 @@ func (s *CCInfoTimerService) StartUsageSync() {
 	go func() {
 		defer s.wg.Done()
 
-		ticker := time.NewTicker(AnthropicUsageSyncCheckInterval)
+		ticker := time.NewTicker(s.usageSyncInterval)
 		defer ticker.Stop()
 
 		s.refreshRateLimit()
@@ -414,7 +413,9 @@ func (s *CCInfoTimerService) StartUsageSync() {
 		}
 	}()
 
-	slog.Info("Anthropic usage sync started", slog.Duration("ttl", anthropicUsageCacheTTL))
+	slog.Info("Anthropic usage sync started",
+		slog.Duration("interval", s.usageSyncInterval),
+		slog.Duration("ttl", anthropicUsageCacheTTL))
 }
 
 // refreshRateLimit runs fetchRateLimit unless another refresh is already in flight.
@@ -448,6 +449,13 @@ func (s *CCInfoTimerService) fetchRateLimit(ctx context.Context) {
 	}
 
 	if sinceLastFetch < anthropicUsageCacheTTL || sinceLastAttempt < anthropicUsageCacheTTL {
+		return
+	}
+
+	// Usage can't change while Claude is closed. Checked before lastAttemptAt is recorded so the
+	// first tick after Claude starts fetches right away.
+	if !isClaudeRunning() {
+		slog.Debug("Claude not running; skipping Anthropic usage fetch")
 		return
 	}
 

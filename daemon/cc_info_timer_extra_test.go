@@ -160,6 +160,7 @@ func TestFetchRateLimit_OAuthMissingSetsError(t *testing.T) {
 	}
 	// On linux, fetchClaudeCodeOAuthToken reads ~/.claude/.credentials.json.
 	// With an empty HOME that file is missing -> token lookup fails -> lastError="oauth".
+	withRunningProcesses(t, "claude")
 	home := t.TempDir()
 	t.Setenv("HOME", home)
 
@@ -174,6 +175,7 @@ func TestFetchRateLimit_MissingScopeSkipsFetch(t *testing.T) {
 	if runtime.GOOS != "linux" {
 		t.Skip("token-from-file path is exercised on linux")
 	}
+	withRunningProcesses(t, "claude")
 	home := t.TempDir()
 	t.Setenv("HOME", home)
 	claudeDir := filepath.Join(home, ".claude")
@@ -203,6 +205,7 @@ func TestFetchRateLimit_Forbidden403SetsScopeError(t *testing.T) {
 	if runtime.GOOS != "linux" {
 		t.Skip("token-from-file path is exercised on linux")
 	}
+	withRunningProcesses(t, "claude")
 	home := t.TempDir()
 	t.Setenv("HOME", home)
 	claudeDir := filepath.Join(home, ".claude")
@@ -240,13 +243,6 @@ func withStubOAuthToken(t *testing.T, token string, scopes []string) {
 	t.Cleanup(func() { fetchClaudeCodeOAuthTokenFunc = orig })
 }
 
-func withUsageSyncCheckInterval(t *testing.T, d time.Duration) {
-	t.Helper()
-	orig := AnthropicUsageSyncCheckInterval
-	AnthropicUsageSyncCheckInterval = d
-	t.Cleanup(func() { AnthropicUsageSyncCheckInterval = orig })
-}
-
 // newUsageSyncServers starts a fake Anthropic usage endpoint and a fake ShellTime API that records
 // the pushed usage payloads. Assertions use the per-test API server rather than the usage endpoint,
 // because timers leaked by other tests may also reach the (global) usage URL.
@@ -279,10 +275,11 @@ func TestStartUsageSync_SyncsWithoutStatuslineActivity(t *testing.T) {
 		t.Skip("fetchRateLimit only runs on darwin/linux")
 	}
 	withStubOAuthToken(t, "sk-login", []string{"user:profile"})
-	withUsageSyncCheckInterval(t, 10*time.Millisecond)
+	withRunningProcesses(t, "claude")
 	pushed, apiURL := newUsageSyncServers(t)
 
 	service := NewCCInfoTimerService(&model.ShellTimeConfig{Token: "tok", APIEndpoint: apiURL})
+	service.usageSyncInterval = 10 * time.Millisecond
 	service.StartUsageSync()
 	defer service.Stop()
 
@@ -310,10 +307,11 @@ func TestStartUsageSync_HonorsCacheTTL(t *testing.T) {
 		t.Skip("fetchRateLimit only runs on darwin/linux")
 	}
 	withStubOAuthToken(t, "sk-login", []string{"user:profile"})
-	withUsageSyncCheckInterval(t, 10*time.Millisecond)
+	withRunningProcesses(t, "claude")
 	pushed, apiURL := newUsageSyncServers(t)
 
 	service := NewCCInfoTimerService(&model.ShellTimeConfig{Token: "tok", APIEndpoint: apiURL})
+	service.usageSyncInterval = 10 * time.Millisecond
 	service.StartUsageSync()
 	defer service.Stop()
 
@@ -323,15 +321,51 @@ func TestStartUsageSync_HonorsCacheTTL(t *testing.T) {
 		t.Fatal("usage was not pushed to the server")
 	}
 
-	// Many ticks pass, but the 10-minute TTL keeps the service from fetching and pushing again.
+	// Many ticks pass, but the TTL keeps the service from fetching and pushing again.
 	time.Sleep(100 * time.Millisecond)
 	assert.Empty(t, pushed, "usage should be pushed only once within the TTL")
 }
 
-func TestStartUsageSync_NoTokenDoesNothing(t *testing.T) {
-	withUsageSyncCheckInterval(t, 10*time.Millisecond)
+func TestStartUsageSync_SkipsWhenClaudeNotRunning(t *testing.T) {
+	if runtime.GOOS != "darwin" && runtime.GOOS != "linux" {
+		t.Skip("fetchRateLimit only runs on darwin/linux")
+	}
+	withStubOAuthToken(t, "sk-login", []string{"user:profile"})
+	var claudeRunning atomic.Bool
+	orig := listProcessNamesFunc
+	listProcessNamesFunc = func() ([]string, error) {
+		if claudeRunning.Load() {
+			return []string{"/usr/sbin/sshd", "claude"}, nil
+		}
+		return []string{"/usr/sbin/sshd", "/bin/zsh"}, nil
+	}
+	t.Cleanup(func() { listProcessNamesFunc = orig })
+	pushed, apiURL := newUsageSyncServers(t)
 
+	service := NewCCInfoTimerService(&model.ShellTimeConfig{Token: "tok", APIEndpoint: apiURL})
+	service.usageSyncInterval = 10 * time.Millisecond
+	service.StartUsageSync()
+	defer service.Stop()
+
+	time.Sleep(100 * time.Millisecond)
+	assert.Empty(t, pushed, "usage should not be fetched while Claude is not running")
+	service.rateLimitCache.mu.RLock()
+	lastAttempt := service.rateLimitCache.lastAttemptAt
+	service.rateLimitCache.mu.RUnlock()
+	assert.True(t, lastAttempt.IsZero(), "a skipped fetch must not start the TTL")
+
+	// Once Claude starts, the next tick fetches without waiting out a TTL.
+	claudeRunning.Store(true)
+	select {
+	case <-pushed:
+	case <-time.After(2 * time.Second):
+		t.Fatal("usage was not pushed after Claude started")
+	}
+}
+
+func TestStartUsageSync_NoTokenDoesNothing(t *testing.T) {
 	service := NewCCInfoTimerService(&model.ShellTimeConfig{})
+	service.usageSyncInterval = 10 * time.Millisecond
 	service.StartUsageSync()
 	time.Sleep(50 * time.Millisecond)
 

@@ -215,16 +215,14 @@ func TestCodexSyncSkipReason(t *testing.T) {
 func TestCodexUsageSyncService_StartRunsImmediatelyAndOnTicker(t *testing.T) {
 	t.Helper()
 
-	originalInterval := CodexUsageSyncInterval
 	originalLoad := loadCodexAuthFunc
 	originalFetch := fetchCodexUsageFunc
 	defer func() {
-		CodexUsageSyncInterval = originalInterval
 		loadCodexAuthFunc = originalLoad
 		fetchCodexUsageFunc = originalFetch
 	}()
 
-	CodexUsageSyncInterval = 20 * time.Millisecond
+	withRunningProcesses(t, "codex")
 
 	loadCodexAuthFunc = func() (*codexAuthData, error) {
 		return &codexAuthData{AccessToken: "test-token"}, nil
@@ -249,6 +247,7 @@ func TestCodexUsageSyncService_StartRunsImmediatelyAndOnTicker(t *testing.T) {
 		Token:       "shelltime-token",
 		APIEndpoint: server.URL,
 	})
+	service.interval = 20 * time.Millisecond
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -263,4 +262,27 @@ func TestCodexUsageSyncService_StartRunsImmediatelyAndOnTicker(t *testing.T) {
 	stoppedAt := calls.Load()
 	time.Sleep(50 * time.Millisecond)
 	assert.Equal(t, stoppedAt, calls.Load())
+}
+
+func TestCodexUsageSyncService_SkipsWhenCodexNotRunning(t *testing.T) {
+	originalLoad := loadCodexAuthFunc
+	originalFetch := fetchCodexUsageFunc
+	t.Cleanup(func() {
+		loadCodexAuthFunc = originalLoad
+		fetchCodexUsageFunc = originalFetch
+	})
+
+	withRunningProcesses(t, "/Applications/Claude.app/Contents/MacOS/Claude", "/bin/zsh")
+
+	loadCodexAuthFunc = func() (*codexAuthData, error) {
+		t.Fatal("auth should not be loaded while Codex is not running")
+		return nil, nil
+	}
+	fetchCodexUsageFunc = func(ctx context.Context, auth *codexAuthData) (*CodexRateLimitData, error) {
+		t.Fatal("usage should not be fetched while Codex is not running")
+		return nil, nil
+	}
+
+	service := NewCodexUsageSyncService(model.ShellTimeConfig{Token: "shelltime-token"})
+	service.sync()
 }
