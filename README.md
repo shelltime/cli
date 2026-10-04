@@ -91,8 +91,8 @@ shelltime codex install
 |---------|-------------|
 | `shelltime query "prompt"` | Ask AI for a suggested shell command |
 | `shelltime q "prompt"` | Alias for `shelltime query` |
-| `shelltime cc install` | Install Claude Code OTEL shell configuration |
-| `shelltime cc uninstall` | Remove Claude Code OTEL shell configuration |
+| `shelltime cc install` | Install Claude Code OTEL configuration into `~/.claude/settings.json` |
+| `shelltime cc uninstall` | Remove Claude Code OTEL configuration from `~/.claude/settings.json` |
 | `shelltime cc statusline` | Emit statusline JSON for Claude Code |
 | `shelltime codex install` | Add ShellTime OTEL config to `~/.codex/config.toml` |
 | `shelltime codex uninstall` | Remove ShellTime OTEL config from `~/.codex/config.toml` |

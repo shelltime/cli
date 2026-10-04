@@ -31,6 +31,10 @@ const claudeCodeFallbackVersion = "2.0.0"
 // anthropicUsageURL is the OAuth usage endpoint. It is a var (not a const) so tests can override it.
 var anthropicUsageURL = "https://api.anthropic.com/api/oauth/usage"
 
+// fetchClaudeCodeOAuthTokenFunc reads the Claude Code OAuth token. It is a var so tests can stub
+// the Keychain / credentials-file lookup.
+var fetchClaudeCodeOAuthTokenFunc = fetchClaudeCodeOAuthToken
+
 // anthropicUsageRequiredScope is the OAuth scope the usage endpoint gates on. Interactive Claude Code
 // login tokens carry it; tokens minted by `claude setup-token` (e.g. CLAUDE_CODE_OAUTH_TOKEN in CI) do
 // not, so the endpoint authenticates them but returns 403 "does not meet scope requirement user:profile".

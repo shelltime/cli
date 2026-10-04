@@ -17,6 +17,11 @@ import (
 var (
 	CCInfoFetchInterval     = 3 * time.Second
 	CCInfoInactivityTimeout = 3 * time.Minute
+
+	// AnthropicUsageSyncCheckInterval is how often the usage sync loop checks the rate-limit cache.
+	// It must be shorter than anthropicUsageCacheTTL: the TTL decides when a fetch actually happens,
+	// and a tick equal to the TTL would land just before it expires and skip every other cycle.
+	AnthropicUsageSyncCheckInterval = time.Minute
 )
 
 // CCInfoCache holds the cached cost data for a time range
@@ -33,7 +38,8 @@ type GitCacheEntry struct {
 	LastFetched  time.Time
 }
 
-// CCInfoTimerService manages lazy-fetching of CC info data
+// CCInfoTimerService manages lazy-fetching of CC info data for the statusline, plus an always-on
+// Anthropic usage sync (StartUsageSync) that shares the same rate-limit cache.
 type CCInfoTimerService struct {
 	config *model.ShellTimeConfig
 
@@ -151,6 +157,7 @@ func (s *CCInfoTimerService) stopTimer() {
 	// The Anthropic rate-limit cache is intentionally preserved across idle cycles: it keeps the
 	// last good usage for instant display and, crucially, retains fetchedAt/lastAttemptAt/backoffUntil
 	// so the TTL and 429 backoff hold instead of re-fetching immediately on the next activity.
+	// The usage sync loop (StartUsageSync) is not tied to this timer and keeps running.
 	s.mu.Lock()
 	s.activeRanges = make(map[CCInfoTimeRange]bool)
 	s.gitCache = make(map[string]*GitCacheEntry)
@@ -166,15 +173,7 @@ func (s *CCInfoTimerService) timerLoop() {
 	// Fetch immediately on start
 	s.fetchActiveRanges(context.Background())
 	s.fetchGitInfo()
-	go func() {
-		if !s.rateLimitFetchMu.TryLock() {
-			return
-		}
-		defer s.rateLimitFetchMu.Unlock()
-		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-		defer cancel()
-		s.fetchRateLimit(ctx)
-	}()
+	go s.refreshRateLimit()
 	go s.fetchUserProfile(context.Background())
 
 	for {
@@ -189,15 +188,7 @@ func (s *CCInfoTimerService) timerLoop() {
 			}
 			s.fetchActiveRanges(context.Background())
 			s.fetchGitInfo()
-			go func() {
-				if !s.rateLimitFetchMu.TryLock() {
-					return
-				}
-				defer s.rateLimitFetchMu.Unlock()
-				ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-				defer cancel()
-				s.fetchRateLimit(ctx)
-			}()
+			go s.refreshRateLimit()
 
 		case <-s.stopChan:
 			return
@@ -395,6 +386,48 @@ func (s *CCInfoTimerService) cleanupStaleGitCache() {
 	}
 }
 
+// StartUsageSync starts a background loop that keeps the Anthropic usage cache fresh, which also
+// pushes each fresh reading to the server. Without it usage only syncs while `shelltime cc statusline`
+// polls the daemon, so it goes stale for statusline mods, the desktop app and idle periods.
+// The loop is stopped by Stop.
+func (s *CCInfoTimerService) StartUsageSync() {
+	if s.config.Token == "" {
+		return
+	}
+
+	s.wg.Add(1)
+	go func() {
+		defer s.wg.Done()
+
+		ticker := time.NewTicker(AnthropicUsageSyncCheckInterval)
+		defer ticker.Stop()
+
+		s.refreshRateLimit()
+
+		for {
+			select {
+			case <-ticker.C:
+				s.refreshRateLimit()
+			case <-s.stopChan:
+				return
+			}
+		}
+	}()
+
+	slog.Info("Anthropic usage sync started", slog.Duration("ttl", anthropicUsageCacheTTL))
+}
+
+// refreshRateLimit runs fetchRateLimit unless another refresh is already in flight.
+func (s *CCInfoTimerService) refreshRateLimit() {
+	if !s.rateLimitFetchMu.TryLock() {
+		return
+	}
+	defer s.rateLimitFetchMu.Unlock()
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	s.fetchRateLimit(ctx)
+}
+
 // fetchRateLimit fetches Anthropic rate limit data if cache is stale.
 // Supported on macOS (Keychain) and Linux (~/.claude/.credentials.json).
 func (s *CCInfoTimerService) fetchRateLimit(ctx context.Context) {
@@ -424,7 +457,7 @@ func (s *CCInfoTimerService) fetchRateLimit(ctx context.Context) {
 	s.rateLimitCache.mu.Unlock()
 
 	// Read token fresh from Keychain (not cached)
-	token, scopes, err := fetchClaudeCodeOAuthToken()
+	token, scopes, err := fetchClaudeCodeOAuthTokenFunc()
 	if err != nil || token == "" {
 		slog.Debug("Failed to get Claude Code OAuth token", slog.Any("err", err))
 		s.rateLimitCache.mu.Lock()

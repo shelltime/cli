@@ -135,6 +135,11 @@ func (p *SocketHandler) Start() error {
 	return nil
 }
 
+// StartAnthropicUsageSync keeps Claude Code usage synced to the server without statusline activity.
+func (p *SocketHandler) StartAnthropicUsageSync() {
+	p.ccInfoTimer.StartUsageSync()
+}
+
 func (p *SocketHandler) Stop() {
 	p.channel.Close()
 	close(p.stopChan)

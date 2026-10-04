@@ -1,6 +1,7 @@
 package commands
 
 import (
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"strings"
@@ -25,84 +26,112 @@ func setupCCTest(t *testing.T) string {
 // const must match the markers used by model/aicode_otel_env.go.
 const ccOtelMarker = "# >>> shelltime cc otel >>>"
 
-func TestCCInstall_WritesOtelBlockToShellConfigs(t *testing.T) {
+func ccSettingsEnv(t *testing.T, home string) map[string]any {
+	t.Helper()
+	data, err := os.ReadFile(filepath.Join(home, ".claude", "settings.json"))
+	require.NoError(t, err)
+	var settings struct {
+		Env map[string]any `json:"env"`
+	}
+	require.NoError(t, json.Unmarshal(data, &settings))
+	return settings.Env
+}
+
+func runCC(t *testing.T, args ...string) {
+	t.Helper()
+	app := &cli.App{Name: "t", Commands: []*cli.Command{CCCommand}}
+	require.NoError(t, app.Run(append([]string{"t", "cc"}, args...)))
+}
+
+func TestCCInstall_WritesClaudeSettingsEnv(t *testing.T) {
 	home := setupCCTest(t)
 
-	// Pre-create zsh and fish configs so their Install paths succeed (bash is
-	// auto-created). This exercises the "happy path" for all three shells.
-	require.NoError(t, os.WriteFile(filepath.Join(home, ".zshrc"), []byte("# zsh\n"), 0644))
+	runCC(t, "install")
+
+	env := ccSettingsEnv(t, home)
+	assert.Equal(t, "1", env["CLAUDE_CODE_ENABLE_TELEMETRY"])
+	assert.Equal(t, "http://localhost:54027", env["OTEL_EXPORTER_OTLP_ENDPOINT"])
+
+	// Shell rc files are no longer created.
+	_, err := os.Stat(filepath.Join(home, ".bashrc"))
+	assert.True(t, os.IsNotExist(err), ".bashrc should not be created")
+}
+
+func TestCCInstall_MigratesLegacyShellBlocks(t *testing.T) {
+	home := setupCCTest(t)
+
 	fishDir := filepath.Join(home, ".config", "fish")
 	require.NoError(t, os.MkdirAll(fishDir, 0755))
-	require.NoError(t, os.WriteFile(filepath.Join(fishDir, "config.fish"), []byte("# fish\n"), 0644))
-
-	app := &cli.App{Name: "t", Commands: []*cli.Command{CCCommand}}
-	err := app.Run([]string{"t", "cc", "install"})
-	require.NoError(t, err)
-
-	// All three config files should now contain the OTEL marker.
-	for _, p := range []string{
-		filepath.Join(home, ".bashrc"),
-		filepath.Join(home, ".zshrc"),
-		filepath.Join(fishDir, "config.fish"),
-	} {
-		data, readErr := os.ReadFile(p)
-		require.NoError(t, readErr, "config %s should exist after install", p)
-		assert.Contains(t, string(data), ccOtelMarker, "OTEL block should be present in %s", p)
+	rcFiles := map[string]string{
+		filepath.Join(home, ".zshrc"):         "# zsh\n",
+		filepath.Join(home, ".bashrc"):        "# bash\n",
+		filepath.Join(fishDir, "config.fish"): "# fish\n",
 	}
+	for p, content := range rcFiles {
+		require.NoError(t, os.WriteFile(p, []byte(content), 0644))
+	}
+	// Seed the legacy blocks the way older versions of `cc install` did.
+	for _, svc := range legacyAICodeOtelEnvServices() {
+		require.NoError(t, svc.Install())
+	}
+
+	runCC(t, "install")
+
+	for p, content := range rcFiles {
+		data, err := os.ReadFile(p)
+		require.NoError(t, err)
+		assert.NotContains(t, string(data), ccOtelMarker, "legacy block should be removed from %s", p)
+		assert.Contains(t, string(data), strings.TrimSpace(content), "other content should stay in %s", p)
+	}
+	assert.Equal(t, "1", ccSettingsEnv(t, home)["CLAUDE_CODE_ENABLE_TELEMETRY"])
 }
 
-func TestCCInstall_MissingZshAndFishStillSucceeds(t *testing.T) {
+func TestCCInstall_LeavesRcFilesWithoutBlockUntouched(t *testing.T) {
 	home := setupCCTest(t)
-	// No zsh/fish configs present. zsh & fish Install() return errors that the
-	// command swallows (prints), bash is auto-created. Action returns nil.
-	app := &cli.App{Name: "t", Commands: []*cli.Command{CCCommand}}
-	err := app.Run([]string{"t", "cc", "install"})
-	require.NoError(t, err)
-
-	// bash config is created and contains the marker.
-	data, readErr := os.ReadFile(filepath.Join(home, ".bashrc"))
-	require.NoError(t, readErr)
-	assert.Contains(t, string(data), ccOtelMarker)
-}
-
-func TestCCUninstall_RemovesOtelBlock(t *testing.T) {
-	home := setupCCTest(t)
-	require.NoError(t, os.WriteFile(filepath.Join(home, ".zshrc"), []byte("# zsh\n"), 0644))
-
-	app := &cli.App{Name: "t", Commands: []*cli.Command{CCCommand}}
-	// Install first, then uninstall, and confirm the block is gone.
-	require.NoError(t, app.Run([]string{"t", "cc", "install"}))
-
 	zshrc := filepath.Join(home, ".zshrc")
-	data, _ := os.ReadFile(zshrc)
-	require.Contains(t, string(data), ccOtelMarker)
+	content := "# zsh without trailing newline"
+	require.NoError(t, os.WriteFile(zshrc, []byte(content), 0644))
 
-	require.NoError(t, app.Run([]string{"t", "cc", "uninstall"}))
-	data, readErr := os.ReadFile(zshrc)
-	require.NoError(t, readErr)
-	assert.NotContains(t, string(data), ccOtelMarker, "uninstall should strip the OTEL block")
+	runCC(t, "install")
+
+	data, err := os.ReadFile(zshrc)
+	require.NoError(t, err)
+	assert.Equal(t, content, string(data))
+}
+
+func TestCCUninstall_RemovesSettingsEnvAndLegacyBlock(t *testing.T) {
+	home := setupCCTest(t)
+	zshrc := filepath.Join(home, ".zshrc")
+	require.NoError(t, os.WriteFile(zshrc, []byte("# zsh\n"), 0644))
+	require.NoError(t, legacyAICodeOtelEnvServices()[0].Install())
+
+	runCC(t, "install")
+	runCC(t, "uninstall")
+
+	assert.Empty(t, ccSettingsEnv(t, home))
+	data, err := os.ReadFile(zshrc)
+	require.NoError(t, err)
+	assert.NotContains(t, string(data), ccOtelMarker)
 }
 
 func TestCCUninstall_NoConfigsSucceeds(t *testing.T) {
 	setupCCTest(t)
-	// Nothing exists; Uninstall() returns nil for missing files. Action nil.
-	app := &cli.App{Name: "t", Commands: []*cli.Command{CCCommand}}
-	err := app.Run([]string{"t", "cc", "uninstall"})
-	require.NoError(t, err)
+	// Nothing exists; every Uninstall() returns nil for missing files.
+	runCC(t, "uninstall")
 }
 
-func TestCCInstall_IdempotentNoDuplicateBlock(t *testing.T) {
+func TestCCInstall_IdempotentNoDuplicateKeys(t *testing.T) {
 	home := setupCCTest(t)
-	require.NoError(t, os.WriteFile(filepath.Join(home, ".zshrc"), []byte("# zsh\n"), 0644))
+	settingsPath := filepath.Join(home, ".claude", "settings.json")
 
-	app := &cli.App{Name: "t", Commands: []*cli.Command{CCCommand}}
-	require.NoError(t, app.Run([]string{"t", "cc", "install"}))
-	require.NoError(t, app.Run([]string{"t", "cc", "install"}))
-
-	// Install removes any existing block before re-adding, so the marker should
-	// appear exactly once even after two installs.
-	data, err := os.ReadFile(filepath.Join(home, ".zshrc"))
+	runCC(t, "install")
+	first, err := os.ReadFile(settingsPath)
 	require.NoError(t, err)
-	assert.Equal(t, 1, strings.Count(string(data), ccOtelMarker),
-		"install should be idempotent (single OTEL block)")
+
+	runCC(t, "install")
+	second, err := os.ReadFile(settingsPath)
+	require.NoError(t, err)
+
+	assert.Equal(t, string(first), string(second), "install should be idempotent")
+	assert.Equal(t, 1, strings.Count(string(second), "OTEL_EXPORTER_OTLP_ENDPOINT"))
 }
