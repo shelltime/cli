@@ -319,7 +319,20 @@ func withIsolatedDaemonResolution(t *testing.T) string {
 	daemonHomebrewSearchPaths = nil
 	t.Cleanup(func() { daemonHomebrewSearchPaths = prev })
 
+	// Default to a CLI that is neither curl- nor Homebrew-installed; tests that
+	// care about the running install kind override it via withRunningCLI.
+	withRunningCLI(t, filepath.Join(t.TempDir(), "shelltime"))
+
 	return home
+}
+
+// withRunningCLI makes ResolveDaemonBinaryPath believe the running CLI binary
+// lives at cliPath.
+func withRunningCLI(t *testing.T, cliPath string) {
+	t.Helper()
+	prev := currentCLIBinaryPath
+	currentCLIBinaryPath = func() (string, error) { return cliPath, nil }
+	t.Cleanup(func() { currentCLIBinaryPath = prev })
 }
 
 func TestResolveDaemonBinaryPath(t *testing.T) {
@@ -438,6 +451,47 @@ func TestResolveDaemonBinaryPath(t *testing.T) {
 		}
 		if got != curl {
 			t.Errorf("expected curl-installer path %s, got %s", curl, got)
+		}
+	})
+
+	t.Run("curl-installed CLI prefers its sibling daemon over Homebrew", func(t *testing.T) {
+		home := withIsolatedDaemonResolution(t)
+
+		curlBin := filepath.Join(home, COMMAND_BASE_STORAGE_FOLDER, "bin")
+		curl := writeFakeDaemon(t, curlBin)
+		withRunningCLI(t, filepath.Join(curlBin, "shelltime"))
+
+		// A stale/unmanaged daemon both on PATH and in the Homebrew search
+		// list must not shadow the daemon installed next to the curl CLI.
+		brewDir := t.TempDir()
+		writeFakeDaemon(t, brewDir)
+		t.Setenv("PATH", brewDir)
+		daemonHomebrewSearchPaths = []string{brewDir}
+
+		got, err := ResolveDaemonBinaryPath()
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if got != curl {
+			t.Errorf("expected curl-installer path %s, got %s", curl, got)
+		}
+	})
+
+	t.Run("curl-installed CLI falls back to Homebrew when its daemon is missing", func(t *testing.T) {
+		home := withIsolatedDaemonResolution(t)
+
+		withRunningCLI(t, filepath.Join(home, COMMAND_BASE_STORAGE_FOLDER, "bin", "shelltime"))
+
+		brewDir := t.TempDir()
+		brewPath := writeFakeDaemon(t, brewDir)
+		daemonHomebrewSearchPaths = []string{brewDir}
+
+		got, err := ResolveDaemonBinaryPath()
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if got != brewPath {
+			t.Errorf("expected Homebrew path %s, got %s", brewPath, got)
 		}
 	})
 

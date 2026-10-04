@@ -161,13 +161,12 @@ func commandUpdate(c *cli.Context) error {
 	return nil
 }
 
-// resolveDaemonDest returns the path the daemon binary should be written to —
-// the existing daemon location if installed, otherwise the curl-installer default.
+// resolveDaemonDest returns the path the daemon binary should be written to.
+// Update only runs for curl-installer CLIs, so the daemon always goes next to
+// the CLI — never into a Homebrew prefix, where an unmanaged copy blocks
+// `brew install` of the cask and shadows the curl daemon.
 func resolveDaemonDest() string {
-	if p, err := model.ResolveDaemonBinaryPath(); err == nil {
-		return p
-	}
-	return filepath.Join(model.GetBinFolderPath(), "shelltime-daemon")
+	return model.GetCurlInstallerDaemonPath()
 }
 
 // shouldReinstallDaemon decides whether to call commandDaemonReinstall after a

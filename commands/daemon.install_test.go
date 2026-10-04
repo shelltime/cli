@@ -51,3 +51,63 @@ func TestShouldPreserveCurlDaemon(t *testing.T) {
 		})
 	}
 }
+
+// TestRestoreCurlDaemonBak pins that a preserved .bak only comes back when the
+// live curl daemon is gone. Restoring it over a live daemon replaced a freshly
+// installed release with the previous one on every curl reinstall.
+func TestRestoreCurlDaemonBak(t *testing.T) {
+	tests := []struct {
+		name         string
+		live, bak    string // file contents; "" means the file does not exist
+		wantRestored bool
+		wantLive     string
+		wantBak      string
+	}{
+		{"no bak, no live", "", "", false, "", ""},
+		{"bak only is restored", "", "old", true, "old", ""},
+		{"live wins over bak", "new", "old", false, "new", "old"},
+		{"live only is untouched", "new", "", false, "new", ""},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			live := filepath.Join(t.TempDir(), "shelltime-daemon")
+			bak := live + ".bak"
+			if tc.live != "" {
+				if err := os.WriteFile(live, []byte(tc.live), 0o755); err != nil {
+					t.Fatal(err)
+				}
+			}
+			if tc.bak != "" {
+				if err := os.WriteFile(bak, []byte(tc.bak), 0o755); err != nil {
+					t.Fatal(err)
+				}
+			}
+
+			restored, err := restoreCurlDaemonBak(live)
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if restored != tc.wantRestored {
+				t.Errorf("restored = %v, want %v", restored, tc.wantRestored)
+			}
+			if got := readOrEmpty(t, live); got != tc.wantLive {
+				t.Errorf("live contents = %q, want %q", got, tc.wantLive)
+			}
+			if got := readOrEmpty(t, bak); got != tc.wantBak {
+				t.Errorf(".bak contents = %q, want %q", got, tc.wantBak)
+			}
+		})
+	}
+}
+
+func readOrEmpty(t *testing.T, path string) string {
+	t.Helper()
+	b, err := os.ReadFile(path)
+	if os.IsNotExist(err) {
+		return ""
+	}
+	if err != nil {
+		t.Fatal(err)
+	}
+	return string(b)
+}
