@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"io"
 	"log/slog"
@@ -22,6 +21,17 @@ type HTTPRequestOptions[T any, R any] struct {
 	Response    *R
 	ContentType string        // Optional, defaults to "application/json"
 	Timeout     time.Duration // Optional, defaults to 10 seconds
+}
+
+// HTTPStatusError is returned by SendHTTPRequestJSON for non-2xx responses,
+// so callers can tell retryable server errors from client errors.
+type HTTPStatusError struct {
+	StatusCode int
+	Message    string
+}
+
+func (e *HTTPStatusError) Error() string {
+	return e.Message
 }
 
 // SendHTTPRequestJSON is a generic HTTP request function that sends JSON data and unmarshals the response
@@ -83,10 +93,10 @@ func SendHTTPRequestJSON[T any, R any](opts HTTPRequestOptions[T, R]) error {
 		err = json.Unmarshal(buf, &msg)
 		if err != nil {
 			slog.Error("Failed to parse error response", slog.Any("err", err))
-			return fmt.Errorf("HTTP error: %d", resp.StatusCode)
+			return &HTTPStatusError{StatusCode: resp.StatusCode, Message: fmt.Sprintf("HTTP error: %d", resp.StatusCode)}
 		}
 		slog.Error("Error response", slog.String("message", msg.ErrorMessage))
-		return errors.New(msg.ErrorMessage)
+		return &HTTPStatusError{StatusCode: resp.StatusCode, Message: msg.ErrorMessage}
 	}
 
 	// Only try to unmarshal if we have a response struct
