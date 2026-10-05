@@ -17,9 +17,11 @@ const (
 	AICodeBackfillStatusArchived   = "archived"
 )
 
-// Server limits for one backfill request.
+// Server limits for one backfill request. The body limit is 16 MiB; batches
+// are packed to half of it to leave room for the JSON envelope.
 const (
 	AICodeBackfillMaxEvents     = 500
+	AICodeBackfillMaxBatchBytes = 8 << 20
 	AICodeBackfillMaxCompleted  = 50
 	AICodeBackfillMaxSessionIDs = 1000
 )

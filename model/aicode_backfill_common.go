@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"io"
 	"io/fs"
@@ -14,6 +15,15 @@ import (
 	"sort"
 	"strings"
 	"time"
+	"unicode/utf8"
+)
+
+// Text limits for backfilled events. They keep a 500-event batch well under
+// the server's body limit even when prompts contain pasted files.
+const (
+	backfillMaxPromptBytes   = 16 << 10
+	backfillMaxErrorBytes    = 1 << 10
+	backfillMaxToolArgsBytes = 2 << 10
 )
 
 // backfillSettleWindow keeps sessions that were active very recently out of
@@ -227,12 +237,13 @@ func SelectBackfillSessions(sessions []*BackfillSession, opts BackfillOptions) (
 	return kept, active
 }
 
-// PackBackfillBatches groups sessions into upload requests of at most
-// maxEvents events and maxCompleted completed sessions. Whole sessions are
-// kept together; only a session larger than maxEvents is split, and a
-// session is listed in completedSessionIds only on the request carrying its
-// last event, so the server builds its summary once all events are stored.
-func PackBackfillBatches(clientType string, sessions []*BackfillSession, maxEvents, maxCompleted int) []AICodeBackfillRequest {
+// PackBackfillBatches groups sessions into upload requests bounded by
+// maxEvents events, maxBytes of encoded events and maxCompleted completed
+// sessions. Whole sessions are kept together when they fit; a larger session
+// is split, and a session is listed in completedSessionIds only on the
+// request carrying its last event, so the server builds its summary once all
+// of its events are stored.
+func PackBackfillBatches(clientType string, sessions []*BackfillSession, maxEvents, maxBytes, maxCompleted int) []AICodeBackfillRequest {
 	ordered := make([]*BackfillSession, len(sessions))
 	copy(ordered, sessions)
 	sort.SliceStable(ordered, func(i, j int) bool {
@@ -244,36 +255,48 @@ func PackBackfillBatches(clientType string, sessions []*BackfillSession, maxEven
 
 	var batches []AICodeBackfillRequest
 	cur := AICodeBackfillRequest{ClientType: clientType}
+	curBytes := 0
 	flush := func() {
 		if len(cur.Events) > 0 || len(cur.CompletedSessionIDs) > 0 {
 			batches = append(batches, cur)
 		}
 		cur = AICodeBackfillRequest{ClientType: clientType}
+		curBytes = 0
 	}
 
 	for _, s := range ordered {
-		events := s.Events
+		sizes := make([]int, len(s.Events))
+		sessionBytes := 0
+		for i := range s.Events {
+			sizes[i] = backfillEventSize(&s.Events[i])
+			sessionBytes += sizes[i]
+		}
+
+		// Start a fresh request rather than split a session that would fit
+		// into one on its own.
 		if len(cur.CompletedSessionIDs) >= maxCompleted ||
-			(len(cur.Events) > 0 && len(cur.Events)+len(events) > maxEvents) {
+			(len(cur.Events) > 0 && (len(cur.Events)+len(s.Events) > maxEvents || curBytes+sessionBytes > maxBytes)) {
 			flush()
 		}
-		for len(events) > 0 {
-			room := maxEvents - len(cur.Events)
-			if room <= 0 {
-				flush()
-				room = maxEvents
-			}
-			n := min(room, len(events))
-			cur.Events = append(cur.Events, events[:n]...)
-			events = events[n:]
-			if len(events) > 0 {
+		for i, e := range s.Events {
+			if len(cur.Events) > 0 && (len(cur.Events) >= maxEvents || curBytes+sizes[i] > maxBytes) {
 				flush()
 			}
+			cur.Events = append(cur.Events, e)
+			curBytes += sizes[i]
 		}
 		cur.CompletedSessionIDs = append(cur.CompletedSessionIDs, s.ID)
 	}
 	flush()
 	return batches
+}
+
+func backfillEventSize(e *AICodeBackfillEvent) int {
+	buf, err := json.Marshal(e)
+	if err != nil {
+		return 0
+	}
+	return len(buf) + 1
 }
 
 // finalizeBackfillSession sorts a session's events and sets its time range.
@@ -292,6 +315,19 @@ func finalizeBackfillSession(s *BackfillSession) {
 	if s.End.IsZero() || last.After(s.End) {
 		s.End = last
 	}
+}
+
+// capBackfillText truncates s to at most maxBytes without splitting a UTF-8
+// character.
+func capBackfillText(s string, maxBytes int) string {
+	if len(s) <= maxBytes {
+		return s
+	}
+	cut := maxBytes
+	for cut > 0 && !utf8.RuneStart(s[cut]) {
+		cut--
+	}
+	return s[:cut]
 }
 
 func intRef(v int) *int { return &v }

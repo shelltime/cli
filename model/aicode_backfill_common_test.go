@@ -39,7 +39,7 @@ func TestPackBackfillBatches(t *testing.T) {
 		testBackfillSession("big", base.Add(time.Hour), 12),
 	}
 
-	batches := PackBackfillBatches(AICodeClientClaudeCode, sessions, 5, 50)
+	batches := PackBackfillBatches(AICodeClientClaudeCode, sessions, 5, AICodeBackfillMaxBatchBytes, 50)
 
 	// a (4) fits alone; big (12) is split 5+5+2; c (3) joins big's last chunk.
 	require.Len(t, batches, 4)
@@ -64,12 +64,29 @@ func TestPackBackfillBatchesRespectsCompletedCap(t *testing.T) {
 		sessions = append(sessions, testBackfillSession(fmt.Sprintf("s%d", i), base.Add(time.Duration(i)*time.Minute), 1))
 	}
 
-	batches := PackBackfillBatches(AICodeClientCodex, sessions, 500, 2)
+	batches := PackBackfillBatches(AICodeClientCodex, sessions, 500, AICodeBackfillMaxBatchBytes, 2)
 
 	require.Len(t, batches, 3)
 	assert.Equal(t, []string{"s0", "s1"}, batches[0].CompletedSessionIDs)
 	assert.Equal(t, []string{"s2", "s3"}, batches[1].CompletedSessionIDs)
 	assert.Equal(t, []string{"s4"}, batches[2].CompletedSessionIDs)
+}
+
+func TestPackBackfillBatchesRespectsByteBudget(t *testing.T) {
+	base := time.Date(2026, 9, 1, 10, 0, 0, 0, time.UTC)
+	s := testBackfillSession("prompts", base, 6)
+	for i := range s.Events {
+		s.Events[i].Prompt = strings.Repeat("p", 1000)
+	}
+	eventSize := backfillEventSize(&s.Events[0])
+
+	batches := PackBackfillBatches(AICodeClientClaudeCode, []*BackfillSession{s}, 500, eventSize*2, 50)
+
+	require.Len(t, batches, 3)
+	for _, b := range batches {
+		assert.Len(t, b.Events, 2)
+	}
+	assert.Equal(t, []string{"prompts"}, batches[2].CompletedSessionIDs)
 }
 
 func TestSelectBackfillSessions(t *testing.T) {
