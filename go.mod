@@ -1,6 +1,6 @@
 module github.com/malamtime/cli
 
-go 1.26
+go 1.27.1
 
 require (
 	github.com/ThreeDotsLabs/watermill v1.5.1

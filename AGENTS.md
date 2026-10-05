@@ -32,7 +32,7 @@ Keep new code inside the existing package boundary. Do not mix CLI wiring, daemo
 - `mockery`: regenerate mocks when interfaces change
 - `pp g`: regenerate PromptPal-generated artifacts when relevant
 
-Use Go 1.26, as declared in `go.mod`.
+Use Go 1.27.1, as declared in `go.mod`.
 
 ## Coding Style & Naming Conventions
 Use standard Go conventions and keep code `gofmt`-clean.
