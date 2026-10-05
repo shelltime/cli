@@ -94,8 +94,10 @@ shelltime codex install
 | `shelltime cc install` | Install Claude Code OTEL configuration into `~/.claude/settings.json` |
 | `shelltime cc uninstall` | Remove Claude Code OTEL configuration from `~/.claude/settings.json` |
 | `shelltime cc statusline` | Emit statusline JSON for Claude Code |
+| `shelltime cc backfill` | Upload past Claude Code usage from local transcripts |
 | `shelltime codex install` | Add ShellTime OTEL config to `~/.codex/config.toml` |
 | `shelltime codex uninstall` | Remove ShellTime OTEL config from `~/.codex/config.toml` |
+| `shelltime codex backfill` | Upload past Codex usage from local session files |
 
 ### Environment helpers
 
@@ -188,6 +190,22 @@ ShellTime receives Codex data through two independent paths:
 Quota sync requires both a ShellTime login (`shelltime auth`) and a ChatGPT-authenticated Codex installation. ShellTime reads the Codex access token from `~/.codex/auth.json` only for the direct request to Codex; the token stays on your machine, and only the returned plan, quota windows, percentages, reset times, and credit summary are sent to ShellTime.
 
 Codex decides which windows are present. ShellTime displays the windows returned by Codex instead of assuming that every account has a fixed 5-hour window.
+
+## Backfilling AI Usage
+
+Live tracking only records sessions that run while the OTEL configuration is installed and the daemon is running. To upload earlier sessions from the transcripts Claude Code and Codex keep on disk:
+
+```bash
+shelltime cc backfill --dry-run   # show what would be uploaded
+shelltime cc backfill             # upload Claude Code sessions
+shelltime codex backfill          # upload Codex sessions
+```
+
+- Claude Code transcripts are read from `~/.claude/projects` and `~/.config/claude/projects`, or the directories in `CLAUDE_CONFIG_DIR`. Codex sessions are read from `~/.codex/sessions` and `~/.codex/archived_sessions`, or `CODEX_HOME`.
+- Prompts, token usage, models and tool calls are uploaded as if they had been tracked live; the server adds costs. Lines of code, commits and active time are not in the transcripts.
+- Sessions the server already has from live tracking are skipped, as are sessions still running. Running the command again only uploads what is missing.
+- Flags: `--since` / `--until` (`YYYY-MM-DD`) limit the range, `--no-prompts` uploads prompt lengths without the text, and `--ai-summary` also generates AI session summaries, which use your monthly AI credits.
+- Claude Code deletes transcripts after 30 days by default (`cleanupPeriodDays`), so only recent history may be available.
 
 ## Security and Privacy
 

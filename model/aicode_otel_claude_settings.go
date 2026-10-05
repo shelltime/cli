@@ -56,12 +56,19 @@ func claudeSettingsOtelEnvVars() []claudeSettingsEnvVar {
 }
 
 func claudeSettingsResourceAttributes() string {
-	username := os.Getenv("USER")
-	if u, err := user.Current(); err == nil && u.Username != "" {
-		username = u.Username
-	}
-	hostname, _ := os.Hostname()
+	username, hostname := aiCodeResourceIdentity()
 	return fmt.Sprintf("user.name=%s,machine.name=%s,team.id=shelltime", username, hostname)
+}
+
+// aiCodeResourceIdentity returns the user and machine names reported as the
+// user.name and machine.name OTEL resource attributes.
+func aiCodeResourceIdentity() (userName, machineName string) {
+	userName = os.Getenv("USER")
+	if u, err := user.Current(); err == nil && u.Username != "" {
+		userName = u.Username
+	}
+	machineName, _ = os.Hostname()
+	return userName, machineName
 }
 
 func (s *ClaudeSettingsAICodeOtelEnvService) Install() error {
