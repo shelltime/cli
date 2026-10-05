@@ -12,6 +12,7 @@ var CodexCommand = &cli.Command{
 	Subcommands: []*cli.Command{
 		CodexInstallCommand,
 		CodexUninstallCommand,
+		CodexBackfillCommand,
 	},
 }
 

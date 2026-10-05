@@ -13,6 +13,7 @@ var CCCommand = &cli.Command{
 		CCInstallCommand,
 		CCUninstallCommand,
 		CCStatuslineCommand,
+		CCBackfillCommand,
 	},
 }
 
