@@ -72,7 +72,7 @@ func TestClaudeSettingsOtel_InstallCreatesMissingFile(t *testing.T) {
 	for _, v := range claudeSettingsOtelEnvVars() {
 		assert.Equal(t, v.Value, env[v.Key], "env var %s", v.Key)
 	}
-	assert.Equal(t, aiCodeOtelEndpoint, env["OTEL_EXPORTER_OTLP_ENDPOINT"])
+	assert.Equal(t, AICodeOtelEndpoint, env["OTEL_EXPORTER_OTLP_ENDPOINT"])
 
 	attrs, _ := env["OTEL_RESOURCE_ATTRIBUTES"].(string)
 	assert.Contains(t, attrs, "team.id=shelltime")
@@ -146,7 +146,7 @@ func TestClaudeSettingsOtel_InstallReplacesStaleValueInPlace(t *testing.T) {
 	assert.Equal(t, []string{"OTEL_EXPORTER_OTLP_ENDPOINT", "FOO"}, envKeys[:2], "existing keys keep their position")
 
 	env := readClaudeSettingsEnv(t, path)
-	assert.Equal(t, aiCodeOtelEndpoint, env["OTEL_EXPORTER_OTLP_ENDPOINT"])
+	assert.Equal(t, AICodeOtelEndpoint, env["OTEL_EXPORTER_OTLP_ENDPOINT"])
 	assert.Equal(t, "bar", env["FOO"])
 }
 
@@ -246,4 +246,26 @@ func TestClaudeSettingsOtel_InstallKeepsFileMode(t *testing.T) {
 	info, err := os.Stat(path)
 	require.NoError(t, err)
 	assert.Equal(t, os.FileMode(0600), info.Mode().Perm())
+}
+
+func TestClaudeSettings_StatusLineCommand(t *testing.T) {
+	svc, path := setupClaudeSettingsTest(t)
+
+	cmd, err := svc.StatusLineCommand()
+	require.NoError(t, err, "missing settings.json is not an error")
+	assert.Empty(t, cmd)
+
+	writeClaudeSettings(t, path, realisticClaudeSettings)
+	cmd, err = svc.StatusLineCommand()
+	require.NoError(t, err)
+	assert.Empty(t, cmd, "no statusLine key")
+
+	writeClaudeSettings(t, path, `{"statusLine": {"type": "command", "command": "shelltime cc statusline"}}`)
+	cmd, err = svc.StatusLineCommand()
+	require.NoError(t, err)
+	assert.Equal(t, "shelltime cc statusline", cmd)
+
+	writeClaudeSettings(t, path, `{"statusLine": `)
+	_, err = svc.StatusLineCommand()
+	assert.Error(t, err)
 }

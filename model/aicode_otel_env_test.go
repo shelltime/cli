@@ -71,7 +71,7 @@ func TestBashAICodeOtelEnv_InstallCreatesFileAndMarkers(t *testing.T) {
 	assert.Contains(t, s, aiCodeOtelMarkerStart)
 	assert.Contains(t, s, aiCodeOtelMarkerEnd)
 	assert.Contains(t, s, "export CLAUDE_CODE_ENABLE_TELEMETRY=1")
-	assert.Contains(t, s, "export OTEL_EXPORTER_OTLP_ENDPOINT="+aiCodeOtelEndpoint)
+	assert.Contains(t, s, "export OTEL_EXPORTER_OTLP_ENDPOINT="+AICodeOtelEndpoint)
 	assert.Equal(t, 1, countMarkers(t, bashrc))
 
 	// Installing twice must not duplicate the marker block (remove-then-add).
@@ -165,7 +165,7 @@ func TestFishAICodeOtelEnv_InstallRequiresExistingFile(t *testing.T) {
 	content, err := os.ReadFile(fishConfig)
 	require.NoError(t, err)
 	assert.Contains(t, string(content), "set -gx CLAUDE_CODE_ENABLE_TELEMETRY 1")
-	assert.Contains(t, string(content), "set -gx OTEL_EXPORTER_OTLP_ENDPOINT "+aiCodeOtelEndpoint)
+	assert.Contains(t, string(content), "set -gx OTEL_EXPORTER_OTLP_ENDPOINT "+AICodeOtelEndpoint)
 
 	require.NoError(t, svc.Uninstall())
 	assert.Equal(t, 0, countMarkers(t, fishConfig))

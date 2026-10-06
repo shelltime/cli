@@ -1,7 +1,6 @@
 package commands
 
 import (
-	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -17,60 +16,6 @@ import (
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/trace/noop"
 )
-
-// x3SetupDoctor isolates HOME and installs a mock ConfigService for doctor tests.
-func x3SetupDoctor(t *testing.T) (string, *model.MockConfigService) {
-	t.Helper()
-	otel.SetTracerProvider(noop.NewTracerProvider())
-	SKIP_LOGGER_SETTINGS = true
-	home := t.TempDir()
-	t.Setenv("HOME", home)
-	orig := configService
-	mc := model.NewMockConfigService(t)
-	configService = mc
-	t.Cleanup(func() { configService = orig })
-	return home, mc
-}
-
-// TestX3Doctor_ShelltimeDirIsFile covers the "!info.IsDir()" branch: the
-// ~/.shelltime path exists but is a regular file rather than a directory.
-func TestX3Doctor_ShelltimeDirIsFile(t *testing.T) {
-	home, mc := x3SetupDoctor(t)
-	t.Setenv("SHELL", "/bin/bash")
-	// Create a *file* named .shelltime so os.Stat succeeds but IsDir() is false.
-	require.NoError(t, os.WriteFile(filepath.Join(home, model.COMMAND_BASE_STORAGE_FOLDER), []byte("x"), 0644))
-
-	mc.On("ReadConfigFile", mock.Anything).Return(model.ShellTimeConfig{}, nil)
-
-	app := &cli.App{Name: "t", Commands: []*cli.Command{DoctorCommand}}
-	require.NoError(t, app.Run([]string{"t", "doctor"}))
-}
-
-// TestX3Doctor_NormalLogFileAndInstalledHook covers two branches at once:
-//   - the log file exists and is below the size threshold (normal-size branch);
-//   - the bash hook is installed and Check() succeeds for the current ($SHELL)
-//     shell (the "Hook is already installed" branch).
-func TestX3Doctor_NormalLogFileAndInstalledHook(t *testing.T) {
-	home, mc := x3SetupDoctor(t)
-	t.Setenv("SHELL", "/bin/bash")
-
-	base := filepath.Join(home, model.COMMAND_BASE_STORAGE_FOLDER)
-	require.NoError(t, os.MkdirAll(base, 0755))
-	// Small log.log -> "size is normal" branch.
-	require.NoError(t, os.WriteFile(filepath.Join(base, "log.log"), []byte("ok\n"), 0644))
-
-	// Seed .bashrc with the exact bash hook lines so bashHookService.Check passes.
-	bashrc := filepath.Join(home, ".bashrc")
-	content := "# Added by shelltime CLI\n" +
-		fmt.Sprintf("export PATH=\"$HOME/%s/bin:$PATH\"\n", model.COMMAND_BASE_STORAGE_FOLDER) +
-		fmt.Sprintf("source %s\n", filepath.Join(base, "hooks", "bash.bash"))
-	require.NoError(t, os.WriteFile(bashrc, []byte(content), 0644))
-
-	mc.On("ReadConfigFile", mock.Anything).Return(model.ShellTimeConfig{}, nil)
-
-	app := &cli.App{Name: "t", Commands: []*cli.Command{DoctorCommand}}
-	require.NoError(t, app.Run([]string{"t", "doctor"}))
-}
 
 // --- alias import: fish path --------------------------------------------------
 

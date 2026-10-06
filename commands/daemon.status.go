@@ -116,6 +116,10 @@ func requestDaemonStatus(socketPath string, timeout time.Duration) (*daemon.Stat
 		return nil, 0, err
 	}
 	defer conn.Close()
+	// Bound the whole exchange: a socket file whose owner never answers would otherwise block.
+	if err := conn.SetDeadline(start.Add(timeout)); err != nil {
+		return nil, 0, err
+	}
 
 	// Send status request
 	msg := daemon.SocketMessage{

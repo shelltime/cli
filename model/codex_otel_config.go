@@ -18,6 +18,8 @@ type CodexOtelConfigService interface {
 	Install() error
 	Uninstall() error
 	Check() (bool, error)
+	// Endpoint returns otel.exporter.otlp-grpc.endpoint, or "" when it is not set.
+	Endpoint() (string, error)
 }
 
 type codexOtelConfigService struct {
@@ -55,7 +57,7 @@ func (s *codexOtelConfigService) Install() error {
 		"log_user_prompt": true,
 		"exporter": map[string]interface{}{
 			"otlp-grpc": map[string]interface{}{
-				"endpoint": aiCodeOtelEndpoint,
+				"endpoint": AICodeOtelEndpoint,
 			},
 		},
 	}
@@ -129,4 +131,30 @@ func (s *codexOtelConfigService) Check() (bool, error) {
 
 	_, exists := config["otel"]
 	return exists, nil
+}
+
+func (s *codexOtelConfigService) Endpoint() (string, error) {
+	data, err := os.ReadFile(s.configPath)
+	if os.IsNotExist(err) {
+		return "", nil
+	}
+	if err != nil {
+		return "", fmt.Errorf("failed to read config file: %w", err)
+	}
+
+	// Walk a generic map: `exporter` may also be a plain string such as "none".
+	config := make(map[string]interface{})
+	if err := toml.Unmarshal(data, &config); err != nil {
+		return "", fmt.Errorf("failed to parse config: %w", err)
+	}
+	var node interface{} = config
+	for _, key := range []string{"otel", "exporter", "otlp-grpc", "endpoint"} {
+		table, ok := node.(map[string]interface{})
+		if !ok {
+			return "", nil
+		}
+		node = table[key]
+	}
+	endpoint, _ := node.(string)
+	return endpoint, nil
 }

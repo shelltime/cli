@@ -44,7 +44,7 @@ func claudeSettingsOtelEnvVars() []claudeSettingsEnvVar {
 		{"OTEL_METRICS_EXPORTER", "otlp"},
 		{"OTEL_LOGS_EXPORTER", "otlp"},
 		{"OTEL_EXPORTER_OTLP_PROTOCOL", "grpc"},
-		{"OTEL_EXPORTER_OTLP_ENDPOINT", aiCodeOtelEndpoint},
+		{"OTEL_EXPORTER_OTLP_ENDPOINT", AICodeOtelEndpoint},
 		{"OTEL_METRIC_EXPORT_INTERVAL", "10000"},
 		{"OTEL_LOGS_EXPORT_INTERVAL", "5000"},
 		{"OTEL_LOG_USER_PROMPTS", "1"},
@@ -163,10 +163,32 @@ func (s *ClaudeSettingsAICodeOtelEnvService) Check() error {
 		return fmt.Errorf("failed to parse %s: %w", s.settingsPath, err)
 	}
 
-	if _, ok := settings.Env["CLAUDE_CODE_ENABLE_TELEMETRY"]; !ok || settings.Env["OTEL_EXPORTER_OTLP_ENDPOINT"] != aiCodeOtelEndpoint {
+	if _, ok := settings.Env["CLAUDE_CODE_ENABLE_TELEMETRY"]; !ok || settings.Env["OTEL_EXPORTER_OTLP_ENDPOINT"] != AICodeOtelEndpoint {
 		return fmt.Errorf("Claude Code OTEL config not found in %s", s.settingsPath)
 	}
 	return nil
+}
+
+// StatusLineCommand returns the statusLine.command configured in settings.json.
+// A missing file or key yields an empty string and no error.
+func (s *ClaudeSettingsAICodeOtelEnvService) StatusLineCommand() (string, error) {
+	data, _, err := s.readSettings()
+	if err != nil || data == nil {
+		return "", err
+	}
+
+	var settings struct {
+		StatusLine *struct {
+			Command string `json:"command"`
+		} `json:"statusLine"`
+	}
+	if err := json.Unmarshal(data, &settings); err != nil {
+		return "", fmt.Errorf("failed to parse %s: %w", s.settingsPath, err)
+	}
+	if settings.StatusLine == nil {
+		return "", nil
+	}
+	return settings.StatusLine.Command, nil
 }
 
 // readSettings returns the settings file content and mode. A missing file yields nil data.

@@ -494,15 +494,30 @@ All ShellTime data lives in `~/.shelltime/`:
 ├── config.yaml          # Main configuration
 ├── config.local.yaml    # Local overrides (add to .gitignore)
 ├── log.log              # CLI logs
-├── sync-pending.txt     # Pending sync data
+├── sync-pending.jsonl   # Uploads queued for retry
 └── logs/                # Daemon logs (macOS)
 ```
 
 ### How do I check my current configuration?
 
 ```bash
-shelltime doctor
+shelltime config view   # the merged configuration
+shelltime doctor        # a health check of the whole setup
 ```
+
+`shelltime doctor` checks the config files, your token (against the server), data masking and
+encryption, the daemon, the shell hook for your current shell, the Claude Code and Codex
+integrations, the AI usage receiver (`aiCodeOtel`) and queued uploads. Every problem comes with
+the command or config change that fixes it.
+
+```bash
+shelltime doctor --fix          # apply the safe fixes (hooks, cc/codex install, daemon) after confirming
+shelltime doctor --fix --yes    # same, without the prompt
+shelltime doctor --offline      # skip the network checks (token, encryption key, latest version)
+shelltime doctor --format json  # machine-readable report
+```
+
+It exits with status 1 when any check fails, so scripts can gate on it.
 
 ### Why isn't my local config being applied?
 

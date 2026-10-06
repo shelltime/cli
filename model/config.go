@@ -50,6 +50,24 @@ type configFiles struct {
 	localFormat configFormat
 }
 
+// ConfigFilePaths returns the base and local config files ReadConfigFile would load from
+// configDir. Either is empty when no such file exists.
+func ConfigFilePaths(configDir string) (base, local string) {
+	files := findConfigFiles(configDir)
+	return files.baseFile, files.localFile
+}
+
+// ValidateConfigFile reports whether the config file at path parses, using the format implied
+// by its extension. ReadConfigFile silently skips a local override that fails this check.
+func ValidateConfigFile(path string) error {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return err
+	}
+	var config ShellTimeConfig
+	return unmarshalConfig(data, detectFormat(path), &config)
+}
+
 // findConfigFiles discovers config files in priority order
 // Priority: config.local.yaml > config.local.yml > config.yaml > config.yml > config.local.toml > config.toml
 func findConfigFiles(configDir string) configFiles {
@@ -259,7 +277,7 @@ func (cs *configService) ReadConfigFile(ctx context.Context, opts ...ReadConfigO
 
 	// Initialize AICodeOtel config with default port if enabled but port not set
 	if config.AICodeOtel != nil && config.AICodeOtel.GRPCPort == 0 {
-		config.AICodeOtel.GRPCPort = 54027 // default OTEL gRPC port
+		config.AICodeOtel.GRPCPort = DefaultAICodeOtelGRPCPort
 	}
 
 	if config.AICodeOtel != nil && config.AICodeOtel.Debug != nil && *config.AICodeOtel.Debug {

@@ -12,7 +12,12 @@ import (
 const (
 	aiCodeOtelMarkerStart = "# >>> shelltime cc otel >>>"
 	aiCodeOtelMarkerEnd   = "# <<< shelltime cc otel <<<"
-	aiCodeOtelEndpoint    = "http://localhost:54027"
+
+	// DefaultAICodeOtelGRPCPort is the port the daemon's OTEL receiver listens on by default.
+	DefaultAICodeOtelGRPCPort = 54027
+	// AICodeOtelEndpoint is the OTLP endpoint `cc install` and `codex install` point Claude Code
+	// and Codex at. It is fixed to the default port, so a custom aiCodeOtel.grpcPort breaks them.
+	AICodeOtelEndpoint = "http://localhost:54027"
 )
 
 // AICodeOtelEnvService interface for shell-specific env var setup
@@ -114,7 +119,7 @@ func NewBashAICodeOtelEnvService() AICodeOtelEnvService {
 		"export OTEL_METRICS_EXPORTER=otlp",
 		"export OTEL_LOGS_EXPORTER=otlp",
 		"export OTEL_EXPORTER_OTLP_PROTOCOL=grpc",
-		"export OTEL_EXPORTER_OTLP_ENDPOINT=" + aiCodeOtelEndpoint,
+		"export OTEL_EXPORTER_OTLP_ENDPOINT=" + AICodeOtelEndpoint,
 		"export OTEL_METRIC_EXPORT_INTERVAL=10000",
 		"export OTEL_LOGS_EXPORT_INTERVAL=5000",
 		"export OTEL_LOG_USER_PROMPTS=1",
@@ -206,7 +211,7 @@ func NewZshAICodeOtelEnvService() AICodeOtelEnvService {
 		"export OTEL_METRICS_EXPORTER=otlp",
 		"export OTEL_LOGS_EXPORTER=otlp",
 		"export OTEL_EXPORTER_OTLP_PROTOCOL=grpc",
-		"export OTEL_EXPORTER_OTLP_ENDPOINT=" + aiCodeOtelEndpoint,
+		"export OTEL_EXPORTER_OTLP_ENDPOINT=" + AICodeOtelEndpoint,
 		"export OTEL_METRIC_EXPORT_INTERVAL=10000",
 		"export OTEL_LOGS_EXPORT_INTERVAL=5000",
 		"export OTEL_LOG_USER_PROMPTS=1",
@@ -295,7 +300,7 @@ func NewFishAICodeOtelEnvService() AICodeOtelEnvService {
 		"set -gx OTEL_METRICS_EXPORTER otlp",
 		"set -gx OTEL_LOGS_EXPORTER otlp",
 		"set -gx OTEL_EXPORTER_OTLP_PROTOCOL grpc",
-		"set -gx OTEL_EXPORTER_OTLP_ENDPOINT " + aiCodeOtelEndpoint,
+		"set -gx OTEL_EXPORTER_OTLP_ENDPOINT " + AICodeOtelEndpoint,
 		"set -gx OTEL_METRIC_EXPORT_INTERVAL 10000",
 		"set -gx OTEL_LOGS_EXPORT_INTERVAL 5000",
 		"set -gx OTEL_LOG_USER_PROMPTS 1",

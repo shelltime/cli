@@ -625,3 +625,27 @@ noProxy = ['localhost', '10.0.0.0/8']`
 		assert.Nil(t, config.Proxy)
 	})
 }
+
+func TestConfigFilePathsAndValidate(t *testing.T) {
+	dir := t.TempDir()
+
+	base, local := ConfigFilePaths(dir)
+	assert.Empty(t, base)
+	assert.Empty(t, local)
+
+	basePath := filepath.Join(dir, "config.yaml")
+	localPath := filepath.Join(dir, "config.local.toml")
+	require.NoError(t, os.WriteFile(basePath, []byte("token: abc\n"), 0644))
+	require.NoError(t, os.WriteFile(localPath, []byte("Token = \"x\"\n"), 0644))
+
+	base, local = ConfigFilePaths(dir)
+	assert.Equal(t, basePath, base)
+	assert.Equal(t, localPath, local)
+
+	assert.NoError(t, ValidateConfigFile(basePath))
+	assert.NoError(t, ValidateConfigFile(localPath))
+
+	require.NoError(t, os.WriteFile(localPath, []byte("Token = \n"), 0644))
+	assert.Error(t, ValidateConfigFile(localPath))
+	assert.Error(t, ValidateConfigFile(filepath.Join(dir, "missing.yaml")))
+}

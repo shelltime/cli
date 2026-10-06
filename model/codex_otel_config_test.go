@@ -38,7 +38,7 @@ func TestCodexOtelConfig_InstallCreatesConfig(t *testing.T) {
 	require.True(t, ok)
 	grpc, ok := exporter["otlp-grpc"].(map[string]interface{})
 	require.True(t, ok)
-	assert.Equal(t, aiCodeOtelEndpoint, grpc["endpoint"])
+	assert.Equal(t, AICodeOtelEndpoint, grpc["endpoint"])
 
 	// Now Check reports installed.
 	ok, err = svc.Check()
@@ -107,4 +107,30 @@ func TestCodexOtelConfig_CheckMalformedConfig(t *testing.T) {
 	require.Error(t, err)
 	assert.False(t, ok)
 	assert.Contains(t, err.Error(), "failed to parse config")
+}
+
+func TestCodexOtelConfig_Endpoint(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	svc := NewCodexOtelConfigService()
+	configPath := filepath.Join(home, ".codex", "config.toml")
+
+	endpoint, err := svc.Endpoint()
+	require.NoError(t, err, "missing config is not an error")
+	assert.Empty(t, endpoint)
+
+	require.NoError(t, svc.Install())
+	endpoint, err = svc.Endpoint()
+	require.NoError(t, err)
+	assert.Equal(t, AICodeOtelEndpoint, endpoint)
+
+	// `exporter` may be a plain string in a valid Codex config.
+	require.NoError(t, os.WriteFile(configPath, []byte("[otel]\nexporter = \"none\"\n"), 0644))
+	endpoint, err = svc.Endpoint()
+	require.NoError(t, err)
+	assert.Empty(t, endpoint)
+
+	require.NoError(t, os.WriteFile(configPath, []byte("[otel\n"), 0644))
+	_, err = svc.Endpoint()
+	assert.Error(t, err)
 }

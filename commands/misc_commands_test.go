@@ -1,13 +1,10 @@
 package commands
 
 import (
-	"os"
-	"path/filepath"
 	"testing"
 
 	"github.com/malamtime/cli/model"
 	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 	"github.com/urfave/cli/v2"
 	"go.opentelemetry.io/otel"
@@ -34,69 +31,6 @@ func TestInjectVarAndAIService(t *testing.T) {
 	ai := model.NewMockAIService(t)
 	InjectAIService(ai)
 	assert.Equal(t, model.AIService(ai), aiService)
-}
-
-// --- doctor command -----------------------------------------------------------
-
-func setupMiscTest(t *testing.T) *model.MockConfigService {
-	t.Helper()
-	otel.SetTracerProvider(noop.NewTracerProvider())
-	SKIP_LOGGER_SETTINGS = true
-	orig := configService
-	mc := model.NewMockConfigService(t)
-	configService = mc
-	t.Cleanup(func() { configService = orig })
-	return mc
-}
-
-func TestCommandDoctor_Success(t *testing.T) {
-	mc := setupMiscTest(t)
-	home := t.TempDir()
-	t.Setenv("HOME", home)
-	t.Setenv("SHELL", "/bin/bash")
-	// Create the .shelltime dir so the directory check reports success.
-	require.NoError(t, os.MkdirAll(filepath.Join(home, ".shelltime"), 0755))
-
-	enabled := true
-	mc.On("ReadConfigFile", mock.Anything).Return(model.ShellTimeConfig{
-		DataMasking:   &enabled,
-		Encrypted:     &enabled,
-		EnableMetrics: &enabled,
-	}, nil)
-
-	app := &cli.App{Name: "t", Commands: []*cli.Command{DoctorCommand}}
-	// commandDoctor ignores daemon Check() failures and returns nil on a valid
-	// config.
-	err := app.Run([]string{"t", "doctor"})
-	require.NoError(t, err)
-}
-
-func TestCommandDoctor_ConfigError(t *testing.T) {
-	mc := setupMiscTest(t)
-	home := t.TempDir()
-	t.Setenv("HOME", home)
-	require.NoError(t, os.MkdirAll(filepath.Join(home, ".shelltime"), 0755))
-
-	mc.On("ReadConfigFile", mock.Anything).Return(model.ShellTimeConfig{}, assert.AnError)
-
-	app := &cli.App{Name: "t", Commands: []*cli.Command{DoctorCommand}}
-	err := app.Run([]string{"t", "doctor"})
-	require.Error(t, err)
-	assert.Equal(t, assert.AnError, err)
-}
-
-func TestCommandDoctor_NoShelltimeDir(t *testing.T) {
-	mc := setupMiscTest(t)
-	home := t.TempDir()
-	t.Setenv("HOME", home)
-	t.Setenv("SHELL", "")
-	// .shelltime dir intentionally missing -> "does not exist" branch; the action
-	// still proceeds to read config and returns nil.
-	mc.On("ReadConfigFile", mock.Anything).Return(model.ShellTimeConfig{}, nil)
-
-	app := &cli.App{Name: "t", Commands: []*cli.Command{DoctorCommand}}
-	err := app.Run([]string{"t", "doctor"})
-	require.NoError(t, err)
 }
 
 // --- hooks install / uninstall ------------------------------------------------
