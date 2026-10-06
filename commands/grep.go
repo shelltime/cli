@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"os"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/gookit/color"
@@ -93,14 +94,14 @@ func commandGrep(c *cli.Context) error {
 		return fmt.Errorf("unsupported format: %s. Use 'table' or 'json'", format)
 	}
 
-	// Get search text from args
-	searchText := c.Args().First()
+	// Get search text from args; unquoted words form one phrase (rg git sub == rg "git sub")
+	searchText := strings.TrimSpace(strings.Join(c.Args().Slice(), " "))
 	slog.Debug("grep command args",
-		slog.String("first", searchText),
+		slog.String("searchText", searchText),
 		slog.Int("nArgs", c.NArg()),
 		slog.Any("allArgs", c.Args().Slice()))
 	if searchText == "" {
-		return fmt.Errorf("search text is required. Usage: shelltime grep <search-text>")
+		return fmt.Errorf("search text is required. Usage: shelltime rg <search-text>")
 	}
 
 	// Read config to get endpoint and token
@@ -209,24 +210,27 @@ func buildGrepFilter(c *cli.Context, searchText string) (*model.SearchCommandsFi
 		filter.MainCommand = []string{mainCmd}
 	}
 
-	// Handle time filters with flexible date parsing
-	var timeFilters []float64
-	if since := c.String("since"); since != "" {
-		t, err := parseFlexibleDate(since, false)
-		if err != nil {
-			return nil, fmt.Errorf("invalid --since date: %w", err)
+	// Handle time filters with flexible date parsing. The server expects a
+	// [start, end] pair in unix seconds; a single value means "that one day",
+	// so an open side is filled in (epoch for start, now for end).
+	since, until := c.String("since"), c.String("until")
+	if since != "" || until != "" {
+		start, end := time.Unix(0, 0), time.Now()
+		if since != "" {
+			t, err := parseFlexibleDate(since, false)
+			if err != nil {
+				return nil, fmt.Errorf("invalid --since date: %w", err)
+			}
+			start = t
 		}
-		timeFilters = append(timeFilters, float64(t.UnixMilli()))
-	}
-	if until := c.String("until"); until != "" {
-		t, err := parseFlexibleDate(until, true)
-		if err != nil {
-			return nil, fmt.Errorf("invalid --until date: %w", err)
+		if until != "" {
+			t, err := parseFlexibleDate(until, true)
+			if err != nil {
+				return nil, fmt.Errorf("invalid --until date: %w", err)
+			}
+			end = t
 		}
-		timeFilters = append(timeFilters, float64(t.UnixMilli()))
-	}
-	if len(timeFilters) > 0 {
-		filter.Time = timeFilters
+		filter.Time = []float64{float64(start.Unix()), float64(end.Unix())}
 	}
 
 	return filter, nil

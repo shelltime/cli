@@ -174,12 +174,40 @@ func TestBuildGrepFilter_SinceAndUntilTimeWindow(t *testing.T) {
 	filter, err := buildGrepFilter(c, "x")
 	require.NoError(t, err)
 
+	// The server reads the window in unix seconds.
 	require.Len(t, filter.Time, 2)
 	since := time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC)
-	assert.Equal(t, float64(since.UnixMilli()), filter.Time[0])
+	assert.Equal(t, float64(since.Unix()), filter.Time[0])
 	// until=2024-06 end-of-period -> 2024-06-30 23:59:59 UTC.
 	untilEnd := time.Date(2024, 6, 30, 23, 59, 59, 0, time.UTC)
-	assert.Equal(t, float64(untilEnd.UnixMilli()), filter.Time[1])
+	assert.Equal(t, float64(untilEnd.Unix()), filter.Time[1])
+}
+
+func TestBuildGrepFilter_SinceOnlyRunsUntilNow(t *testing.T) {
+	c := newGrepContext(t, func(fs *flag.FlagSet) {
+		require.NoError(t, fs.Set("since", "2024-01-15"))
+	})
+	filter, err := buildGrepFilter(c, "x")
+	require.NoError(t, err)
+
+	// A single value would be read as "that one day", so the end is filled in.
+	require.Len(t, filter.Time, 2)
+	since := time.Date(2024, 1, 15, 0, 0, 0, 0, time.UTC)
+	assert.Equal(t, float64(since.Unix()), filter.Time[0])
+	assert.InDelta(t, float64(time.Now().Unix()), filter.Time[1], 5)
+}
+
+func TestBuildGrepFilter_UntilOnlyStartsAtEpoch(t *testing.T) {
+	c := newGrepContext(t, func(fs *flag.FlagSet) {
+		require.NoError(t, fs.Set("until", "2024-01-15"))
+	})
+	filter, err := buildGrepFilter(c, "x")
+	require.NoError(t, err)
+
+	require.Len(t, filter.Time, 2)
+	assert.Equal(t, float64(0), filter.Time[0])
+	untilEnd := time.Date(2024, 1, 15, 23, 59, 59, 0, time.UTC)
+	assert.Equal(t, float64(untilEnd.Unix()), filter.Time[1])
 }
 
 func TestBuildGrepFilter_InvalidSince(t *testing.T) {
@@ -325,6 +353,34 @@ func TestCommandGrep_SuccessJSON(t *testing.T) {
 	require.NoError(t, err)
 	// The GraphQL request carries the search term in its variables payload.
 	assert.True(t, strings.Contains(gotBody, "fetchCommands"), "request body should contain the query")
+}
+
+func TestCommandGrep_UnquotedWordsFormOnePhrase(t *testing.T) {
+	mc := setupGrepActionTest(t)
+
+	var gotFilter model.SearchCommandsFilter
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var body struct {
+			Variables struct {
+				Filter model.SearchCommandsFilter `json:"filter"`
+			} `json:"variables"`
+		}
+		assert.NoError(t, json.NewDecoder(r.Body).Decode(&body))
+		gotFilter = body.Variables.Filter
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = io.WriteString(w, `{"data":{"fetchCommands":{"count":0,"edges":[]}}}`)
+	}))
+	t.Cleanup(server.Close)
+
+	mc.On("ReadConfigFile", mock.Anything).Return(model.ShellTimeConfig{
+		Token:       "tok",
+		APIEndpoint: server.URL,
+	}, nil)
+
+	app := &cli.App{Name: "t", Commands: []*cli.Command{GrepCommand}}
+	// `shelltime rg git sub` must search "git sub", not just "git".
+	require.NoError(t, app.Run([]string{"t", "rg", "git", "sub"}))
+	assert.Equal(t, "git sub", gotFilter.Command)
 }
 
 func TestCommandGrep_NoResults(t *testing.T) {
