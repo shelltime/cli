@@ -1,0 +1,22 @@
+set shell := ["bash", "-c"]
+set dotenv-load
+alias b := build
+version := "1.0.0"
+export RUST_LOG := "info"
+import "common.just"
+
+# Build the project
+default: build
+
+[group("dev")]
+build target="debug":
+	cargo build --profile {{target}}
+
+@test *args: build
+	cargo test {{args}}
+
+_private-helper:
+	echo hidden
+
+release-notes:
+	git log --oneline

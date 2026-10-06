@@ -22,6 +22,8 @@ type CommandSuggestVariables struct {
 	Query    string `json:"query"`
 	Pwd      string `json:"pwd,omitempty"`
 	Hostname string `json:"hostname,omitempty"`
+	// Context is nil when the user opted out via ai.shareContext.
+	Context *QueryContext `json:"context,omitempty"`
 }
 
 type sseAIService struct{}

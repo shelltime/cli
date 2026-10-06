@@ -2,17 +2,20 @@ package commands
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"log/slog"
 	"os"
 	"os/exec"
 	"runtime"
 	"strings"
+	"time"
 
 	"github.com/gookit/color"
 	"github.com/malamtime/cli/model"
 	"github.com/malamtime/cli/stloader"
 	"github.com/urfave/cli/v2"
+	"go.opentelemetry.io/otel/attribute"
 )
 
 var QueryCommand *cli.Command = &cli.Command{
@@ -20,20 +23,34 @@ var QueryCommand *cli.Command = &cli.Command{
 	Aliases: []string{"q"},
 	Usage:   "Query AI for command suggestions",
 	Action:  commandQuery,
+	Flags: []cli.Flag{
+		&cli.BoolFlag{
+			Name:  "show-context",
+			Usage: "print the request (query and collected context) without calling the AI",
+		},
+	},
 	Description: `Query AI for command suggestions based on your prompt.
+
+Unless ai.shareContext is false, the request includes context about where
+you run it: working directory, git state, project scripts and package
+manager, installed tools, a directory listing and machine info. Your AI
+Context from shelltime.xyz settings is applied as well.
 
 Examples:
   shelltime query "get the top 5 memory-using processes"
   shelltime q "find all files modified in the last 24 hours"
-  shelltime q "show disk usage for current directory"`,
+  shelltime q "show disk usage for current directory"
+  shelltime q --show-context "run the tests"`,
 }
 
 func commandQuery(c *cli.Context) error {
 	ctx, span := commandTracer.Start(c.Context, "query")
 	defer span.End()
 
-	// Check if AI service is initialized
-	if aiService == nil {
+	showContext := c.Bool("show-context")
+
+	// Check if AI service is initialized (a dry run never calls it)
+	if aiService == nil && !showContext {
 		color.Red.Println("AI service is not configured")
 		return fmt.Errorf("AI service is not available")
 	}
@@ -59,18 +76,32 @@ func commandQuery(c *cli.Context) error {
 		Token:       cfg.Token,
 	}
 
+	var l *stloader.Loader
+	if !showContext {
+		l = stloader.NewLoader(stloader.LoaderConfig{
+			Text:          "Collecting context...",
+			EnableShining: true,
+			BaseColor:     stloader.RGB{R: 100, G: 180, B: 255},
+		})
+		l.Start()
+	}
+
 	// Get system context
 	systemContext, err := getSystemContext(query, cfg.AI)
 	if err != nil {
 		slog.Warn("Failed to get system context", slog.Any("err", err))
 	}
+	if shareContextEnabled(cfg.AI) {
+		start := time.Now()
+		systemContext.Context = gatherQueryContextFn(ctx, systemContext.Pwd)
+		span.SetAttributes(attribute.Int64("query.context_ms", time.Since(start).Milliseconds()))
+	}
 
-	l := stloader.NewLoader(stloader.LoaderConfig{
-		Text:          "Querying AI...",
-		EnableShining: true,
-		BaseColor:     stloader.RGB{R: 100, G: 180, B: 255},
-	})
-	l.Start()
+	if showContext {
+		return printQueryRequest(systemContext)
+	}
+
+	l.UpdateText("Querying AI...")
 
 	var result strings.Builder
 	firstToken := true
@@ -156,6 +187,25 @@ func commandQuery(c *cli.Context) error {
 	return nil
 }
 
+// printQueryRequest prints the request body `shelltime q` would send.
+func printQueryRequest(vars model.CommandSuggestVariables) error {
+	enc := json.NewEncoder(os.Stdout)
+	enc.SetEscapeHTML(false)
+	enc.SetIndent("", "  ")
+	if err := enc.Encode(vars); err != nil {
+		return fmt.Errorf("failed to encode request: %w", err)
+	}
+	// On stderr so the JSON on stdout can be piped (e.g. into jq)
+	fmt.Fprintln(os.Stderr, color.Gray.Sprint("Your AI Context from shelltime.xyz settings is added by the server."))
+	return nil
+}
+
+// shareContextEnabled reports whether `shelltime q` may send identifying
+// context. It defaults to true when ai.shareContext is unset.
+func shareContextEnabled(ai *model.AIConfig) bool {
+	return ai == nil || ai.ShareContext == nil || *ai.ShareContext
+}
+
 func shouldShowTips(cfg model.ShellTimeConfig) bool {
 	// If ShowTips is not set (nil), default to true
 	if cfg.AI == nil || cfg.AI.ShowTips == nil {
@@ -189,30 +239,16 @@ func executeCommand(ctx context.Context, command string) error {
 }
 
 func getSystemContext(query string, ai *model.AIConfig) (model.CommandSuggestVariables, error) {
-	// Get shell information
-	shell := os.Getenv("SHELL")
-	if shell == "" {
-		shell = "unknown"
-	} else {
-		// Extract just the shell name from path
-		if idx := strings.LastIndex(shell, "/"); idx >= 0 {
-			shell = shell[idx+1:]
-		}
-	}
-
-	// Get OS information
-	osInfo := runtime.GOOS
-
 	vars := model.CommandSuggestVariables{
-		Shell: shell,
-		Os:    osInfo,
+		Shell: currentShell(),
+		Os:    runtime.GOOS,
 		Query: query,
 	}
 
 	// Skip context fields when the user has opted out via config:
-	//   [ai]
-	//   shareContext = false
-	if ai != nil && ai.ShareContext != nil && !*ai.ShareContext {
+	//   ai:
+	//     shareContext: false
+	if !shareContextEnabled(ai) {
 		return vars, nil
 	}
 

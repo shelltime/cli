@@ -215,6 +215,9 @@ ai:
   # Show helpful tips when using AI features
   showTips: true
 
+  # Send context about where you run `shelltime q` (default: true)
+  shareContext: true
+
   agent:
     # Auto-execute read-only commands (ls, cat, etc.)
     view: false
@@ -226,6 +229,33 @@ ai:
     delete: false
 ```
 
+### Query Context
+
+To suggest commands that fit your environment, `shelltime q` sends context with each prompt. All of it is collected locally in under half a second, and anything that takes longer is skipped:
+
+| Context | Details |
+|---------|---------|
+| Shell and OS | The shell you are typing in (detected from the parent process, falling back to `$SHELL`) and the OS. Always sent. |
+| Working directory and hostname | `pwd` and the machine's hostname |
+| System | OS version, kernel, architecture, CPU count, uptime, load average, whether you are root, SSH/container/multiplexer, terminal, timezone and local time |
+| Git | Path inside the repo, branch, upstream, ahead/behind, staged/unstaged/untracked/conflicted counts, an in-progress merge/rebase/cherry-pick/bisect, remote hosts (no URLs or credentials) and the last 3 commit subjects |
+| Project | Project types and package managers from manifest and lock files (walking up to the repo root, so monorepo workspaces work), plus script names from `package.json`, Makefile targets and justfile recipes (names only) |
+| Tools | Non-standard CLI tools found on your `PATH` (`rg`, `fd`, `jq`, `docker`, `pnpm`, ...) |
+| Directory listing | Up to 40 file and folder names in the current directory (no contents; skipped in your home directory) |
+
+The server also applies your **AI Context** from shelltime.xyz settings and your weekly AI persona, so suggestions follow your stated preferences.
+
+Run `shelltime q --show-context "your prompt"` to print exactly what would be sent, without calling the AI or using credits. The flag must come before the prompt.
+
+To send only the shell, OS and prompt, turn context off:
+
+```yaml
+ai:
+  shareContext: false
+```
+
+Context is forwarded to the AI provider that generates the suggestion. The model is told to treat it as data, never as instructions; keep in mind that file names, branch names, commit subjects and script names come from the repository you are in.
+
 ### Auto-Execution Levels
 
 | Level | Setting | Examples | Risk |
@@ -233,6 +263,8 @@ ai:
 | View | `ai.agent.view` | `ls`, `cat`, `grep` | Low |
 | Edit | `ai.agent.edit` | `echo >>`, `sed -i` | Medium |
 | Delete | `ai.agent.delete` | `rm`, `rmdir` | High |
+
+Compound commands are classified by their most severe part (`cat a; rm b` is a delete). Commands that run other code, such as `sh`, `python`, `xargs`, `sudo`, `eval` or `curl ... | sh`, and multi-line scripts are never auto-run.
 
 **Recommended settings:**
 ```yaml
@@ -446,6 +478,7 @@ exclude:
 # --- AI Configuration ---
 ai:
   showTips: true
+  shareContext: true
   agent:
     view: true
     edit: false

@@ -27,9 +27,12 @@ func x3SetupQuery(t *testing.T) (*model.MockAIService, *model.MockConfigService)
 	mc := model.NewMockConfigService(t)
 	aiService = mai
 	configService = mc
+	origGather := gatherQueryContextFn
+	gatherQueryContextFn = func(context.Context, string) *model.QueryContext { return nil }
 	t.Cleanup(func() {
 		aiService = origAI
 		configService = origCfg
+		gatherQueryContextFn = origGather
 	})
 	return mai, mc
 }
