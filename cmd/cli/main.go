@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"os"
@@ -22,6 +23,11 @@ var (
 )
 
 func main() {
+	os.Exit(run())
+}
+
+// run holds main's body so its deferred cleanup finishes before main sets the exit code.
+func run() int {
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second*10)
 	defer cancel()
 	cli.VersionFlag = &cli.BoolFlag{
@@ -113,8 +119,14 @@ func main() {
 		commands.UpdateCommand,
 	}
 	err = app.Run(os.Args)
-	if err != nil {
+	// doctor already reported its problems; it only needs a non-zero exit code.
+	doctorFailed := errors.Is(err, commands.ErrDoctorFoundProblems)
+	if err != nil && !doctorFailed {
 		slog.Error("CLI error", slog.Any("err", err))
 	}
 	commands.CloseLogger()
+	if doctorFailed {
+		return 1
+	}
+	return 0
 }

@@ -142,7 +142,7 @@ var DefaultConfig = ShellTimeConfig{
 	Exclude:       []string{},
 	AICodeOtel: new(AICodeOtel{
 		Enabled:  new(true),
-		GRPCPort: 54027,
+		GRPCPort: DefaultAICodeOtelGRPCPort,
 		Debug:    new(false),
 	}),
 	CodeTracking: new(CodeTracking{

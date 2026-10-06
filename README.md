@@ -72,7 +72,7 @@ shelltime codex install
 | `shelltime init` | Bootstrap auth, hooks, daemon, and AI-code integrations |
 | `shelltime auth` | Authenticate with `shelltime.xyz` |
 | `shelltime update` | Download and install the latest release in place |
-| `shelltime doctor` | Check installation and environment health |
+| `shelltime doctor` | Diagnose setup problems and show how to fix each one (`--fix` applies the safe fixes, `--offline`, `--format json`) |
 | `shelltime web` | Open the ShellTime dashboard in a browser |
 
 ### Tracking and sync
