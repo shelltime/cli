@@ -24,6 +24,10 @@ type queryTestSuite struct {
 	mockConfig *model.MockConfigService
 	app        *cli.App
 	origAI     model.AIService
+
+	origGather  func(context.Context, string) *model.QueryContext
+	origParent  func() string
+	gatherCalls int
 }
 
 // SetupSuite runs once before all tests
@@ -45,6 +49,16 @@ func (s *queryTestSuite) SetupTest() {
 	aiService = s.mockAI
 	configService = s.mockConfig
 
+	// Keep context collection hermetic
+	s.origGather = gatherQueryContextFn
+	s.origParent = parentProcessNameFn
+	s.gatherCalls = 0
+	gatherQueryContextFn = func(context.Context, string) *model.QueryContext {
+		s.gatherCalls++
+		return &model.QueryContext{Git: &model.QueryGitContext{Branch: "main"}}
+	}
+	parentProcessNameFn = func() string { return "" }
+
 	// Create test app
 	s.app = &cli.App{
 		Name:  "shelltime-test",
@@ -59,6 +73,8 @@ func (s *queryTestSuite) SetupTest() {
 func (s *queryTestSuite) TearDownTest() {
 	// Restore original AI service
 	aiService = s.origAI
+	gatherQueryContextFn = s.origGather
+	parentProcessNameFn = s.origParent
 	s.mockAI.AssertExpectations(s.T())
 	s.mockConfig.AssertExpectations(s.T())
 }

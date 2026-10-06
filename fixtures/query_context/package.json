@@ -1,0 +1,13 @@
+{
+  "name": "query-context-fixture",
+  "private": true,
+  "packageManager": "pnpm@9.12.0",
+  "scripts": {
+    "zeta": "echo z",
+    "test": "vitest",
+    "dev": "next dev",
+    "build": "next build",
+    "lint": "oxlint",
+    "codegen": "graphql-codegen"
+  }
+}

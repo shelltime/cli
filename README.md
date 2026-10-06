@@ -89,7 +89,7 @@ shelltime codex install
 
 | Command | Description |
 |---------|-------------|
-| `shelltime query "prompt"` | Ask AI for a suggested shell command |
+| `shelltime query "prompt"` | Ask AI for a suggested shell command, using context about your repo, project and machine (see [Query Context](docs/CONFIG.md#query-context)) |
 | `shelltime q "prompt"` | Alias for `shelltime query` |
 | `shelltime cc install` | Install Claude Code OTEL configuration into `~/.claude/settings.json` |
 | `shelltime cc uninstall` | Remove Claude Code OTEL configuration from `~/.claude/settings.json` |

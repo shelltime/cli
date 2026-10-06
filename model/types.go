@@ -19,8 +19,10 @@ type AIAgentConfig struct {
 type AIConfig struct {
 	Agent    AIAgentConfig `toml:"agent,omitempty" yaml:"agent,omitempty" json:"agent,omitempty"`
 	ShowTips *bool         `toml:"showTips" yaml:"showTips" json:"showTips"`
-	// ShareContext controls whether `shelltime q` sends the working directory
-	// and hostname alongside the prompt. Defaults to true if unset.
+	// ShareContext controls whether `shelltime q` sends context alongside the
+	// prompt: working directory, hostname, git state, project tooling,
+	// installed tools, a directory listing and machine info. Defaults to true
+	// if unset; when false only the shell, OS and prompt are sent.
 	ShareContext *bool `toml:"shareContext,omitempty" yaml:"shareContext,omitempty" json:"shareContext,omitempty"`
 }
 
