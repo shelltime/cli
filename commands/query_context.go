@@ -3,6 +3,7 @@ package commands
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -92,7 +93,16 @@ func gatherQueryContext(ctx context.Context, pwd string) *model.QueryContext {
 
 	results := make(chan func(*model.QueryContext), len(collectors))
 	for _, collect := range collectors {
-		go func() { results <- collect() }()
+		go func() {
+			// Context is best-effort: a collector bug must never crash `shelltime q`
+			defer func() {
+				if r := recover(); r != nil {
+					slog.Warn("query context collector panicked", slog.Any("panic", r))
+					results <- nil
+				}
+			}()
+			results <- collect()
+		}()
 	}
 
 	qc := &model.QueryContext{}

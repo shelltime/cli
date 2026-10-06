@@ -319,6 +319,11 @@ func classifyDocker(parts []string) CommandActionType {
 	if len(parts) == 0 {
 		return ActionView
 	}
+	// Global options (--context, -n, -H, --force, ...) shift the subcommand
+	// and can target another cluster or daemon; don't guess past them
+	if strings.HasPrefix(parts[0], "-") {
+		return ActionOther
+	}
 	switch parts[0] {
 	case "rm", "rmi", "prune":
 		return ActionDelete
@@ -351,6 +356,11 @@ func classifyKubectl(parts []string) CommandActionType {
 	if len(parts) == 0 {
 		return ActionView
 	}
+	// Global options (--context, -n, -H, --force, ...) shift the subcommand
+	// and can target another cluster or daemon; don't guess past them
+	if strings.HasPrefix(parts[0], "-") {
+		return ActionOther
+	}
 	switch sub := parts[0]; {
 	case slices.Contains(kubectlViewSubcommands, sub):
 		return ActionView
@@ -375,6 +385,11 @@ var systemctlViewSubcommands = []string{
 func classifySystemctl(parts []string) CommandActionType {
 	if len(parts) == 0 {
 		return ActionView
+	}
+	// Global options (--context, -n, -H, --force, ...) shift the subcommand
+	// and can target another cluster or daemon; don't guess past them
+	if strings.HasPrefix(parts[0], "-") {
+		return ActionOther
 	}
 	switch sub := parts[0]; {
 	case slices.Contains(systemctlViewSubcommands, sub):

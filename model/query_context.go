@@ -486,6 +486,10 @@ func ParseJustRecipes(content string) []string {
 			continue
 		}
 		fields := strings.Fields(line)
+		// A line of only non-ASCII whitespace passes the first-byte check above
+		if len(fields) == 0 {
+			continue
+		}
 		switch fields[0] {
 		case "set", "alias", "import", "mod", "export":
 			continue

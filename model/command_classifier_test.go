@@ -176,6 +176,14 @@ func TestClassifyCommandCompound(t *testing.T) {
 		{"systemctl reboot", "systemctl reboot", ActionOther},
 		{"systemctl mask", "systemctl mask nginx", ActionEdit},
 		{"systemctl list", "systemctl list-units --failed", ActionView},
+
+		// Global options before the subcommand are never guessed past
+		{"kubectl namespace delete", "kubectl -n prod delete pod web", ActionOther},
+		{"kubectl context exec", "kubectl --context prod exec -it web -- sh", ActionOther},
+		{"docker context rm", "docker --context prod rm -f web", ActionOther},
+		{"podman remote ps", "podman --remote ps", ActionOther},
+		{"systemctl force poweroff", "systemctl --force poweroff", ActionOther},
+		{"systemctl user restart", "systemctl --user restart app", ActionOther},
 	}
 
 	for _, tt := range tests {

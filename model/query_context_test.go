@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -64,6 +65,20 @@ func TestParseJustRecipes(t *testing.T) {
 	// set/alias/assignments/export/import/attributes and _private recipes
 	// are skipped; "@test *args:" and parameterized recipes are kept.
 	assert.Equal(t, []string{"build", "test", "default", "release-notes"}, got)
+}
+
+func TestParseJustRecipesWhitespaceOnlyLines(t *testing.T) {
+	// Lines of only non-ASCII whitespace (vertical tab, form feed, NBSP)
+	// used to make strings.Fields return nothing and panic on fields[0].
+	content := strings.Join([]string{
+		string(rune(0x0b)),
+		string(rune(0x0c)),
+		string(rune(0xa0)) + string(rune(0xa0)),
+		"build:",
+	}, "\n")
+	assert.NotPanics(t, func() {
+		assert.Equal(t, []string{"build"}, ParseJustRecipes(content))
+	})
 }
 
 func TestReadPackageJSON(t *testing.T) {
