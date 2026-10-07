@@ -1,0 +1,130 @@
+goos: linux
+goarch: amd64
+pkg: github.com/malamtime/cli/perf
+cpu: Test CPU @ 2.10GHz
+BenchmarkStartup/floor-4 	     100	   1176000 ns/op	   1140720 p50-ns/op	   1352400 p95-ns/op	  17301504 peak-rss-B	    529200 sys-ns/op	    646800 user-ns/op
+BenchmarkStartup/version-4 	     100	   5292000 ns/op	   5133240 p50-ns/op	   6085800 p95-ns/op	  17301504 peak-rss-B	   2381400 sys-ns/op	   2910600 user-ns/op
+BenchmarkTrack/daemon/pre-4 	     100	   5880000 ns/op	   5703600 p50-ns/op	   6762000 p95-ns/op	  17301504 peak-rss-B	   2646000 sys-ns/op	   3234000 user-ns/op
+BenchmarkTrack/daemon/post-4 	     100	   6076000 ns/op	   5893720 p50-ns/op	   6987400 p95-ns/op	  17301504 peak-rss-B	   2734200 sys-ns/op	   3341800 user-ns/op
+BenchmarkTrack/direct/pre-4 	     100	   5488000 ns/op	   5323360 p50-ns/op	   6311200 p95-ns/op	  17301504 peak-rss-B	   2469600 sys-ns/op	   3018400 user-ns/op
+BenchmarkTrack/direct/post-4 	     100	   9212000 ns/op	   8935640 p50-ns/op	  10593800 p95-ns/op	  17301504 peak-rss-B	   4145400 sys-ns/op	   5066600 user-ns/op
+BenchmarkTrack/direct/post-sync-4 	     100	    196000 ns/op	    190120 p50-ns/op	    225400 p95-ns/op	  17301504 peak-rss-B	     88200 sys-ns/op	    107800 user-ns/op
+PASS
+ok  	github.com/malamtime/cli/perf	40.123s
+goos: linux
+goarch: amd64
+pkg: github.com/malamtime/cli/perf
+cpu: Test CPU @ 2.10GHz
+BenchmarkStartup/floor-4 	     100	   1215600 ns/op	   1179132 p50-ns/op	   1397940 p95-ns/op	  17301504 peak-rss-B	    547020 sys-ns/op	    668580 user-ns/op
+BenchmarkStartup/version-4 	     100	   5470200 ns/op	   5306094 p50-ns/op	   6290730 p95-ns/op	  17301504 peak-rss-B	   2461590 sys-ns/op	   3008610 user-ns/op
+BenchmarkTrack/daemon/pre-4 	     100	   6078000 ns/op	   5895660 p50-ns/op	   6989700 p95-ns/op	  17301504 peak-rss-B	   2735100 sys-ns/op	   3342900 user-ns/op
+BenchmarkTrack/daemon/post-4 	     100	   6280600 ns/op	   6092182 p50-ns/op	   7222690 p95-ns/op	  17301504 peak-rss-B	   2826270 sys-ns/op	   3454330 user-ns/op
+BenchmarkTrack/direct/pre-4 	     100	   5672800 ns/op	   5502616 p50-ns/op	   6523720 p95-ns/op	  17301504 peak-rss-B	   2552760 sys-ns/op	   3120040 user-ns/op
+BenchmarkTrack/direct/post-4 	     100	   9522200 ns/op	   9236534 p50-ns/op	  10950530 p95-ns/op	  17301504 peak-rss-B	   4284990 sys-ns/op	   5237210 user-ns/op
+BenchmarkTrack/direct/post-sync-4 	     100	    202600 ns/op	    196522 p50-ns/op	    232990 p95-ns/op	  17301504 peak-rss-B	     91170 sys-ns/op	    111430 user-ns/op
+PASS
+ok  	github.com/malamtime/cli/perf	41.123s
+goos: linux
+goarch: amd64
+pkg: github.com/malamtime/cli/perf
+cpu: Test CPU @ 2.10GHz
+BenchmarkStartup/floor-4 	     100	   1191600 ns/op	   1155852 p50-ns/op	   1370340 p95-ns/op	  17301504 peak-rss-B	    536220 sys-ns/op	    655380 user-ns/op
+BenchmarkStartup/version-4 	     100	   5362200 ns/op	   5201334 p50-ns/op	   6166530 p95-ns/op	  17301504 peak-rss-B	   2412990 sys-ns/op	   2949210 user-ns/op
+BenchmarkTrack/daemon/pre-4 	     100	   5958000 ns/op	   5779260 p50-ns/op	   6851700 p95-ns/op	  17301504 peak-rss-B	   2681100 sys-ns/op	   3276900 user-ns/op
+BenchmarkTrack/daemon/post-4 	     100	   6156600 ns/op	   5971902 p50-ns/op	   7080090 p95-ns/op	  17301504 peak-rss-B	   2770470 sys-ns/op	   3386130 user-ns/op
+BenchmarkTrack/direct/pre-4 	     100	   5560800 ns/op	   5393976 p50-ns/op	   6394920 p95-ns/op	  17301504 peak-rss-B	   2502360 sys-ns/op	   3058440 user-ns/op
+BenchmarkTrack/direct/post-4 	     100	   9334200 ns/op	   9054174 p50-ns/op	  10734330 p95-ns/op	  17301504 peak-rss-B	   4200390 sys-ns/op	   5133810 user-ns/op
+BenchmarkTrack/direct/post-sync-4 	     100	    198600 ns/op	    192642 p50-ns/op	    228390 p95-ns/op	  17301504 peak-rss-B	     89370 sys-ns/op	    109230 user-ns/op
+PASS
+ok  	github.com/malamtime/cli/perf	42.123s
+goos: linux
+goarch: amd64
+pkg: github.com/malamtime/cli/perf
+cpu: Test CPU @ 2.10GHz
+BenchmarkStartup/floor-4 	     100	   1221600 ns/op	   1184952 p50-ns/op	   1404840 p95-ns/op	  17301504 peak-rss-B	    549720 sys-ns/op	    671880 user-ns/op
+BenchmarkStartup/version-4 	     100	   5497200 ns/op	   5332284 p50-ns/op	   6321780 p95-ns/op	  17301504 peak-rss-B	   2473740 sys-ns/op	   3023460 user-ns/op
+BenchmarkTrack/daemon/pre-4 	     100	   6108000 ns/op	   5924760 p50-ns/op	   7024200 p95-ns/op	  17301504 peak-rss-B	   2748600 sys-ns/op	   3359400 user-ns/op
+BenchmarkTrack/daemon/post-4 	     100	   6311600 ns/op	   6122252 p50-ns/op	   7258340 p95-ns/op	  17301504 peak-rss-B	   2840220 sys-ns/op	   3471380 user-ns/op
+BenchmarkTrack/direct/pre-4 	     100	   5700800 ns/op	   5529776 p50-ns/op	   6555920 p95-ns/op	  17301504 peak-rss-B	   2565360 sys-ns/op	   3135440 user-ns/op
+BenchmarkTrack/direct/post-4 	     100	   9569200 ns/op	   9282124 p50-ns/op	  11004580 p95-ns/op	  17301504 peak-rss-B	   4306140 sys-ns/op	   5263060 user-ns/op
+BenchmarkTrack/direct/post-sync-4 	     100	    203600 ns/op	    197492 p50-ns/op	    234140 p95-ns/op	  17301504 peak-rss-B	     91620 sys-ns/op	    111980 user-ns/op
+PASS
+ok  	github.com/malamtime/cli/perf	43.123s
+goos: linux
+goarch: amd64
+pkg: github.com/malamtime/cli/perf
+cpu: Test CPU @ 2.10GHz
+BenchmarkStartup/floor-4 	     100	   1200000 ns/op	   1164000 p50-ns/op	   1380000 p95-ns/op	  17301504 peak-rss-B	    540000 sys-ns/op	    660000 user-ns/op
+BenchmarkStartup/version-4 	     100	   5400000 ns/op	   5238000 p50-ns/op	   6210000 p95-ns/op	  17301504 peak-rss-B	   2430000 sys-ns/op	   2970000 user-ns/op
+BenchmarkTrack/daemon/pre-4 	     100	   6000000 ns/op	   5820000 p50-ns/op	   6900000 p95-ns/op	  17301504 peak-rss-B	   2700000 sys-ns/op	   3300000 user-ns/op
+BenchmarkTrack/daemon/post-4 	     100	   6200000 ns/op	   6014000 p50-ns/op	   7130000 p95-ns/op	  17301504 peak-rss-B	   2790000 sys-ns/op	   3410000 user-ns/op
+BenchmarkTrack/direct/pre-4 	     100	   5600000 ns/op	   5432000 p50-ns/op	   6440000 p95-ns/op	  17301504 peak-rss-B	   2520000 sys-ns/op	   3080000 user-ns/op
+BenchmarkTrack/direct/post-4 	     100	   9400000 ns/op	   9118000 p50-ns/op	  10810000 p95-ns/op	  17301504 peak-rss-B	   4230000 sys-ns/op	   5170000 user-ns/op
+BenchmarkTrack/direct/post-sync-4 	     100	    200000 ns/op	    194000 p50-ns/op	    230000 p95-ns/op	  17301504 peak-rss-B	     90000 sys-ns/op	    110000 user-ns/op
+PASS
+ok  	github.com/malamtime/cli/perf	44.123s
+goos: linux
+goarch: amd64
+pkg: github.com/malamtime/cli/perf
+cpu: Test CPU @ 2.10GHz
+BenchmarkStartup/floor-4 	     100	   1182000 ns/op	   1146540 p50-ns/op	   1359300 p95-ns/op	  17301504 peak-rss-B	    531900 sys-ns/op	    650100 user-ns/op
+BenchmarkStartup/version-4 	     100	   5319000 ns/op	   5159430 p50-ns/op	   6116850 p95-ns/op	  17301504 peak-rss-B	   2393550 sys-ns/op	   2925450 user-ns/op
+BenchmarkTrack/daemon/pre-4 	     100	   5910000 ns/op	   5732700 p50-ns/op	   6796500 p95-ns/op	  17301504 peak-rss-B	   2659500 sys-ns/op	   3250500 user-ns/op
+BenchmarkTrack/daemon/post-4 	     100	   6107000 ns/op	   5923790 p50-ns/op	   7023050 p95-ns/op	  17301504 peak-rss-B	   2748150 sys-ns/op	   3358850 user-ns/op
+BenchmarkTrack/direct/pre-4 	     100	   5516000 ns/op	   5350520 p50-ns/op	   6343400 p95-ns/op	  17301504 peak-rss-B	   2482200 sys-ns/op	   3033800 user-ns/op
+BenchmarkTrack/direct/post-4 	     100	   9259000 ns/op	   8981230 p50-ns/op	  10647850 p95-ns/op	  17301504 peak-rss-B	   4166550 sys-ns/op	   5092450 user-ns/op
+BenchmarkTrack/direct/post-sync-4 	     100	    197000 ns/op	    191090 p50-ns/op	    226550 p95-ns/op	  17301504 peak-rss-B	     88650 sys-ns/op	    108350 user-ns/op
+PASS
+ok  	github.com/malamtime/cli/perf	45.123s
+goos: linux
+goarch: amd64
+pkg: github.com/malamtime/cli/perf
+cpu: Test CPU @ 2.10GHz
+BenchmarkStartup/floor-4 	     100	   1210800 ns/op	   1174476 p50-ns/op	   1392420 p95-ns/op	  17301504 peak-rss-B	    544860 sys-ns/op	    665940 user-ns/op
+BenchmarkStartup/version-4 	     100	   5448600 ns/op	   5285142 p50-ns/op	   6265890 p95-ns/op	  17301504 peak-rss-B	   2451870 sys-ns/op	   2996730 user-ns/op
+BenchmarkTrack/daemon/pre-4 	     100	   6054000 ns/op	   5872380 p50-ns/op	   6962100 p95-ns/op	  17301504 peak-rss-B	   2724300 sys-ns/op	   3329700 user-ns/op
+BenchmarkTrack/daemon/post-4 	     100	   6255800 ns/op	   6068126 p50-ns/op	   7194170 p95-ns/op	  17301504 peak-rss-B	   2815110 sys-ns/op	   3440690 user-ns/op
+BenchmarkTrack/direct/pre-4 	     100	   5650400 ns/op	   5480888 p50-ns/op	   6497960 p95-ns/op	  17301504 peak-rss-B	   2542680 sys-ns/op	   3107720 user-ns/op
+BenchmarkTrack/direct/post-4 	     100	   9484600 ns/op	   9200062 p50-ns/op	  10907290 p95-ns/op	  17301504 peak-rss-B	   4268070 sys-ns/op	   5216530 user-ns/op
+BenchmarkTrack/direct/post-sync-4 	     100	    201800 ns/op	    195746 p50-ns/op	    232070 p95-ns/op	  17301504 peak-rss-B	     90810 sys-ns/op	    110990 user-ns/op
+PASS
+ok  	github.com/malamtime/cli/perf	46.123s
+goos: linux
+goarch: amd64
+pkg: github.com/malamtime/cli/perf
+cpu: Test CPU @ 2.10GHz
+BenchmarkStartup/floor-4 	     100	   1195200 ns/op	   1159344 p50-ns/op	   1374480 p95-ns/op	  17301504 peak-rss-B	    537840 sys-ns/op	    657360 user-ns/op
+BenchmarkStartup/version-4 	     100	   5378400 ns/op	   5217048 p50-ns/op	   6185160 p95-ns/op	  17301504 peak-rss-B	   2420280 sys-ns/op	   2958120 user-ns/op
+BenchmarkTrack/daemon/pre-4 	     100	   5976000 ns/op	   5796720 p50-ns/op	   6872400 p95-ns/op	  17301504 peak-rss-B	   2689200 sys-ns/op	   3286800 user-ns/op
+BenchmarkTrack/daemon/post-4 	     100	   6175200 ns/op	   5989944 p50-ns/op	   7101480 p95-ns/op	  17301504 peak-rss-B	   2778840 sys-ns/op	   3396360 user-ns/op
+BenchmarkTrack/direct/pre-4 	     100	   5577600 ns/op	   5410272 p50-ns/op	   6414240 p95-ns/op	  17301504 peak-rss-B	   2509920 sys-ns/op	   3067680 user-ns/op
+BenchmarkTrack/direct/post-4 	     100	   9362400 ns/op	   9081528 p50-ns/op	  10766760 p95-ns/op	  17301504 peak-rss-B	   4213080 sys-ns/op	   5149320 user-ns/op
+BenchmarkTrack/direct/post-sync-4 	     100	    199200 ns/op	    193224 p50-ns/op	    229080 p95-ns/op	  17301504 peak-rss-B	     89640 sys-ns/op	    109560 user-ns/op
+PASS
+ok  	github.com/malamtime/cli/perf	47.123s
+goos: linux
+goarch: amd64
+pkg: github.com/malamtime/cli/perf
+cpu: Test CPU @ 2.10GHz
+BenchmarkStartup/floor-4 	     100	   1219200 ns/op	   1182624 p50-ns/op	   1402080 p95-ns/op	  17301504 peak-rss-B	    548640 sys-ns/op	    670560 user-ns/op
+BenchmarkStartup/version-4 	     100	   5486400 ns/op	   5321808 p50-ns/op	   6309360 p95-ns/op	  17301504 peak-rss-B	   2468880 sys-ns/op	   3017520 user-ns/op
+BenchmarkTrack/daemon/pre-4 	     100	   6096000 ns/op	   5913120 p50-ns/op	   7010400 p95-ns/op	  17301504 peak-rss-B	   2743200 sys-ns/op	   3352800 user-ns/op
+BenchmarkTrack/daemon/post-4 	     100	   6299200 ns/op	   6110224 p50-ns/op	   7244080 p95-ns/op	  17301504 peak-rss-B	   2834640 sys-ns/op	   3464560 user-ns/op
+BenchmarkTrack/direct/pre-4 	     100	   5689600 ns/op	   5518912 p50-ns/op	   6543040 p95-ns/op	  17301504 peak-rss-B	   2560320 sys-ns/op	   3129280 user-ns/op
+BenchmarkTrack/direct/post-4 	     100	   9550400 ns/op	   9263888 p50-ns/op	  10982960 p95-ns/op	  17301504 peak-rss-B	   4297680 sys-ns/op	   5252720 user-ns/op
+BenchmarkTrack/direct/post-sync-4 	     100	    203200 ns/op	    197104 p50-ns/op	    233680 p95-ns/op	  17301504 peak-rss-B	     91440 sys-ns/op	    111760 user-ns/op
+PASS
+ok  	github.com/malamtime/cli/perf	48.123s
+goos: linux
+goarch: amd64
+pkg: github.com/malamtime/cli/perf
+cpu: Test CPU @ 2.10GHz
+BenchmarkStartup/floor-4 	     100	   1186800 ns/op	   1151196 p50-ns/op	   1364820 p95-ns/op	  17301504 peak-rss-B	    534060 sys-ns/op	    652740 user-ns/op
+BenchmarkStartup/version-4 	     100	   5340600 ns/op	   5180382 p50-ns/op	   6141690 p95-ns/op	  17301504 peak-rss-B	   2403270 sys-ns/op	   2937330 user-ns/op
+BenchmarkTrack/daemon/pre-4 	     100	   5934000 ns/op	   5755980 p50-ns/op	   6824100 p95-ns/op	  17301504 peak-rss-B	   2670300 sys-ns/op	   3263700 user-ns/op
+BenchmarkTrack/daemon/post-4 	     100	   6131800 ns/op	   5947846 p50-ns/op	   7051570 p95-ns/op	  17301504 peak-rss-B	   2759310 sys-ns/op	   3372490 user-ns/op
+BenchmarkTrack/direct/pre-4 	     100	   5538400 ns/op	   5372248 p50-ns/op	   6369160 p95-ns/op	  17301504 peak-rss-B	   2492280 sys-ns/op	   3046120 user-ns/op
+BenchmarkTrack/direct/post-4 	     100	   9296600 ns/op	   9017702 p50-ns/op	  10691090 p95-ns/op	  17301504 peak-rss-B	   4183470 sys-ns/op	   5113130 user-ns/op
+BenchmarkTrack/direct/post-sync-4 	     100	    197800 ns/op	    191866 p50-ns/op	    227470 p95-ns/op	  17301504 peak-rss-B	     89010 sys-ns/op	    108790 user-ns/op
+PASS
+ok  	github.com/malamtime/cli/perf	49.123s
