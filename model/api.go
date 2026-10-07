@@ -21,6 +21,7 @@ type TrackingData struct {
 	EndTimeNano   int64  `json:"endTimeNano"`
 	Result        int    `json:"result"`
 	PPID          int    `json:"ppid,omitempty"`
+	ViaSSH        *bool  `json:"viaSsh,omitempty"`
 }
 
 type TrackingMetaData struct {
