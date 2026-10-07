@@ -37,6 +37,9 @@ type Command struct {
 	Result    int          `json:"result"`
 	Phase     CommandPhase `json:"phase"`
 	PPID      int          `json:"ppid,omitempty"`
+	// ViaSSH is set when the shell is an SSH login. Nil on records written
+	// before it was captured, which the server stores as unknown.
+	ViaSSH *bool `json:"ssh,omitempty"`
 
 	// Only work in file
 	RecordingTime time.Time `json:"-"`

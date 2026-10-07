@@ -104,6 +104,7 @@ func BuildTrackingData(ctx context.Context, store CommandStore, config ShellTime
 			EndTimeNano: postCommand.Time.UnixNano(),
 			Result:      postCommand.Result,
 			PPID:        postCommand.PPID,
+			ViaSSH:      postCommand.ViaSSH,
 		}
 
 		if config.DataMasking != nil && *config.DataMasking {
@@ -113,6 +114,9 @@ func BuildTrackingData(ctx context.Context, store CommandStore, config ShellTime
 		if closestPreCommand != nil {
 			td.StartTime = closestPreCommand.Time.Unix()
 			td.StartTimeNano = closestPreCommand.Time.UnixNano()
+			if pre := closestPreCommand.ViaSSH; pre != nil && (td.ViaSSH == nil || *pre) {
+				td.ViaSSH = pre
+			}
 		}
 
 		trackingData = append(trackingData, td)

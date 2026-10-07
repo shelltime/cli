@@ -129,7 +129,7 @@ func collectSystemContext(getenv func(string) string) *model.QuerySystemContext 
 		UptimeSec:   st.UptimeSec,
 		LoadAvg:     st.LoadAvg,
 		IsRoot:      os.Geteuid() == 0,
-		SSH:         getenv("SSH_CONNECTION") != "" || getenv("SSH_TTY") != "",
+		SSH:         model.IsSSHSession(getenv),
 		Container:   st.Container,
 		Multiplexer: detectMultiplexer(getenv),
 		TermProgram: model.SanitizeContextString(getenv("TERM_PROGRAM"), 64),

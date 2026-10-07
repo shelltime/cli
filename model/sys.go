@@ -62,3 +62,10 @@ func GetOSAndVersion() (*SysInfo, error) {
 		Version: "unknown",
 	}, nil
 }
+
+// IsSSHSession reports whether the current shell is an SSH login. sshd exports
+// these variables into the login shell, and every child (like `shelltime track`)
+// inherits them.
+func IsSSHSession(getenv func(string) string) bool {
+	return getenv("SSH_CONNECTION") != "" || getenv("SSH_CLIENT") != "" || getenv("SSH_TTY") != ""
+}

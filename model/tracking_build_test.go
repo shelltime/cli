@@ -35,6 +35,43 @@ func TestBuildTrackingData(t *testing.T) {
 	require.Equal(t, StorageEngineBolt, res.Meta.CliEngine)
 }
 
+func TestBuildTrackingDataViaSSH(t *testing.T) {
+	yes, no := true, false
+	tests := []struct {
+		name string
+		pre  *bool
+		post *bool
+		want *bool
+	}{
+		{name: "unknown on records from older CLIs", want: nil},
+		{name: "taken from post", pre: &no, post: &yes, want: &yes},
+		{name: "falls back to pre", pre: &yes, want: &yes},
+		{name: "true on either side wins", pre: &yes, post: &no, want: &yes},
+		{name: "local shell", pre: &no, post: &no, want: &no},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			store, err := newBoltStore(filepath.Join(t.TempDir(), "commands.db"))
+			require.NoError(t, err)
+			defer store.Close()
+
+			ctx := context.Background()
+			start := time.Now()
+			pre := Command{Shell: "zsh", SessionID: 7, Command: "make", Username: "u", Hostname: "devbox", Time: start, ViaSSH: tt.pre}
+			require.NoError(t, store.SavePre(ctx, pre, start))
+			post := pre
+			post.Time = start.Add(time.Second)
+			post.ViaSSH = tt.post
+			require.NoError(t, store.SavePost(ctx, post, 0, post.Time))
+
+			res, err := BuildTrackingData(ctx, store, ShellTimeConfig{})
+			require.NoError(t, err)
+			require.Len(t, res.Data, 1)
+			require.Equal(t, tt.want, res.Data[0].ViaSSH)
+		})
+	}
+}
+
 func TestBuildTrackingDataFileEngine(t *testing.T) {
 	t.Setenv("HOME", t.TempDir())
 	InitFolder("") // reset globals to the default .shelltime under the temp HOME

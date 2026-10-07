@@ -78,6 +78,7 @@ func commandTrack(c *cli.Context) error {
 	cmdPhase := c.String("phase")
 	result := c.Int("result")
 	ppid := c.Int("ppid")
+	viaSSH := model.IsSSHSession(os.Getenv)
 
 	instance := &model.Command{
 		Shell:     shell,
@@ -88,6 +89,7 @@ func commandTrack(c *cli.Context) error {
 		Time:      time.Now(),
 		Phase:     model.CommandPhasePre,
 		PPID:      ppid,
+		ViaSSH:    &viaSSH,
 	}
 
 	// Fast path: `track` runs inside the shell hook on every command, so it must
