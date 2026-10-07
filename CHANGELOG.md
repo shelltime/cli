@@ -1,5 +1,26 @@
 # Changelog
 
+## [0.1.92](https://github.com/shelltime/cli/compare/v0.1.91...v0.1.92) (2026-10-07)
+
+
+### Features
+
+* add `shelltime cc backfill` and `shelltime codex backfill` ([#312](https://github.com/shelltime/cli/issues/312)) ([8feb0bc](https://github.com/shelltime/cli/commit/8feb0bcb6742883d0232e722d0ee7fd6e381177b))
+* **cli:** rebuild doctor with fix guidance, --fix, --offline and json output ([#313](https://github.com/shelltime/cli/issues/313)) ([a38c83c](https://github.com/shelltime/cli/commit/a38c83c84bb0ff37453ed2463d8c0ae3955d36cf))
+* **cli:** record whether each tracked command ran over SSH ([#316](https://github.com/shelltime/cli/issues/316)) ([a5b2991](https://github.com/shelltime/cli/commit/a5b2991027681f8a8fec7ee5a47c645dc125a3cd))
+* **cli:** send rich context with shelltime q ([#315](https://github.com/shelltime/cli/issues/315)) ([d9498f8](https://github.com/shelltime/cli/commit/d9498f8789d5de264e0095043cad58af5dc87690))
+* **perf:** benchmark shelltime track latency on every PR and main push ([#317](https://github.com/shelltime/cli/issues/317)) ([d35492f](https://github.com/shelltime/cli/commit/d35492fbc042979d137adfd8eec997890b783885))
+
+
+### Bug Fixes
+
+* **cli:** search all rg words and send date filters in seconds ([#314](https://github.com/shelltime/cli/issues/314)) ([c8dd39c](https://github.com/shelltime/cli/commit/c8dd39cf6ad1805350ffbe5a13a1f892a64f8055))
+
+
+### Build System
+
+* **ci:** upgrade Go 1.26 to 1.27.1 ([#310](https://github.com/shelltime/cli/issues/310)) ([8e12ac1](https://github.com/shelltime/cli/commit/8e12ac120aa64ab104477a259e03152a08ec39ee))
+
 ## [0.1.91](https://github.com/shelltime/cli/compare/v0.1.90...v0.1.91) (2026-10-04)
 
 
