@@ -1,0 +1,160 @@
+name: Track Perf
+
+# `shelltime track` runs in the foreground of every shell prompt, so its latency
+# is user-facing. This builds the base and head binaries and times the real
+# process in interleaved rounds on one runner (perf/compare.sh), then reports
+# per-scenario changes in the job summary and, on PRs, in a sticky comment.
+# Regressions are warnings (annotations + report), never a failed check.
+
+on:
+  pull_request:
+    branches:
+      - main
+    types:
+      - opened
+      - synchronize
+      - reopened
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+    inputs:
+      base:
+        description: Commit to compare against (default HEAD^1)
+        required: false
+        default: ""
+      rounds:
+        description: Interleaved rounds per binary
+        required: false
+        default: "10"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: track-perf-${{ github.event.pull_request.number || github.ref }}
+  # Superseded PR pushes are cancelled; every main commit keeps its report.
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  track-perf:
+    name: shelltime track latency
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      pull-requests: write # sticky comment; read-only on fork PRs, which get the summary only
+    env:
+      # Build both sides with head's toolchain, so a change shows the code's
+      # effect, not the compiler's.
+      GOTOOLCHAIN: local
+      ROUNDS: ${{ inputs.rounds || '10' }}
+      ITERS: "100"
+      THRESHOLD: "10"
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache-dependency-path: |
+            go.sum
+            perf/go.sum
+
+      - name: Test the perf tooling
+        run: |
+          go -C perf vet ./...
+          go -C perf test ./...
+
+      - name: Pick the base commit
+        id: base
+        env:
+          EVENT: ${{ github.event_name }}
+          BEFORE: ${{ github.event.before }}
+          INPUT_BASE: ${{ inputs.base }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          PR_HEAD: ${{ github.event.pull_request.head.sha }}
+        run: |
+          case "$EVENT" in
+            push) base=$BEFORE ;;
+            workflow_dispatch) base=$INPUT_BASE ;;
+            # pull_request checks out the merge commit: its first parent
+            # is exactly the base the PR is being merged onto.
+            *) base= ;;
+          esac
+          if [[ -z $base ]] || ! git cat-file -e "$base^{commit}" 2>/dev/null; then
+            base=$(git rev-parse HEAD^1)
+          fi
+          base=$(git rev-parse "$base^{commit}")
+
+          # Harness changes need a full run even when the binary is unchanged.
+          force=0
+          git diff --quiet "$base" HEAD -- perf .github/workflows/perf.yaml || force=1
+
+          if [[ $EVENT == pull_request ]]; then
+            base_label="\`$GITHUB_BASE_REF\` @ \`${base::7}\`"
+            head_label="#$PR_NUMBER @ \`${PR_HEAD::7}\`"
+          else
+            base_label="\`${base::7}\`"
+            head_label="\`$(git rev-parse --short=7 HEAD)\`"
+          fi
+          {
+            echo "sha=$base"
+            echo "force=$force"
+            echo "base_label=$base_label"
+            echo "head_label=$head_label"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Benchmark base vs head
+        id: perf
+        env:
+          BASE_SHA: ${{ steps.base.outputs.sha }}
+          FORCE: ${{ steps.base.outputs.force }}
+          BASE_LABEL: ${{ steps.base.outputs.base_label }}
+          HEAD_LABEL: ${{ steps.base.outputs.head_label }}
+        run: perf/compare.sh "$BASE_SHA" WORKTREE "$RUNNER_TEMP/perf"
+
+      - name: Job summary
+        if: always()
+        run: |
+          report=$RUNNER_TEMP/perf/report.md
+          if [[ -f $report ]]; then
+            cat "$report" >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: Comment on the PR
+        if: >-
+          always() &&
+          github.event_name == 'pull_request' &&
+          github.event.pull_request.head.repo.full_name == github.repository
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          SKIPPED: ${{ steps.perf.outputs.skipped }}
+        run: |
+          report=$RUNNER_TEMP/perf/report.md
+          if [[ ! -f $report ]]; then
+            exit 0
+          fi
+          # An unchanged binary refreshes an existing report but never
+          # starts a new comment thread.
+          if [[ $SKIPPED == true ]]; then
+            perf/comment.sh "$PR_NUMBER" "$report" --update-only
+          else
+            perf/comment.sh "$PR_NUMBER" "$report"
+          fi
+
+      - name: Upload results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: track-perf
+          path: |
+            ${{ runner.temp }}/perf/*.txt
+            ${{ runner.temp }}/perf/*.md
+            ${{ runner.temp }}/perf/*.log
+          if-no-files-found: ignore

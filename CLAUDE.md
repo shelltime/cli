@@ -40,6 +40,17 @@ go test -run TestHandlerName ./daemon/
 
 Tests use **testify** (assertions + suites). Suite-based tests use `suite.Suite` with `SetupTest`/`TearDownTest` lifecycle hooks (see `daemon/cc_info_handler_test.go` for example). Simple functions use table-driven tests.
 
+### Performance (`shelltime track` latency)
+`perf/` is a separate Go module (root `./...` skips it). It benchmarks the real binary the way the shell hooks run it: daemon and direct paths, pre and post, plus a sync. See `perf/README.md`.
+```bash
+# Benchmark the current tree
+go -C perf test -run '^$' -bench . -benchtime 50x -count 5
+
+# Compare a base commit with the working tree, as CI does
+perf/compare.sh origin/main
+```
+The `Track Perf` workflow (`.github/workflows/perf.yaml`) runs this on every PR and push to `main`. It posts the report as a PR comment and in the job summary. A scenario that gets more than 10% slower (and more than 0.25 ms, with p < 0.05) raises a warning, never a failure. `Track/*` scenarios skip while a real daemon owns `/tmp/shelltime.sock`.
+
 ### Code Generation
 ```bash
 # Generate mocks (uses .mockery.yml configuration, Mockery v3)

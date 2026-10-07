@@ -15,6 +15,7 @@ This is a Go monorepo for the ShellTime CLI and daemon.
 - `model/`: config, API clients, shell integrations, crypto, and shared domain logic
 - `docs/`: user-facing docs such as `CONFIG.md` and `CC_STATUSLINE.md`
 - `fixtures/`: reusable test fixtures
+- `perf/`: separate Go module that benchmarks the real `shelltime track` process, plus the CI comparison tooling
 
 Keep new code inside the existing package boundary. Do not mix CLI wiring, daemon internals, and model logic in the same package.
 
@@ -31,6 +32,8 @@ Keep new code inside the existing package boundary. Do not mix CLI wiring, daemo
 - `go vet ./...`: run static analysis
 - `mockery`: regenerate mocks when interfaces change
 - `pp g`: regenerate PromptPal-generated artifacts when relevant
+- `go -C perf test -run '^$' -bench . -benchtime 50x -count 5`: benchmark `shelltime track` latency on the current tree (`perf/` is its own module; see `perf/README.md`)
+- `perf/compare.sh origin/main`: compare `track` latency of a base commit and the working tree, as the `Track Perf` workflow does on every PR and push to `main`
 
 Use Go 1.27.1, as declared in `go.mod`.
 
