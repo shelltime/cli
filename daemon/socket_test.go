@@ -193,6 +193,7 @@ func TestSocketMessageType_Constants(t *testing.T) {
 		{SocketMessageTypeHeartbeat, "heartbeat"},
 		{SocketMessageTypeStatus, "status"},
 		{SocketMessageTypeCCInfo, "cc_info"},
+		{SocketMessageTypeSessionPullRequests, "session_pull_requests"},
 	}
 
 	for _, tc := range testCases {

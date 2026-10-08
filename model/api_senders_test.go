@@ -213,3 +213,39 @@ func TestSendAliasesToServer(t *testing.T) {
 		assert.Contains(t, err.Error(), "failed to send aliases to server")
 	})
 }
+
+func TestSendSessionPullRequests(t *testing.T) {
+	t.Run("happy path posts session and urls", func(t *testing.T) {
+		var gotPath, gotAuth string
+		var body sessionPullRequestsRequest
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			gotPath = r.URL.Path
+			gotAuth = r.Header.Get("Authorization")
+			readJSONBody(t, r, &body)
+			w.WriteHeader(http.StatusNoContent)
+		}))
+		defer server.Close()
+
+		cfg := ShellTimeConfig{Token: "tok123", APIEndpoint: server.URL}
+		urls := []string{"https://github.com/o/r/pull/1", "https://github.com/o/r2/pull/2"}
+		err := SendSessionPullRequests(context.Background(), cfg, "sess-1", urls)
+		require.NoError(t, err)
+		assert.Equal(t, "/api/v1/cc/session-pull-requests", gotPath)
+		assert.Equal(t, "CLI tok123", gotAuth)
+		assert.Equal(t, "sess-1", body.SessionID)
+		assert.Equal(t, urls, body.URLs)
+	})
+
+	t.Run("error path returns error", func(t *testing.T) {
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.WriteHeader(http.StatusBadRequest)
+			_, _ = w.Write([]byte(`{"error":"Invalid request body"}`))
+		}))
+		defer server.Close()
+
+		cfg := ShellTimeConfig{Token: "t", APIEndpoint: server.URL}
+		err := SendSessionPullRequests(context.Background(), cfg, "s", []string{"nope"})
+		require.Error(t, err)
+		assert.Equal(t, "Invalid request body", err.Error())
+	})
+}
