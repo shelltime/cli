@@ -49,6 +49,14 @@ func serviceResource(serviceName string, extra ...*commonv1.KeyValue) *resourcev
 	return &resourcev1.Resource{Attributes: attrs}
 }
 
+// testResource wraps pre-built resource attributes for direct parseLogRecord/parseMetric calls.
+func testResource(source string, attrs *model.AICodeOtelResourceAttributes) *otelResource {
+	if attrs == nil {
+		attrs = &model.AICodeOtelResourceAttributes{}
+	}
+	return &otelResource{source: source, attrs: attrs}
+}
+
 // captureProcessor wires a processor to a test HTTP server and records the
 // AICodeOtelRequest bodies POSTed to /api/v1/cc/otel.
 type captureProcessor struct {
@@ -155,13 +163,14 @@ func TestProcessMetrics_SumAndGauge(t *testing.T) {
 	// Sum metric (token usage)
 	tokenMetric := got.Metrics[0]
 	assert.Equal(t, model.AICodeMetricTokenUsage, tokenMetric.MetricType)
-	assert.Equal(t, int64(2), tokenMetric.Timestamp) // nanos -> seconds
+	assert.Equal(t, int64(2), tokenMetric.Timestamp)      // nanos -> seconds
+	assert.Equal(t, int64(2000), tokenMetric.TimestampMs) // nanos -> milliseconds
 	assert.Equal(t, float64(123), tokenMetric.Value)
 	assert.Equal(t, "input", tokenMetric.TokenType)
 	assert.Equal(t, "claude-3", tokenMetric.Model)
 	assert.Equal(t, "sess-1", tokenMetric.SessionID) // from resource attrs
 	assert.Equal(t, model.AICodeOtelSourceClaudeCode, tokenMetric.ClientType)
-	assert.NotEmpty(t, tokenMetric.MetricID)
+	assert.True(t, strings.HasPrefix(tokenMetric.MetricID, model.AICodeOtelIDPrefix), tokenMetric.MetricID)
 
 	// Gauge metric (cost usage)
 	costMetric := got.Metrics[1]
@@ -325,16 +334,17 @@ func TestProcessLogs_ClaudeApiRequestEvent(t *testing.T) {
 	ev := reqs[0].Events[0]
 	assert.Equal(t, model.AICodeEventApiRequest, ev.EventType)
 	assert.Equal(t, int64(5), ev.Timestamp)
+	assert.Equal(t, int64(5000), ev.TimestampMs)
 	assert.Equal(t, "claude-3-5", ev.Model)
-	assert.Equal(t, 0.01, ev.CostUSD)
-	assert.Equal(t, 250, ev.DurationMs)
-	assert.Equal(t, 100, ev.InputTokens)
-	assert.Equal(t, 50, ev.OutputTokens)
-	assert.Equal(t, 10, ev.CacheReadTokens)
-	assert.True(t, ev.Success)
-	assert.Equal(t, 200, ev.StatusCode)
+	assert.Equal(t, model.Float64Ref(0.01), ev.CostUSD)
+	assert.Equal(t, model.IntRef(250), ev.DurationMs)
+	assert.Equal(t, model.IntRef(100), ev.InputTokens)
+	assert.Equal(t, model.IntRef(50), ev.OutputTokens)
+	assert.Equal(t, model.IntRef(10), ev.CacheReadTokens)
+	assert.Equal(t, model.BoolRef(true), ev.Success)
+	assert.Equal(t, model.IntRef(200), ev.StatusCode)
 	assert.Equal(t, "e@x.com", ev.UserEmail) // from resource attrs
-	assert.NotEmpty(t, ev.EventID)
+	assert.True(t, strings.HasPrefix(ev.EventID, model.AICodeOtelIDPrefix), ev.EventID)
 }
 
 func TestProcessLogs_CodexConversationStartsMapsConvIDToSession(t *testing.T) {
@@ -383,9 +393,9 @@ func TestProcessLogs_CodexConversationStartsMapsConvIDToSession(t *testing.T) {
 	assert.Equal(t, "conv-9", ev.SessionID) // sessionID derived from conversationID
 	assert.Equal(t, "apikey", ev.AuthMode)
 	assert.Equal(t, "auto", ev.ApprovalPolicy)
-	assert.True(t, ev.ReasoningEnabled)
+	assert.Equal(t, model.BoolRef(true), ev.ReasoningEnabled)
 	assert.Equal(t, "high", ev.ReasoningEffort)
-	assert.Equal(t, 128000, ev.ContextWindow)
+	assert.Equal(t, model.IntRef(128000), ev.ContextWindow)
 	assert.Equal(t, []string{"fs", "git"}, ev.MCPServers)
 }
 
@@ -410,7 +420,7 @@ func TestProcessLogs_ToolParametersJSONParsed(t *testing.T) {
 								},
 							},
 							{
-								// invalid JSON tool_parameters -> ignored, but event still valid
+								// invalid JSON tool_parameters -> kept raw in attributes, event still valid
 								TimeUnixNano: 1_000_000_000,
 								Attributes: []*commonv1.KeyValue{
 									kv("event.name", strVal("claude_code.tool_result")),
@@ -447,9 +457,12 @@ func TestProcessLogs_ToolParametersJSONParsed(t *testing.T) {
 	require.NotNil(t, first.ToolArguments)
 	assert.Equal(t, "b", first.ToolArguments["a"])
 
+	assert.Equal(t, "noop", first.Attributes["tool_parameters_bad_just_ignored"], "unknown attributes go to the catch-all")
+
 	second := reqs[0].Events[1]
 	assert.Equal(t, model.AICodeEventToolResult, second.EventType)
-	assert.Nil(t, second.ToolParameters) // bad JSON ignored
+	assert.Nil(t, second.ToolParameters)                               // bad JSON isn't parsed...
+	assert.Equal(t, `{not json`, second.Attributes["tool_parameters"]) // ...but kept raw
 }
 
 func TestParseLogRecord_AllAttributeBranches(t *testing.T) {
@@ -502,33 +515,33 @@ func TestParseLogRecord_AllAttributeBranches(t *testing.T) {
 		},
 	}
 
-	ev := p.parseLogRecord(lr, resAttrs, model.AICodeOtelSourceCodex)
+	ev := p.parseLogRecord(lr, testResource(model.AICodeOtelSourceCodex, resAttrs), "")
 	require.NotNil(t, ev)
 	assert.Equal(t, model.AICodeEventApiError, ev.EventType)
 	assert.Equal(t, int64(10), ev.Timestamp)
 	assert.Equal(t, "2025-01-01T00:00:00Z", ev.EventTimestamp)
-	assert.Equal(t, 7, ev.CacheCreationTokens)
+	assert.Equal(t, model.IntRef(7), ev.CacheCreationTokens)
 	assert.Equal(t, "reject", ev.Decision)
 	assert.Equal(t, "user", ev.Source)
-	// error.message overrides error
-	assert.Equal(t, "overridden-error", ev.Error)
-	assert.Equal(t, 42, ev.PromptLength)
+	// error wins over error.message
+	assert.Equal(t, "boom", ev.Error)
+	assert.Equal(t, model.IntRef(42), ev.PromptLength)
 	assert.Equal(t, "hello", ev.Prompt)
-	assert.Equal(t, 2, ev.Attempt)
+	assert.Equal(t, model.IntRef(2), ev.Attempt)
 	assert.Equal(t, "python", ev.Language)
-	assert.Equal(t, 99, ev.ReasoningTokens)
+	assert.Equal(t, model.IntRef(99), ev.ReasoningTokens)
 	assert.Equal(t, "openai", ev.Provider)
 	assert.Equal(t, "call-1", ev.CallID)
 	// event_kind is processed after event.kind, so it wins
 	assert.Equal(t, "ek-override", ev.EventKind)
-	assert.Equal(t, 3, ev.ToolTokens)
+	assert.Equal(t, model.IntRef(3), ev.ToolTokens)
 	assert.Equal(t, "gpt-5", ev.Slug)
 	assert.Equal(t, "workspace", ev.SandboxPolicy)
 	assert.Equal(t, []string{"a"}, ev.MCPServers)
 	assert.Equal(t, "default", ev.Profile)
 	assert.Equal(t, "brief", ev.ReasoningSummary)
-	assert.Equal(t, 1000, ev.MaxOutputTokens)
-	assert.Equal(t, 2000, ev.AutoCompactTokenLimit)
+	assert.Equal(t, model.IntRef(1000), ev.MaxOutputTokens)
+	assert.Equal(t, model.IntRef(2000), ev.AutoCompactTokenLimit)
 	assert.Equal(t, "done", ev.ToolOutput)
 	assert.True(t, ev.PromptEncrypted)
 	// overrides
@@ -570,25 +583,25 @@ func TestParseLogRecord_CamelCaseCodexAliases(t *testing.T) {
 		},
 	}
 
-	ev := p.parseLogRecord(lr, &model.AICodeOtelResourceAttributes{}, model.AICodeOtelSourceCodex)
+	ev := p.parseLogRecord(lr, testResource(model.AICodeOtelSourceCodex, nil), "")
 	require.NotNil(t, ev)
-	assert.Equal(t, 5, ev.InputTokens)
-	assert.Equal(t, 6, ev.OutputTokens)
-	assert.Equal(t, 7, ev.CacheReadTokens)
-	assert.Equal(t, 8, ev.ReasoningTokens)
+	assert.Equal(t, model.IntRef(5), ev.InputTokens)
+	assert.Equal(t, model.IntRef(6), ev.OutputTokens)
+	assert.Equal(t, model.IntRef(7), ev.CacheReadTokens)
+	assert.Equal(t, model.IntRef(8), ev.ReasoningTokens)
 	assert.Equal(t, "openai", ev.Provider)
 	assert.Equal(t, "c-2", ev.CallID)
-	assert.Equal(t, 9, ev.ToolTokens)
+	assert.Equal(t, model.IntRef(9), ev.ToolTokens)
 	assert.Equal(t, "oauth", ev.AuthMode)
-	assert.Equal(t, 64000, ev.ContextWindow)
+	assert.Equal(t, model.IntRef(64000), ev.ContextWindow)
 	assert.Equal(t, "manual", ev.ApprovalPolicy)
 	assert.Equal(t, "none", ev.SandboxPolicy)
 	assert.Equal(t, "p", ev.Profile)
-	assert.True(t, ev.ReasoningEnabled)
+	assert.Equal(t, model.BoolRef(true), ev.ReasoningEnabled)
 	assert.Equal(t, "low", ev.ReasoningEffort)
 	assert.Equal(t, "s", ev.ReasoningSummary)
-	assert.Equal(t, 100, ev.MaxOutputTokens)
-	assert.Equal(t, 200, ev.AutoCompactTokenLimit)
+	assert.Equal(t, model.IntRef(100), ev.MaxOutputTokens)
+	assert.Equal(t, model.IntRef(200), ev.AutoCompactTokenLimit)
 	assert.Equal(t, "ok", ev.ToolOutput)
 	assert.True(t, ev.PromptEncrypted)
 	// conversationId -> ConversationID and, since SessionID empty, -> SessionID
@@ -598,15 +611,14 @@ func TestParseLogRecord_CamelCaseCodexAliases(t *testing.T) {
 
 func TestParseLogRecord_NilWhenNoEventType(t *testing.T) {
 	p := NewAICodeOtelProcessor(model.ShellTimeConfig{})
-	attrs := &model.AICodeOtelResourceAttributes{}
 	lr := &logsv1.LogRecord{Attributes: []*commonv1.KeyValue{kv("model", strVal("x"))}}
-	assert.Nil(t, p.parseLogRecord(lr, attrs, model.AICodeOtelSourceClaudeCode))
+	assert.Nil(t, p.parseLogRecord(lr, testResource(model.AICodeOtelSourceClaudeCode, nil), ""))
 }
 
 func TestParseMetric_UnknownReturnsEmpty(t *testing.T) {
 	p := NewAICodeOtelProcessor(model.ShellTimeConfig{})
 	m := &metricsv1.Metric{Name: "nope"}
-	got := p.parseMetric(m, &model.AICodeOtelResourceAttributes{}, model.AICodeOtelSourceClaudeCode)
+	got := p.parseMetric(m, testResource(model.AICodeOtelSourceClaudeCode, nil), "")
 	assert.Empty(t, got)
 }
 

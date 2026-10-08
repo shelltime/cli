@@ -13,6 +13,14 @@ const (
 	codexConfigFile = "config.toml"
 )
 
+// codexOtelManagedFlags are the [otel] flags `shelltime codex install` turns on. Together with
+// the exporter they are the only keys Install writes and Uninstall removes.
+var codexOtelManagedFlags = []string{
+	"log_user_prompt",
+	// Emits codex.agent_response with the final answer text.
+	"log_agent_responses",
+}
+
 // CodexOtelConfigService handles Codex OTEL configuration
 type CodexOtelConfigService interface {
 	Install() error
@@ -20,6 +28,9 @@ type CodexOtelConfigService interface {
 	Check() (bool, error)
 	// Endpoint returns otel.exporter.otlp-grpc.endpoint, or "" when it is not set.
 	Endpoint() (string, error)
+	// MissingManagedKeys returns the managed [otel] flags that aren't set, such as
+	// log_agent_responses in a config written by an older `shelltime codex install`.
+	MissingManagedKeys() ([]string, error)
 }
 
 type codexOtelConfigService struct {
@@ -35,7 +46,37 @@ func NewCodexOtelConfigService() CodexOtelConfigService {
 	}
 }
 
-// Install adds OTEL configuration to ~/.codex/config.toml
+// readConfig parses ~/.codex/config.toml. A missing or empty file yields an empty map.
+func (s *codexOtelConfigService) readConfig() (map[string]interface{}, error) {
+	config := make(map[string]interface{})
+	data, err := os.ReadFile(s.configPath)
+	if os.IsNotExist(err) {
+		return config, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("failed to read config file: %w", err)
+	}
+	if len(data) > 0 {
+		if err := toml.Unmarshal(data, &config); err != nil {
+			return nil, fmt.Errorf("failed to parse config: %w", err)
+		}
+	}
+	return config, nil
+}
+
+func (s *codexOtelConfigService) writeConfig(config map[string]interface{}) error {
+	data, err := toml.Marshal(config)
+	if err != nil {
+		return fmt.Errorf("failed to marshal config: %w", err)
+	}
+	if err := os.WriteFile(s.configPath, data, 0644); err != nil {
+		return fmt.Errorf("failed to write config file: %w", err)
+	}
+	return nil
+}
+
+// Install merges ShellTime's OTEL settings into the [otel] table of ~/.codex/config.toml,
+// keeping the user's other [otel] keys (environment, trace_exporter, ...).
 func (s *codexOtelConfigService) Install() error {
 	// Ensure directory exists
 	dir := filepath.Dir(s.configPath)
@@ -43,118 +84,109 @@ func (s *codexOtelConfigService) Install() error {
 		return fmt.Errorf("failed to create config directory: %w", err)
 	}
 
-	// Read existing config or create empty map
-	config := make(map[string]interface{})
-	if data, err := os.ReadFile(s.configPath); err == nil && len(data) > 0 {
-		if err := toml.Unmarshal(data, &config); err != nil {
-			return fmt.Errorf("failed to parse existing config: %w", err)
-		}
+	config, err := s.readConfig()
+	if err != nil {
+		return fmt.Errorf("failed to parse existing config: %w", err)
 	}
 
-	// Add OTEL configuration
+	otel, _ := config["otel"].(map[string]interface{})
+	if otel == nil {
+		otel = make(map[string]interface{})
+	}
+	for _, flag := range codexOtelManagedFlags {
+		otel[flag] = true
+	}
+	// `exporter` selects exactly one exporter ("none", "statsig", {otlp-http = ...} or
+	// {otlp-grpc = ...}), so it is replaced rather than merged.
 	// Format: exporter = { otlp-grpc = {endpoint = "..."} }
-	config["otel"] = map[string]interface{}{
-		"log_user_prompt": true,
-		"exporter": map[string]interface{}{
-			"otlp-grpc": map[string]interface{}{
-				"endpoint": AICodeOtelEndpoint,
-			},
+	otel["exporter"] = map[string]interface{}{
+		"otlp-grpc": map[string]interface{}{
+			"endpoint": AICodeOtelEndpoint,
 		},
 	}
+	config["otel"] = otel
 
-	// Write config back
-	data, err := toml.Marshal(config)
-	if err != nil {
-		return fmt.Errorf("failed to marshal config: %w", err)
-	}
-
-	if err := os.WriteFile(s.configPath, data, 0644); err != nil {
-		return fmt.Errorf("failed to write config file: %w", err)
-	}
-
-	return nil
+	return s.writeConfig(config)
 }
 
-// Uninstall removes OTEL configuration from ~/.codex/config.toml
+// Uninstall removes ShellTime's OTEL settings from ~/.codex/config.toml: the managed flags and
+// the exporter when it still points at the ShellTime daemon. The [otel] table is deleted only
+// when nothing else is left in it.
 func (s *codexOtelConfigService) Uninstall() error {
 	// Check if config file exists
 	if _, err := os.Stat(s.configPath); os.IsNotExist(err) {
 		return nil // Nothing to uninstall
 	}
 
-	// Read existing config
-	data, err := os.ReadFile(s.configPath)
+	config, err := s.readConfig()
 	if err != nil {
-		return fmt.Errorf("failed to read config file: %w", err)
+		return err
 	}
 
-	config := make(map[string]interface{})
-	if len(data) > 0 {
-		if err := toml.Unmarshal(data, &config); err != nil {
-			return fmt.Errorf("failed to parse config: %w", err)
-		}
+	otel, ok := config["otel"].(map[string]interface{})
+	if !ok {
+		return nil
+	}
+	for _, flag := range codexOtelManagedFlags {
+		delete(otel, flag)
+	}
+	if codexOtelGRPCEndpoint(otel) == AICodeOtelEndpoint {
+		delete(otel, "exporter")
+	}
+	if len(otel) == 0 {
+		delete(config, "otel")
+	} else {
+		config["otel"] = otel
 	}
 
-	// Remove OTEL configuration
-	delete(config, "otel")
-
-	// Write config back
-	newData, err := toml.Marshal(config)
-	if err != nil {
-		return fmt.Errorf("failed to marshal config: %w", err)
-	}
-
-	if err := os.WriteFile(s.configPath, newData, 0644); err != nil {
-		return fmt.Errorf("failed to write config file: %w", err)
-	}
-
-	return nil
+	return s.writeConfig(config)
 }
 
 // Check returns true if OTEL is configured in ~/.codex/config.toml
 func (s *codexOtelConfigService) Check() (bool, error) {
-	if _, err := os.Stat(s.configPath); os.IsNotExist(err) {
-		return false, nil
-	}
-
-	data, err := os.ReadFile(s.configPath)
+	config, err := s.readConfig()
 	if err != nil {
-		return false, fmt.Errorf("failed to read config file: %w", err)
+		return false, err
 	}
-
-	config := make(map[string]interface{})
-	if len(data) > 0 {
-		if err := toml.Unmarshal(data, &config); err != nil {
-			return false, fmt.Errorf("failed to parse config: %w", err)
-		}
-	}
-
 	_, exists := config["otel"]
 	return exists, nil
 }
 
 func (s *codexOtelConfigService) Endpoint() (string, error) {
-	data, err := os.ReadFile(s.configPath)
-	if os.IsNotExist(err) {
-		return "", nil
-	}
+	config, err := s.readConfig()
 	if err != nil {
-		return "", fmt.Errorf("failed to read config file: %w", err)
+		return "", err
 	}
+	otel, _ := config["otel"].(map[string]interface{})
+	return codexOtelGRPCEndpoint(otel), nil
+}
 
-	// Walk a generic map: `exporter` may also be a plain string such as "none".
-	config := make(map[string]interface{})
-	if err := toml.Unmarshal(data, &config); err != nil {
-		return "", fmt.Errorf("failed to parse config: %w", err)
+func (s *codexOtelConfigService) MissingManagedKeys() ([]string, error) {
+	config, err := s.readConfig()
+	if err != nil {
+		return nil, err
 	}
-	var node interface{} = config
-	for _, key := range []string{"otel", "exporter", "otlp-grpc", "endpoint"} {
+	otel, _ := config["otel"].(map[string]interface{})
+	var missing []string
+	for _, flag := range codexOtelManagedFlags {
+		if _, ok := otel[flag]; !ok {
+			missing = append(missing, flag)
+		}
+	}
+	return missing, nil
+}
+
+// codexOtelGRPCEndpoint returns exporter.otlp-grpc.endpoint of an [otel] table, or "". It walks
+// generic maps because `exporter` may also be a plain string such as "none".
+func codexOtelGRPCEndpoint(otel map[string]interface{}) string {
+	var node interface{} = otel
+	for _, key := range []string{"exporter", "otlp-grpc", "endpoint"} {
 		table, ok := node.(map[string]interface{})
 		if !ok {
-			return "", nil
+			return ""
 		}
 		node = table[key]
 	}
 	endpoint, _ := node.(string)
-	return endpoint, nil
+	return endpoint
 }

@@ -517,6 +517,19 @@ func TestDoctorCheckClaude(t *testing.T) {
 	assert.True(t, env.claudeOtel)
 	assert.False(t, hasDoctorResult(results, "claude.legacy_env"))
 
+	// Settings from an older `cc install` lack the newer keys: warn and offer to re-run install.
+	outdated := findDoctorResult(t, results, "claude.otel_keys")
+	assert.Equal(t, doctorWarn, outdated.Status)
+	assert.Contains(t, outdated.Message, "OTEL_LOG_TOOL_DETAILS")
+	assert.Contains(t, outdated.Fix, "shelltime cc install")
+	require.NotNil(t, outdated.AutoFix)
+	assert.Equal(t, "claude.install", outdated.AutoFix.Key)
+
+	require.NoError(t, model.NewClaudeSettingsAICodeOtelEnvService().Install())
+	results = doctorCheckClaude(env)
+	assert.Equal(t, doctorOK, findDoctorResult(t, results, "claude.otel").Status)
+	assert.False(t, hasDoctorResult(results, "claude.otel_keys"), "a current install has every key")
+
 	// An OTEL block written to ~/.zshrc by older versions is flagged for migration.
 	require.NoError(t, os.WriteFile(filepath.Join(home, ".zshrc"), nil, 0644))
 	require.NoError(t, model.NewZshAICodeOtelEnvService().Install())
@@ -557,12 +570,25 @@ func TestDoctorCheckCodex(t *testing.T) {
 	assert.Equal(t, doctorFail, otelResult.Status)
 	assert.Nil(t, otelResult.AutoFix, "codex install can't fix invalid TOML")
 
-	require.NoError(t, os.Remove(configPath))
-	require.NoError(t, model.NewCodexOtelConfigService().Install())
+	// A config from an older `codex install` reports usage but lacks log_agent_responses.
+	older := "[otel]\nlog_user_prompt = true\n\n[otel.exporter.otlp-grpc]\nendpoint = \"" + model.AICodeOtelEndpoint + "\"\n"
+	require.NoError(t, os.WriteFile(configPath, []byte(older), 0644))
 	results := doctorCheckCodex(env)
+	assert.Equal(t, doctorOK, findDoctorResult(t, results, "codex.otel").Status)
+	outdated := findDoctorResult(t, results, "codex.otel_keys")
+	assert.Equal(t, doctorWarn, outdated.Status)
+	assert.Contains(t, outdated.Message, "otel.log_agent_responses")
+	require.NotNil(t, outdated.AutoFix)
+	assert.Equal(t, "codex.install", outdated.AutoFix.Key)
+
+	require.NoError(t, os.Remove(configPath))
+	env.codexOtel = false
+	require.NoError(t, model.NewCodexOtelConfigService().Install())
+	results = doctorCheckCodex(env)
 	assert.Equal(t, doctorOK, findDoctorResult(t, results, "codex.otel").Status)
 	assert.True(t, env.codexOtel)
 	assert.False(t, hasDoctorResult(results, "codex.auth"))
+	assert.False(t, hasDoctorResult(results, "codex.otel_keys"))
 
 	doctorCodexInstallationStatus = daemon.CodexInstallationStatus
 	assert.Equal(t, doctorInfo, findDoctorResult(t, doctorCheckCodex(env), "codex.auth").Status, "no auth.json")

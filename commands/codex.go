@@ -42,8 +42,17 @@ func commandCodexInstall(c *cli.Context) error {
 
 	color.Green.Println("Codex OTEL configuration has been installed to ~/.codex/config.toml")
 	color.Yellow.Println("The Codex CLI will now send telemetry to ShellTime daemon.")
+	printCodexPrivacyNote()
 
 	return nil
+}
+
+// printCodexPrivacyNote says what the installed config sends beyond token counts.
+func printCodexPrivacyNote() {
+	color.Gray.Println("Privacy: besides usage, Codex now sends your prompts, tool details (shell commands, patches")
+	color.Gray.Println("and other tool arguments, truncated tool output, tool errors) and its final responses to your")
+	color.Gray.Println("ShellTime account. To keep prompts or responses out, set otel.log_user_prompt or")
+	color.Gray.Println("otel.log_agent_responses to false in ~/.codex/config.toml (re-running install resets them).")
 }
 
 func commandCodexUninstall(c *cli.Context) error {

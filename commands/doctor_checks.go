@@ -751,6 +751,18 @@ func doctorCheckClaude(env *doctorEnv) []doctorResult {
 	} else {
 		env.claudeOtel = true
 		results = append(results, doctorResult{ID: "claude.otel", Status: doctorOK, Message: fmt.Sprintf("Claude Code reports usage to shelltime (%s).", svc.SettingsPath())})
+
+		// Settings written by an older `cc install` lack the newer keys (tool details,
+		// assistant responses, delta temporality, ...).
+		if missing, err := svc.MissingManagedKeys(); err == nil && len(missing) > 0 {
+			results = append(results, doctorResult{
+				ID:      "claude.otel_keys",
+				Status:  doctorWarn,
+				Message: fmt.Sprintf("Claude Code's shelltime OTEL config is out of date (missing %s), so some session details aren't reported.", strings.Join(missing, ", ")),
+				Fix:     "Run `shelltime cc install` again, then restart Claude Code.",
+				AutoFix: fix,
+			})
+		}
 	}
 
 	var legacyShells []string
@@ -838,6 +850,19 @@ func doctorCheckCodex(env *doctorEnv) []doctorResult {
 		result.Message = "Codex reports usage to shelltime."
 	}
 	results := []doctorResult{result}
+
+	// A config written by an older `codex install` lacks log_agent_responses.
+	if env.codexOtel {
+		if missing, err := model.NewCodexOtelConfigService().MissingManagedKeys(); err == nil && len(missing) > 0 {
+			results = append(results, doctorResult{
+				ID:      "codex.otel_keys",
+				Status:  doctorWarn,
+				Message: fmt.Sprintf("Codex's shelltime OTEL config is out of date (missing otel.%s), so some session details aren't reported.", strings.Join(missing, ", otel.")),
+				Fix:     "Run `shelltime codex install` again, then restart Codex.",
+				AutoFix: fix,
+			})
+		}
+	}
 
 	if ok, _ := doctorCodexInstallationStatus(); !ok {
 		results = append(results, doctorResult{

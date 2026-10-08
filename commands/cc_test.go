@@ -1,12 +1,14 @@
 package commands
 
 import (
+	"bytes"
 	"encoding/json"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 
+	"github.com/gookit/color"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/urfave/cli/v2"
@@ -134,4 +136,23 @@ func TestCCInstall_IdempotentNoDuplicateKeys(t *testing.T) {
 
 	assert.Equal(t, string(first), string(second), "install should be idempotent")
 	assert.Equal(t, 1, strings.Count(string(second), "OTEL_EXPORTER_OTLP_ENDPOINT"))
+}
+
+func TestInstallPrivacyNotes(t *testing.T) {
+	var buf bytes.Buffer
+	color.SetOutput(&buf)
+	t.Cleanup(color.ResetOutput)
+
+	printCCPrivacyNote("/home/u/.claude/settings.json")
+	cc := buf.String()
+	for _, want := range []string{"Bash", "file paths", "tool input", "tool errors", "assistant responses", "OTEL_LOG_TOOL_DETAILS", "OTEL_LOG_ASSISTANT_RESPONSES", "/home/u/.claude/settings.json"} {
+		assert.Contains(t, cc, want)
+	}
+
+	buf.Reset()
+	printCodexPrivacyNote()
+	codex := buf.String()
+	for _, want := range []string{"shell commands", "tool output", "responses", "otel.log_agent_responses", "~/.codex/config.toml"} {
+		assert.Contains(t, codex, want)
+	}
 }

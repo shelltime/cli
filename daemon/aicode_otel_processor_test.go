@@ -1,10 +1,14 @@
 package daemon
 
 import (
+	"math"
 	"testing"
 
 	"github.com/malamtime/cli/model"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	commonv1 "go.opentelemetry.io/proto/otlp/common/v1"
+	logsv1 "go.opentelemetry.io/proto/otlp/logs/v1"
 	resourcev1 "go.opentelemetry.io/proto/otlp/resource/v1"
 )
 
@@ -184,251 +188,206 @@ func TestMapMetricName_ClaudeCode(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.input, func(t *testing.T) {
-			result := mapMetricName(tc.input, model.AICodeOtelSourceClaudeCode)
-			if result != tc.expected {
-				t.Errorf("Expected %s, got %s", tc.expected, result)
-			}
+			assert.Equal(t, tc.expected, mapMetricName(tc.input))
 		})
 	}
 }
 
-func TestMapMetricName_Codex(t *testing.T) {
-	testCases := []struct {
-		input    string
-		expected string
-	}{
-		{"codex.session.count", model.AICodeMetricSessionCount},
-		{"codex.token.usage", model.AICodeMetricTokenUsage},
-		{"codex.cost.usage", model.AICodeMetricCostUsage},
-		{"codex.lines_of_code.count", model.AICodeMetricLinesOfCodeCount},
-		{"codex.commit.count", model.AICodeMetricCommitCount},
-		{"codex.pull_request.count", model.AICodeMetricPullRequestCount},
-		{"codex.active_time.total", model.AICodeMetricActiveTimeTotal},
-	}
-
-	for _, tc := range testCases {
-		t.Run(tc.input, func(t *testing.T) {
-			result := mapMetricName(tc.input, model.AICodeOtelSourceCodex)
-			if result != tc.expected {
-				t.Errorf("Expected %s, got %s", tc.expected, result)
-			}
-		})
+// Codex exports no such metrics (its OTLP metrics carry no session id), so the
+// former codex.* aliases are gone.
+func TestMapMetricName_CodexNamesAreNotMapped(t *testing.T) {
+	for _, name := range []string{
+		"codex.session.count", "codex.token.usage", "codex.cost.usage", "codex.lines_of_code.count",
+		"codex.commit.count", "codex.pull_request.count", "codex.active_time.total", "codex.tool.call",
+	} {
+		assert.Empty(t, mapMetricName(name), name)
 	}
 }
 
-func TestMapEventName_ClaudeCode(t *testing.T) {
+func TestNormalizeOtelEventName(t *testing.T) {
 	testCases := []struct {
 		input    string
 		expected string
 	}{
 		{"claude_code.user_prompt", model.AICodeEventUserPrompt},
+		{"user_prompt", model.AICodeEventUserPrompt}, // Claude's event.name attribute has no prefix
 		{"claude_code.tool_result", model.AICodeEventToolResult},
 		{"claude_code.api_request", model.AICodeEventApiRequest},
 		{"claude_code.api_error", model.AICodeEventApiError},
 		{"claude_code.tool_decision", model.AICodeEventToolDecision},
-	}
-
-	for _, tc := range testCases {
-		t.Run(tc.input, func(t *testing.T) {
-			result := mapEventName(tc.input, model.AICodeOtelSourceClaudeCode)
-			if result != tc.expected {
-				t.Errorf("Expected %s, got %s", tc.expected, result)
-			}
-		})
-	}
-}
-
-func TestMapEventName_Codex(t *testing.T) {
-	testCases := []struct {
-		input    string
-		expected string
-	}{
+		{"claude_code.assistant_response", model.AICodeEventAssistantResponse},
+		{"claude_code.hook_execution_complete", "hook_execution_complete"},
 		{"codex.user_prompt", model.AICodeEventUserPrompt},
 		{"codex.tool_result", model.AICodeEventToolResult},
-		{"codex.api_request", model.AICodeEventApiRequest},
-		{"codex.api_error", model.AICodeEventApiError},
-		{"codex.tool_decision", model.AICodeEventToolDecision},
 		{"codex.exec_command", model.AICodeEventExecCommand},
 		{"codex.conversation_starts", model.AICodeEventConversationStarts},
 		{"codex.sse_event", model.AICodeEventSSEEvent},
+		{"codex.agent_response", model.AICodeEventAgentResponse},
+		{"codex.turn_cost", model.AICodeEventTurnCost},
+		{" custom.event ", "custom.event"}, // unknown names pass through for the server's "other"
+		// dropped
+		{"claude_code.api_request_body", ""},
+		{"claude_code.api_response_body", ""},
+		{"claude_code.system_prompt", ""},
+		{"api_request_body", ""},
+		{"", ""},
 	}
 
 	for _, tc := range testCases {
 		t.Run(tc.input, func(t *testing.T) {
-			result := mapEventName(tc.input, model.AICodeOtelSourceCodex)
-			if result != tc.expected {
-				t.Errorf("Expected %s, got %s", tc.expected, result)
-			}
+			assert.Equal(t, tc.expected, normalizeOtelEventName(tc.input))
 		})
 	}
 }
 
-func TestMapEventName_Unknown(t *testing.T) {
-	// Unknown events should return as-is
-	result := mapEventName("custom.event", "")
-	if result != "custom.event" {
-		t.Errorf("Unknown events should be returned as-is, got %s", result)
-	}
+func arrVal(values ...*commonv1.AnyValue) *commonv1.AnyValue {
+	return &commonv1.AnyValue{Value: &commonv1.AnyValue_ArrayValue{ArrayValue: &commonv1.ArrayValue{Values: values}}}
 }
 
-func TestGetIntFromValue(t *testing.T) {
+func TestOptInt(t *testing.T) {
 	testCases := []struct {
 		name     string
 		value    *commonv1.AnyValue
-		expected int
+		expected *int
 	}{
-		{
-			"int value",
-			&commonv1.AnyValue{Value: &commonv1.AnyValue_IntValue{IntValue: 42}},
-			42,
-		},
-		{
-			"string value",
-			&commonv1.AnyValue{Value: &commonv1.AnyValue_StringValue{StringValue: "123"}},
-			123,
-		},
-		{
-			"invalid string",
-			&commonv1.AnyValue{Value: &commonv1.AnyValue_StringValue{StringValue: "not-a-number"}},
-			0,
-		},
-		{
-			"empty string",
-			&commonv1.AnyValue{Value: &commonv1.AnyValue_StringValue{StringValue: ""}},
-			0,
-		},
+		{"int", intVal(42), model.IntRef(42)},
+		{"int zero is kept", intVal(0), model.IntRef(0)},
+		{"integral double", dblVal(1200), model.IntRef(1200)},
+		{"fractional double rounds", dblVal(12.6), model.IntRef(13)},
+		{"numeric string", strVal("123"), model.IntRef(123)},
+		{"string zero is kept", strVal("0"), model.IntRef(0)},
+		{"padded string", strVal(" 7 "), model.IntRef(7)},
+		{"float string", strVal("250.0"), model.IntRef(250)},
+		{"invalid string", strVal("not-a-number"), nil},
+		{"empty string", strVal(""), nil},
+		{"bool", boolVal(true), nil},
+		{"NaN", dblVal(math.NaN()), nil},
+		{"nil", nil, nil},
 	}
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			result := getIntFromValue(tc.value)
-			if result != tc.expected {
-				t.Errorf("Expected %d, got %d", tc.expected, result)
-			}
+			assert.Equal(t, tc.expected, optInt(tc.value))
 		})
 	}
+
+	n := optInt64Ref(strVal("9007199254740993"))
+	require.NotNil(t, n)
+	assert.Equal(t, int64(9007199254740993), *n, "int64 strings keep full precision")
 }
 
-func TestGetBoolFromValue(t *testing.T) {
+func TestOptBool(t *testing.T) {
 	testCases := []struct {
 		name     string
 		value    *commonv1.AnyValue
-		expected bool
+		expected *bool
 	}{
-		{
-			"bool true",
-			&commonv1.AnyValue{Value: &commonv1.AnyValue_BoolValue{BoolValue: true}},
-			true,
-		},
-		{
-			"bool false",
-			&commonv1.AnyValue{Value: &commonv1.AnyValue_BoolValue{BoolValue: false}},
-			false,
-		},
-		{
-			"string true",
-			&commonv1.AnyValue{Value: &commonv1.AnyValue_StringValue{StringValue: "true"}},
-			true,
-		},
-		{
-			"string false",
-			&commonv1.AnyValue{Value: &commonv1.AnyValue_StringValue{StringValue: "false"}},
-			false,
-		},
-		{
-			"invalid string",
-			&commonv1.AnyValue{Value: &commonv1.AnyValue_StringValue{StringValue: "maybe"}},
-			false,
-		},
+		{"bool true", boolVal(true), model.BoolRef(true)},
+		{"bool false is kept", boolVal(false), model.BoolRef(false)},
+		{"string true", strVal("true"), model.BoolRef(true)},
+		{"string false is kept", strVal("false"), model.BoolRef(false)},
+		{"string TRUE", strVal("TRUE"), model.BoolRef(true)},
+		{"invalid string", strVal("maybe"), nil},
+		{"int", intVal(1), nil},
+		{"nil", nil, nil},
 	}
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			result := getBoolFromValue(tc.value)
-			if result != tc.expected {
-				t.Errorf("Expected %v, got %v", tc.expected, result)
-			}
+			assert.Equal(t, tc.expected, optBool(tc.value))
 		})
 	}
 }
 
-func TestGetFloatFromValue(t *testing.T) {
+func TestOptFloat(t *testing.T) {
 	testCases := []struct {
 		name     string
 		value    *commonv1.AnyValue
-		expected float64
+		expected *float64
 	}{
-		{
-			"double value",
-			&commonv1.AnyValue{Value: &commonv1.AnyValue_DoubleValue{DoubleValue: 3.14}},
-			3.14,
-		},
-		{
-			"string value",
-			&commonv1.AnyValue{Value: &commonv1.AnyValue_StringValue{StringValue: "2.71"}},
-			2.71,
-		},
-		{
-			"invalid string",
-			&commonv1.AnyValue{Value: &commonv1.AnyValue_StringValue{StringValue: "not-a-float"}},
-			0,
-		},
+		{"double", dblVal(3.14), model.Float64Ref(3.14)},
+		{"double zero is kept", dblVal(0), model.Float64Ref(0)},
+		{"int", intVal(1), model.Float64Ref(1)},
+		{"int zero is kept", intVal(0), model.Float64Ref(0)},
+		{"string", strVal("2.71"), model.Float64Ref(2.71)},
+		{"invalid string", strVal("not-a-float"), nil},
+		{"infinite", dblVal(math.Inf(1)), nil},
+		{"bool", boolVal(true), nil},
 	}
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			result := getFloatFromValue(tc.value)
-			if result != tc.expected {
-				t.Errorf("Expected %f, got %f", tc.expected, result)
-			}
+			assert.Equal(t, tc.expected, optFloat(tc.value))
 		})
 	}
 }
 
-func TestGetStringArrayFromValue(t *testing.T) {
-	t.Run("valid array", func(t *testing.T) {
-		value := &commonv1.AnyValue{
-			Value: &commonv1.AnyValue_ArrayValue{
-				ArrayValue: &commonv1.ArrayValue{
-					Values: []*commonv1.AnyValue{
-						{Value: &commonv1.AnyValue_StringValue{StringValue: "a"}},
-						{Value: &commonv1.AnyValue_StringValue{StringValue: "b"}},
-						{Value: &commonv1.AnyValue_StringValue{StringValue: "c"}},
-					},
-				},
+func TestStringList(t *testing.T) {
+	testCases := []struct {
+		name     string
+		value    *commonv1.AnyValue
+		expected []string
+	}{
+		{"array", arrVal(strVal("a"), strVal("b"), strVal("c")), []string{"a", "b", "c"}},
+		{"array skips empty", arrVal(strVal("a"), strVal(""), strVal(" b ")), []string{"a", "b"}},
+		{"codex joined string", strVal("filesystem, github"), []string{"filesystem", "github"}},
+		{"comma string", strVal("a,b"), []string{"a", "b"}},
+		{"single", strVal("only"), []string{"only"}},
+		{"empty string", strVal(""), nil},
+		{"empty array", arrVal(), nil},
+		{"int", intVal(3), nil},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			assert.Equal(t, tc.expected, stringList(tc.value))
+		})
+	}
+}
+
+func TestAnyValueToGo(t *testing.T) {
+	kvlist := &commonv1.AnyValue{Value: &commonv1.AnyValue_KvlistValue{KvlistValue: &commonv1.KeyValueList{Values: []*commonv1.KeyValue{
+		kv("name", strVal("x")),
+		kv("nested", arrVal(intVal(1), boolVal(false), dblVal(1.5))),
+	}}}}
+
+	assert.Equal(t, "s", anyValueToGo(strVal("s")))
+	assert.Equal(t, int64(4), anyValueToGo(intVal(4)))
+	assert.Equal(t, 2.5, anyValueToGo(dblVal(2.5)))
+	assert.Equal(t, false, anyValueToGo(boolVal(false)))
+	assert.Equal(t, "aGk=", anyValueToGo(&commonv1.AnyValue{Value: &commonv1.AnyValue_BytesValue{BytesValue: []byte("hi")}}))
+	assert.Equal(t, "NaN", anyValueToGo(dblVal(math.NaN())), "JSON can't encode NaN")
+	assert.Nil(t, anyValueToGo(nil))
+	assert.Equal(t, map[string]any{"name": "x", "nested": []any{int64(1), false, 1.5}}, anyValueToGo(kvlist))
+}
+
+func TestResolveEventName(t *testing.T) {
+	testCases := []struct {
+		name     string
+		record   *logsv1.LogRecord
+		expected string
+	}{
+		{
+			"event.name attribute wins",
+			&logsv1.LogRecord{
+				EventName:  "claude_code.other",
+				Body:       strVal("claude_code.body"),
+				Attributes: []*commonv1.KeyValue{kv("event.name", strVal("user_prompt"))},
 			},
-		}
+			"user_prompt",
+		},
+		{"EventName field", &logsv1.LogRecord{EventName: "codex.skill_invocation", Body: strVal("x")}, "codex.skill_invocation"},
+		{"string body", &logsv1.LogRecord{Body: strVal("claude_code.api_request")}, "claude_code.api_request"},
+		{"free text body is no event name", &logsv1.LogRecord{Body: strVal("something went wrong")}, ""},
+		{"empty event.name falls through", &logsv1.LogRecord{EventName: "x.y", Attributes: []*commonv1.KeyValue{kv("event.name", strVal(""))}}, "x.y"},
+		{"nothing", &logsv1.LogRecord{}, ""},
+	}
 
-		result := getStringArrayFromValue(value)
-		if len(result) != 3 {
-			t.Errorf("Expected 3 elements, got %d", len(result))
-		}
-		if result[0] != "a" || result[1] != "b" || result[2] != "c" {
-			t.Errorf("Array content mismatch")
-		}
-	})
-
-	t.Run("nil array", func(t *testing.T) {
-		value := &commonv1.AnyValue{Value: &commonv1.AnyValue_StringValue{StringValue: "not-array"}}
-		result := getStringArrayFromValue(value)
-		if result != nil {
-			t.Error("Expected nil for non-array value")
-		}
-	})
-
-	t.Run("empty array", func(t *testing.T) {
-		value := &commonv1.AnyValue{
-			Value: &commonv1.AnyValue_ArrayValue{
-				ArrayValue: &commonv1.ArrayValue{
-					Values: []*commonv1.AnyValue{},
-				},
-			},
-		}
-		result := getStringArrayFromValue(value)
-		if len(result) != 0 {
-			t.Errorf("Expected 0 elements, got %d", len(result))
-		}
-	})
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			assert.Equal(t, tc.expected, resolveEventName(tc.record))
+		})
+	}
 }
 
 func TestApplyResourceAttributesToMetric(t *testing.T) {

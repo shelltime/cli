@@ -206,10 +206,10 @@ func TestCodexToolOutcome(t *testing.T) {
 		wantSuccess  *bool
 		wantDuration *int
 	}{
-		{name: "json metadata", output: `"{\"output\":\"ok\",\"metadata\":{\"exit_code\":0,\"duration_seconds\":0.25}}"`, wantSuccess: boolRef(true), wantDuration: intRef(250)},
-		{name: "text form", output: `"Exit code: 2\nWall time: 1.5 seconds\nOutput:\nboom"`, wantSuccess: boolRef(false), wantDuration: intRef(1500)},
+		{name: "json metadata", output: `"{\"output\":\"ok\",\"metadata\":{\"exit_code\":0,\"duration_seconds\":0.25}}"`, wantSuccess: BoolRef(true), wantDuration: IntRef(250)},
+		{name: "text form", output: `"Exit code: 2\nWall time: 1.5 seconds\nOutput:\nboom"`, wantSuccess: BoolRef(false), wantDuration: IntRef(1500)},
 		{name: "plain output", output: `"hello"`},
-		{name: "object output", output: `{"metadata":{"exit_code":0}}`, wantSuccess: boolRef(true)},
+		{name: "object output", output: `{"metadata":{"exit_code":0}}`, wantSuccess: BoolRef(true)},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
