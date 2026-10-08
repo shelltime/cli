@@ -142,14 +142,16 @@ func (s *codexOtelConfigService) Uninstall() error {
 	return s.writeConfig(config)
 }
 
-// Check returns true if OTEL is configured in ~/.codex/config.toml
+// Check returns true when ~/.codex/config.toml exports OTEL to the ShellTime daemon. A user's own
+// [otel] table without our exporter (for example only `environment`) does not count, since
+// Install merges into that table instead of replacing it.
 func (s *codexOtelConfigService) Check() (bool, error) {
 	config, err := s.readConfig()
 	if err != nil {
 		return false, err
 	}
-	_, exists := config["otel"]
-	return exists, nil
+	otel, _ := config["otel"].(map[string]interface{})
+	return codexOtelGRPCEndpoint(otel) == AICodeOtelEndpoint, nil
 }
 
 func (s *codexOtelConfigService) Endpoint() (string, error) {

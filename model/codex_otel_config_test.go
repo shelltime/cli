@@ -95,6 +95,32 @@ func TestCodexOtelConfig_Uninstall(t *testing.T) {
 	assert.NotContains(t, parsed, "otel")
 }
 
+func TestCodexOtelConfig_CheckRequiresShellTimeExporter(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	svc := NewCodexOtelConfigService()
+	configPath := filepath.Join(home, codexConfigDir, codexConfigFile)
+	require.NoError(t, os.MkdirAll(filepath.Dir(configPath), 0755))
+
+	// The user's own [otel] table without our exporter is not "installed".
+	require.NoError(t, os.WriteFile(configPath, []byte("[otel]\nenvironment = \"prod\"\n"), 0644))
+	ok, err := svc.Check()
+	require.NoError(t, err)
+	assert.False(t, ok)
+
+	// An exporter pointing somewhere else isn't ours either.
+	require.NoError(t, os.WriteFile(configPath, []byte(
+		"[otel]\nexporter = { otlp-grpc = { endpoint = \"http://collector:4317\" } }\n"), 0644))
+	ok, err = svc.Check()
+	require.NoError(t, err)
+	assert.False(t, ok)
+
+	require.NoError(t, svc.Install())
+	ok, err = svc.Check()
+	require.NoError(t, err)
+	assert.True(t, ok)
+}
+
 func TestCodexOtelConfig_CheckMalformedConfig(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)

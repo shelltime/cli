@@ -333,6 +333,7 @@ func extractResourceAttributes(resource *resourcev1.Resource) *model.AICodeOtelR
 			attrs.Pwd = anyString(value)
 		case "project", "project.path":
 			// The request-level project, see detectProject.
+
 		// Kept as fields and also forwarded in the attributes.
 		case "service.name":
 			attrs.ServiceName = anyString(value)
