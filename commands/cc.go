@@ -67,8 +67,17 @@ func commandCCInstall(c *cli.Context) error {
 
 	color.Green.Println("Claude Code OTEL configuration has been installed!")
 	color.Yellow.Println("Please restart your Claude Code sessions (terminal, desktop app, IDE) to apply changes.")
+	printCCPrivacyNote(settingsService.SettingsPath())
 
 	return nil
+}
+
+// printCCPrivacyNote says what the installed config sends beyond token and cost counts.
+func printCCPrivacyNote(settingsPath string) {
+	color.Gray.Println("Privacy: besides usage and cost, Claude Code now sends your prompts, tool details (Bash")
+	color.Gray.Println("commands, file paths, truncated tool input, tool errors) and assistant responses to your")
+	color.Gray.Printf("ShellTime account. To keep some of them out, set OTEL_LOG_USER_PROMPTS, OTEL_LOG_TOOL_DETAILS or\n")
+	color.Gray.Printf("OTEL_LOG_ASSISTANT_RESPONSES to 0 in the env of %s (re-running install resets them).\n", settingsPath)
 }
 
 func commandCCUninstall(c *cli.Context) error {

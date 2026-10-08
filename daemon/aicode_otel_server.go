@@ -11,6 +11,10 @@ import (
 	"google.golang.org/grpc"
 )
 
+// aiCodeOtelMaxRecvMsgSize raises gRPC's 4 MB default: with tool details and assistant responses
+// enabled, one Claude Code or Codex export batch can carry several 60 KB attributes per record.
+const aiCodeOtelMaxRecvMsgSize = 32 << 20
+
 // AICodeOtelServer is the gRPC server for receiving OTEL data from AI coding CLIs (Claude Code, Codex, etc.)
 type AICodeOtelServer struct {
 	port       int
@@ -36,7 +40,7 @@ func (s *AICodeOtelServer) Start() error {
 	}
 	s.listener = listener
 
-	s.grpcServer = grpc.NewServer()
+	s.grpcServer = grpc.NewServer(grpc.MaxRecvMsgSize(aiCodeOtelMaxRecvMsgSize))
 
 	// Register OTEL collector services
 	collmetricsv1.RegisterMetricsServiceServer(s.grpcServer, &metricsServiceServer{processor: s.processor})

@@ -269,3 +269,61 @@ func TestClaudeSettings_StatusLineCommand(t *testing.T) {
 	_, err = svc.StatusLineCommand()
 	assert.Error(t, err)
 }
+
+func TestClaudeSettingsOtel_InstallEnablesDetailsAndDeltaTemporality(t *testing.T) {
+	svc, path := setupClaudeSettingsTest(t)
+
+	require.NoError(t, svc.Install())
+
+	env := readClaudeSettingsEnv(t, path)
+	assert.Equal(t, "1", env["OTEL_LOG_TOOL_DETAILS"])
+	assert.Equal(t, "1", env["OTEL_LOG_ASSISTANT_RESPONSES"])
+	assert.Equal(t, "true", env["OTEL_METRICS_INCLUDE_ENTRYPOINT"])
+	assert.Equal(t, "true", env["OTEL_METRICS_INCLUDE_REPOSITORY"])
+	assert.Equal(t, "delta", env["OTEL_EXPORTER_OTLP_METRICS_TEMPORALITY_PREFERENCE"])
+}
+
+func TestClaudeSettingsOtel_MissingManagedKeys(t *testing.T) {
+	svc, path := setupClaudeSettingsTest(t)
+
+	all := make([]string, 0, len(claudeSettingsOtelEnvVars()))
+	for _, v := range claudeSettingsOtelEnvVars() {
+		all = append(all, v.Key)
+	}
+
+	missing, err := svc.MissingManagedKeys()
+	require.NoError(t, err, "a missing file is not an error")
+	assert.Equal(t, all, missing)
+
+	// Settings written by an older `cc install`.
+	writeClaudeSettings(t, path, `{"env": {
+		"CLAUDE_CODE_ENABLE_TELEMETRY": "1", "OTEL_METRICS_EXPORTER": "otlp", "OTEL_LOGS_EXPORTER": "otlp",
+		"OTEL_EXPORTER_OTLP_PROTOCOL": "grpc", "OTEL_EXPORTER_OTLP_ENDPOINT": "`+AICodeOtelEndpoint+`",
+		"OTEL_METRIC_EXPORT_INTERVAL": "10000", "OTEL_LOGS_EXPORT_INTERVAL": "5000", "OTEL_LOG_USER_PROMPTS": "1",
+		"OTEL_METRICS_INCLUDE_SESSION_ID": "true", "OTEL_METRICS_INCLUDE_VERSION": "true",
+		"OTEL_METRICS_INCLUDE_ACCOUNT_UUID": "true", "OTEL_RESOURCE_ATTRIBUTES": "team.id=shelltime"}}`)
+	missing, err = svc.MissingManagedKeys()
+	require.NoError(t, err)
+	assert.Equal(t, []string{
+		"OTEL_LOG_TOOL_DETAILS",
+		"OTEL_LOG_ASSISTANT_RESPONSES",
+		"OTEL_METRICS_INCLUDE_ENTRYPOINT",
+		"OTEL_METRICS_INCLUDE_REPOSITORY",
+		"OTEL_EXPORTER_OTLP_METRICS_TEMPORALITY_PREFERENCE",
+	}, missing)
+
+	require.NoError(t, svc.Install())
+	missing, err = svc.MissingManagedKeys()
+	require.NoError(t, err)
+	assert.Empty(t, missing)
+
+	// An explicit opt-out is the user's choice, not a missing key.
+	writeClaudeSettings(t, path, `{"env":{"OTEL_LOG_TOOL_DETAILS":"0"}}`)
+	missing, err = svc.MissingManagedKeys()
+	require.NoError(t, err)
+	assert.NotContains(t, missing, "OTEL_LOG_TOOL_DETAILS")
+
+	writeClaudeSettings(t, path, `{"env": `)
+	_, err = svc.MissingManagedKeys()
+	assert.Error(t, err)
+}

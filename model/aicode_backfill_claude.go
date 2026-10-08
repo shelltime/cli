@@ -252,7 +252,7 @@ func (p *claudeParser) handleAssistant(l *claudeTranscriptLine, ts time.Time) {
 		isError:    l.IsAPIErrorMessage,
 	}
 	if req.isError {
-		req.errorText = capBackfillText(claudeBlocksText(blocks), backfillMaxErrorBytes)
+		req.errorText = CapAICodeText(claudeBlocksText(blocks), backfillMaxErrorBytes)
 		if req.model == claudeSyntheticModel {
 			req.model = ""
 		}
@@ -345,10 +345,10 @@ func (p *claudeParser) build(opts BackfillOptions) []*BackfillSession {
 		if r.isError {
 			e.Error = r.errorText
 		} else {
-			e.InputTokens = intRef(r.usage.InputTokens)
-			e.OutputTokens = intRef(r.usage.OutputTokens)
-			e.CacheReadTokens = intRef(r.usage.CacheReadInputTokens)
-			e.CacheCreationTokens = intRef(r.usage.CacheCreationInputTokens)
+			e.InputTokens = IntRef(r.usage.InputTokens)
+			e.OutputTokens = IntRef(r.usage.OutputTokens)
+			e.CacheReadTokens = IntRef(r.usage.CacheReadInputTokens)
+			e.CacheCreationTokens = IntRef(r.usage.CacheCreationInputTokens)
 			e.CostUSD = r.costUSD
 		}
 		session(sid).Events = append(session(sid).Events, e)
@@ -358,9 +358,9 @@ func (p *claudeParser) build(opts BackfillOptions) []*BackfillSession {
 		pr := p.prompts[uuid]
 		sid := p.earliestSession(pr.sessions)
 		e := newBackfillEvent(AICodeClientClaudeCode, AICodeEventUserPrompt, "prompt:"+uuid, sid, pr.ts)
-		e.PromptLength = intRef(utf8.RuneCountInString(pr.text))
+		e.PromptLength = IntRef(utf8.RuneCountInString(pr.text))
 		if !opts.NoPrompts {
-			e.Prompt = capBackfillText(pr.text, backfillMaxPromptBytes)
+			e.Prompt = CapAICodeText(pr.text, backfillMaxPromptBytes)
 		}
 		session(sid).Events = append(session(sid).Events, e)
 	}
@@ -374,7 +374,7 @@ func (p *claudeParser) build(opts BackfillOptions) []*BackfillSession {
 		sid := p.earliestSession(res.sessions)
 		e := newBackfillEvent(AICodeClientClaudeCode, AICodeEventToolResult, "tool:"+id, sid, res.ts)
 		e.ToolName = use.name
-		e.Success = boolRef(!res.isError)
+		e.Success = BoolRef(!res.isError)
 		e.DurationMs = res.durationMs
 		e.ToolParameters = use.params
 		session(sid).Events = append(session(sid).Events, e)
@@ -513,10 +513,10 @@ func claudeToolDuration(raw json.RawMessage) *int {
 		return nil
 	}
 	if result.DurationMs != nil {
-		return intRef(int(*result.DurationMs))
+		return IntRef(int(*result.DurationMs))
 	}
 	if result.TotalDurationMs != nil {
-		return intRef(int(*result.TotalDurationMs))
+		return IntRef(int(*result.TotalDurationMs))
 	}
 	return nil
 }

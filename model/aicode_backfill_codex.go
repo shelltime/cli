@@ -362,9 +362,9 @@ func (p *codexParser) addPrompt(st *codexFileState, text, rawTs string, ts time.
 		return
 	}
 	e := newBackfillEvent(AICodeClientCodex, AICodeEventUserPrompt, naturalKey, st.sessionID, ts)
-	e.PromptLength = intRef(utf8.RuneCountInString(text))
+	e.PromptLength = IntRef(utf8.RuneCountInString(text))
 	if !p.opts.NoPrompts {
-		e.Prompt = capBackfillText(text, backfillMaxPromptBytes)
+		e.Prompt = CapAICodeText(text, backfillMaxPromptBytes)
 	}
 	st.events = append(st.events, e)
 }
@@ -420,10 +420,10 @@ func (p *codexParser) handleTokenCount(st *codexFileState, msg *codexEventMsg, r
 	e.EventKind = codexResponseCompleted
 	e.Model = model
 	// Same semantics as the live pipeline: input includes cached tokens.
-	e.InputTokens = intRef(usage.InputTokens)
-	e.CacheReadTokens = intRef(usage.CachedInputTokens)
-	e.OutputTokens = intRef(usage.OutputTokens)
-	e.ReasoningTokens = intRef(usage.ReasoningOutputTokens)
+	e.InputTokens = IntRef(usage.InputTokens)
+	e.CacheReadTokens = IntRef(usage.CachedInputTokens)
+	e.OutputTokens = IntRef(usage.OutputTokens)
+	e.ReasoningTokens = IntRef(usage.ReasoningOutputTokens)
 	st.events = append(st.events, e)
 }
 
@@ -574,10 +574,10 @@ func codexToolOutcome(raw json.RawMessage) (*bool, *int) {
 		var success *bool
 		var duration *int
 		if structured.Metadata.ExitCode != nil {
-			success = boolRef(*structured.Metadata.ExitCode == 0)
+			success = BoolRef(*structured.Metadata.ExitCode == 0)
 		}
 		if structured.Metadata.DurationSeconds != nil {
-			duration = intRef(int(*structured.Metadata.DurationSeconds * 1000))
+			duration = IntRef(int(*structured.Metadata.DurationSeconds * 1000))
 		}
 		return success, duration
 	}
@@ -586,12 +586,12 @@ func codexToolOutcome(raw json.RawMessage) (*bool, *int) {
 	var duration *int
 	if m := codexExitCodePattern.FindStringSubmatch(text); m != nil {
 		if code, err := strconv.Atoi(m[1]); err == nil {
-			success = boolRef(code == 0)
+			success = BoolRef(code == 0)
 		}
 	}
 	if m := codexWallTimePattern.FindStringSubmatch(text); m != nil {
 		if secs, err := strconv.ParseFloat(m[1], 64); err == nil {
-			duration = intRef(int(secs * 1000))
+			duration = IntRef(int(secs * 1000))
 		}
 	}
 	return success, duration

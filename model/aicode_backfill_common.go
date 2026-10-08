@@ -15,7 +15,6 @@ import (
 	"sort"
 	"strings"
 	"time"
-	"unicode/utf8"
 )
 
 // Text limits for backfilled events. They keep a 500-event batch well under
@@ -316,20 +315,3 @@ func finalizeBackfillSession(s *BackfillSession) {
 		s.End = last
 	}
 }
-
-// capBackfillText truncates s to at most maxBytes without splitting a UTF-8
-// character.
-func capBackfillText(s string, maxBytes int) string {
-	if len(s) <= maxBytes {
-		return s
-	}
-	cut := maxBytes
-	for cut > 0 && !utf8.RuneStart(s[cut]) {
-		cut--
-	}
-	return s[:cut]
-}
-
-func intRef(v int) *int { return &v }
-
-func boolRef(v bool) *bool { return &v }

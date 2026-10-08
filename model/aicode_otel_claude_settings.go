@@ -48,9 +48,16 @@ func claudeSettingsOtelEnvVars() []claudeSettingsEnvVar {
 		{"OTEL_METRIC_EXPORT_INTERVAL", "10000"},
 		{"OTEL_LOGS_EXPORT_INTERVAL", "5000"},
 		{"OTEL_LOG_USER_PROMPTS", "1"},
+		// Tool details: Bash commands, MCP/skill names, file paths, truncated tool input, errors.
+		{"OTEL_LOG_TOOL_DETAILS", "1"},
+		{"OTEL_LOG_ASSISTANT_RESPONSES", "1"},
 		{"OTEL_METRICS_INCLUDE_SESSION_ID", "true"},
 		{"OTEL_METRICS_INCLUDE_VERSION", "true"},
 		{"OTEL_METRICS_INCLUDE_ACCOUNT_UUID", "true"},
+		{"OTEL_METRICS_INCLUDE_ENTRYPOINT", "true"},
+		{"OTEL_METRICS_INCLUDE_REPOSITORY", "true"},
+		// The server sums metric data points, which is only correct for delta temporality.
+		{"OTEL_EXPORTER_OTLP_METRICS_TEMPORALITY_PREFERENCE", "delta"},
 		{"OTEL_RESOURCE_ATTRIBUTES", claudeSettingsResourceAttributes()},
 	}
 }
@@ -167,6 +174,34 @@ func (s *ClaudeSettingsAICodeOtelEnvService) Check() error {
 		return fmt.Errorf("Claude Code OTEL config not found in %s", s.settingsPath)
 	}
 	return nil
+}
+
+// MissingManagedKeys returns the managed env vars that settings.json doesn't set, in install
+// order. Settings written by an older `shelltime cc install` lack the newer keys. A key the user
+// set to another value (such as OTEL_LOG_TOOL_DETAILS=0 to opt out) isn't reported. A missing
+// file yields every key.
+func (s *ClaudeSettingsAICodeOtelEnvService) MissingManagedKeys() ([]string, error) {
+	data, _, err := s.readSettings()
+	if err != nil {
+		return nil, err
+	}
+
+	var settings struct {
+		Env map[string]any `json:"env"`
+	}
+	if data != nil {
+		if err := json.Unmarshal(data, &settings); err != nil {
+			return nil, fmt.Errorf("failed to parse %s: %w", s.settingsPath, err)
+		}
+	}
+
+	var missing []string
+	for _, v := range claudeSettingsOtelEnvVars() {
+		if _, ok := settings.Env[v.Key]; !ok {
+			missing = append(missing, v.Key)
+		}
+	}
+	return missing, nil
 }
 
 // StatusLineCommand returns the statusLine.command configured in settings.json.
