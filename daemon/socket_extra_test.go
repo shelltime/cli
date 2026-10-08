@@ -4,6 +4,8 @@ import (
 	"context"
 	"encoding/json"
 	"net"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"testing"
@@ -163,6 +165,54 @@ func TestSocketHandler_SessionProject(t *testing.T) {
 		// Give the handler a brief moment to process.
 		time.Sleep(50 * time.Millisecond)
 	})
+}
+
+func TestSocketHandler_SessionPullRequestsSendsToServer(t *testing.T) {
+	type request struct {
+		path, auth string
+		body       map[string]interface{}
+	}
+	got := make(chan request, 1)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var body map[string]interface{}
+		_ = json.NewDecoder(r.Body).Decode(&body)
+		got <- request{path: r.URL.Path, auth: r.Header.Get("Authorization"), body: body}
+		w.WriteHeader(http.StatusNoContent)
+	}))
+	t.Cleanup(server.Close)
+
+	_, socketPath := startHandler(t, &model.ShellTimeConfig{Token: "tok", APIEndpoint: server.URL})
+	urls := []string{"https://github.com/o/r/pull/1", "https://github.com/o/r2/pull/2"}
+	require.NoError(t, SendSessionPullRequests(socketPath, "sess-1", urls))
+
+	select {
+	case req := <-got:
+		assert.Equal(t, "/api/v1/cc/session-pull-requests", req.path)
+		assert.Equal(t, "CLI tok", req.auth)
+		assert.Equal(t, "sess-1", req.body["sessionId"])
+		assert.Equal(t, []interface{}{urls[0], urls[1]}, req.body["urls"])
+	case <-time.After(2 * time.Second):
+		t.Fatal("daemon did not send session pull requests to the server")
+	}
+}
+
+func TestSocketHandler_SessionPullRequestsIgnoresEmpty(t *testing.T) {
+	requests := make(chan struct{}, 2)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requests <- struct{}{}
+		w.WriteHeader(http.StatusNoContent)
+	}))
+	t.Cleanup(server.Close)
+
+	_, socketPath := startHandler(t, &model.ShellTimeConfig{Token: "tok", APIEndpoint: server.URL})
+	require.NoError(t, SendSessionPullRequests(socketPath, "", []string{"https://github.com/o/r/pull/1"}))
+	require.NoError(t, SendSessionPullRequests(socketPath, "sess-1", nil))
+
+	select {
+	case <-requests:
+		t.Fatal("daemon sent a request without a session id or urls")
+	case <-time.After(200 * time.Millisecond):
+	}
 }
 
 func TestSocketHandler_UnknownMessageType(t *testing.T) {

@@ -95,6 +95,7 @@ shelltime codex install
 | `shelltime cc uninstall` | Remove Claude Code OTEL configuration from `~/.claude/settings.json` |
 | `shelltime cc statusline` | Emit statusline JSON for Claude Code |
 | `shelltime cc backfill` | Upload past Claude Code usage from local transcripts |
+| `shelltime cc pr --session-id <id> <url>...` | Link pull requests to a Claude Code session (called by the ShellTime Claude Code mod) |
 | `shelltime codex install` | Add ShellTime OTEL config to `~/.codex/config.toml` |
 | `shelltime codex uninstall` | Remove ShellTime OTEL config from `~/.codex/config.toml` |
 | `shelltime codex backfill` | Upload past Codex usage from local session files |
@@ -206,6 +207,16 @@ shelltime codex backfill          # upload Codex sessions
 - Sessions the server already has from live tracking are skipped, as are sessions still running. Running the command again only uploads what is missing.
 - Flags: `--since` / `--until` (`YYYY-MM-DD`) limit the range, `--no-prompts` uploads prompt lengths without the text, and `--ai-summary` also generates AI session summaries, which use your monthly AI credits.
 - Claude Code deletes transcripts after 30 days by default (`cleanupPeriodDays`), so only recent history may be available.
+
+## Linking Pull Requests to AI Sessions
+
+The [ShellTime Claude Code mod](https://github.com/shelltime/claude-code-mods) watches for `gh pr create` in Claude Code's Bash tool. When it sees one, it runs:
+
+```bash
+shelltime cc pr --session-id <claude-code-session-id> https://github.com/owner/repo/pull/123 [more URLs...]
+```
+
+The command hands the URLs to the daemon, and the daemon sends them to ShellTime, where they appear on the session. If no daemon is running, the CLI sends them itself. A session can link any number of PRs. Sending the same URL again does nothing. The command does nothing if you are not logged in.
 
 ## Security and Privacy
 

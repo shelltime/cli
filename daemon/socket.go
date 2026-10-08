@@ -23,6 +23,9 @@ const (
 	SocketMessageTypeStatus         SocketMessageType = "status"
 	SocketMessageTypeCCInfo         SocketMessageType = "cc_info"
 	SocketMessageTypeSessionProject SocketMessageType = "session_project"
+	// SocketMessageTypeSessionPullRequests links pull requests opened by
+	// `gh pr create` in a Claude Code session to it (fire-and-forget).
+	SocketMessageTypeSessionPullRequests SocketMessageType = "session_pull_requests"
 	// SocketMessageTypeTrackPre / TrackPost carry a single raw command event the
 	// daemon persists to its bolt-backed CommandStore (used when the bolt storage
 	// engine is enabled).
@@ -49,6 +52,11 @@ type TrackEventPayload struct {
 type SessionProjectRequest struct {
 	SessionID   string `json:"sessionId"`
 	ProjectPath string `json:"projectPath"`
+}
+
+type SessionPullRequestsRequest struct {
+	SessionID string   `json:"sessionId"`
+	URLs      []string `json:"urls"`
 }
 
 type CCInfoTimeRange string
@@ -236,9 +244,34 @@ func (p *SocketHandler) handleConnection(conn net.Conn) {
 				slog.Debug("session_project update dispatched", slog.String("sessionId", sessionID))
 			}
 		}
+	case SocketMessageTypeSessionPullRequests:
+		p.handleSessionPullRequests(msg)
 	default:
 		slog.Error("Unknown message type:", slog.String("messageType", string(msg.Type)))
 	}
+}
+
+func (p *SocketHandler) handleSessionPullRequests(msg SocketMessage) {
+	buf, err := json.Marshal(msg.Payload)
+	if err != nil {
+		slog.Error("Error encoding session_pull_requests payload", slog.Any("err", err))
+		return
+	}
+	var req SessionPullRequestsRequest
+	if err := json.Unmarshal(buf, &req); err != nil {
+		slog.Error("Error decoding session_pull_requests payload", slog.Any("err", err))
+		return
+	}
+	if req.SessionID == "" || len(req.URLs) == 0 {
+		return
+	}
+	go func() {
+		if err := model.SendSessionPullRequests(context.Background(), *p.config, req.SessionID, req.URLs); err != nil {
+			slog.Warn("Failed to send session pull requests", slog.String("sessionId", req.SessionID), slog.Any("err", err))
+			return
+		}
+		slog.Debug("session_pull_requests sent", slog.String("sessionId", req.SessionID), slog.Int("count", len(req.URLs)))
+	}()
 }
 
 func (p *SocketHandler) handleStatus(conn net.Conn) {

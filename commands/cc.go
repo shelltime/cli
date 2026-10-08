@@ -14,6 +14,7 @@ var CCCommand = &cli.Command{
 		CCUninstallCommand,
 		CCStatuslineCommand,
 		CCBackfillCommand,
+		CCPullRequestCommand,
 	},
 }
 

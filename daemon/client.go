@@ -103,6 +103,27 @@ func SendSessionProject(socketPath string, sessionID, projectPath string) {
 	json.NewEncoder(conn).Encode(msg)
 }
 
+// SendSessionPullRequests hands pull request URLs opened in a Claude Code
+// session to the daemon, which sends them to the server. It returns the dial or
+// write error so the caller can send them directly when no daemon is running.
+func SendSessionPullRequests(socketPath string, sessionID string, urls []string) error {
+	conn, err := net.DialTimeout("unix", socketPath, 100*time.Millisecond)
+	if err != nil {
+		return err
+	}
+	defer conn.Close()
+
+	msg := SocketMessage{
+		Type: SocketMessageTypeSessionPullRequests,
+		Payload: SessionPullRequestsRequest{
+			SessionID: sessionID,
+			URLs:      urls,
+		},
+	}
+
+	return json.NewEncoder(conn).Encode(msg)
+}
+
 // RequestListCommands asks the daemon for the locally buffered commands (used
 // by `shelltime ls` in bolt mode, since the CLI can't open the locked DB).
 func RequestListCommands(socketPath string, timeout time.Duration) (*ListCommandsResponse, error) {

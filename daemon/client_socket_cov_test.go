@@ -65,6 +65,45 @@ func TestX3SendSessionProject_DeliversToServer(t *testing.T) {
 	}
 }
 
+func TestSendSessionPullRequests_DialFailureReturnsError(t *testing.T) {
+	err := SendSessionPullRequests(filepath.Join(t.TempDir(), "absent.sock"), "sess", []string{"https://github.com/o/r/pull/1"})
+	require.Error(t, err)
+}
+
+func TestSendSessionPullRequests_DeliversToDaemon(t *testing.T) {
+	socketPath := filepath.Join(t.TempDir(), "spr.sock")
+	ln, err := net.Listen("unix", socketPath)
+	require.NoError(t, err)
+	t.Cleanup(func() { ln.Close() })
+
+	got := make(chan SocketMessage, 1)
+	go func() {
+		conn, aerr := ln.Accept()
+		if aerr != nil {
+			return
+		}
+		defer conn.Close()
+		var msg SocketMessage
+		if derr := json.NewDecoder(conn).Decode(&msg); derr == nil {
+			got <- msg
+		}
+	}()
+
+	urls := []string{"https://github.com/o/r/pull/1", "https://github.com/o/r2/pull/2"}
+	require.NoError(t, SendSessionPullRequests(socketPath, "sess-1", urls))
+
+	select {
+	case msg := <-got:
+		assert.Equal(t, SocketMessageTypeSessionPullRequests, msg.Type)
+		payload, ok := msg.Payload.(map[string]interface{})
+		require.True(t, ok)
+		assert.Equal(t, "sess-1", payload["sessionId"])
+		assert.Equal(t, []interface{}{urls[0], urls[1]}, payload["urls"])
+	case <-time.After(time.Second):
+		t.Fatal("session_pull_requests message not delivered")
+	}
+}
+
 // TestX3SocketHandler_StartListenError covers the net.Listen failure branch of
 // SocketHandler.Start: a socket path inside a non-existent directory cannot be
 // bound.
