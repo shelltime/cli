@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.1.93](https://github.com/shelltime/cli/compare/v0.1.92...v0.1.93) (2026-10-08)
+
+
+### Features
+
+* **cli:** add cc pr to link pull requests to a session via the daemon ([#318](https://github.com/shelltime/cli/issues/318)) ([d82ea6b](https://github.com/shelltime/cli/commit/d82ea6b89c27a5817132b61d4c8daf5f8aa7311c))
+* **daemon:** capture the full Claude Code and Codex OTEL spec ([#320](https://github.com/shelltime/cli/issues/320)) ([cb27a72](https://github.com/shelltime/cli/commit/cb27a724020b514cbf15dfb4fb83605c5c395d5e))
+
 ## [0.1.92](https://github.com/shelltime/cli/compare/v0.1.91...v0.1.92) (2026-10-07)
 
 
