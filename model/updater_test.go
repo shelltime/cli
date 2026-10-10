@@ -154,12 +154,66 @@ func TestDetectInstallKind(t *testing.T) {
 		{"curl install", filepath.Join(base, "bin", "shelltime"), InstallKindCurl},
 		{"homebrew apple silicon", "/opt/homebrew/bin/shelltime", InstallKindHomebrew},
 		{"homebrew cellar", "/usr/local/Cellar/shelltime/0.1.0/bin/shelltime", InstallKindHomebrew},
+		{"homebrew cask intel", "/usr/local/Caskroom/shelltime/0.1.93/shelltime", InstallKindHomebrew},
 		{"linuxbrew", "/home/linuxbrew/.linuxbrew/bin/shelltime", InstallKindHomebrew},
 		{"random location", "/usr/bin/shelltime", InstallKindUnknown},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			assert.Equal(t, tt.want, DetectInstallKind(tt.path))
+		})
+	}
+}
+
+// TestDetectInstallKindSymlinkedHome covers a $HOME reached through a symlink
+// (e.g. /home -> /var/home): ResolveCLIBinaryPath returns the resolved path,
+// which must still count as a curl install.
+func TestDetectInstallKindSymlinkedHome(t *testing.T) {
+	realHome := t.TempDir()
+	binDir := filepath.Join(realHome, COMMAND_BASE_STORAGE_FOLDER, "bin")
+	require.NoError(t, os.MkdirAll(binDir, 0o755))
+	require.NoError(t, os.WriteFile(filepath.Join(binDir, "shelltime"), []byte("x"), 0o755))
+
+	linkedHome := filepath.Join(t.TempDir(), "home")
+	require.NoError(t, os.Symlink(realHome, linkedHome))
+	t.Setenv("HOME", linkedHome)
+
+	resolved, err := filepath.EvalSymlinks(filepath.Join(linkedHome, COMMAND_BASE_STORAGE_FOLDER, "bin", "shelltime"))
+	require.NoError(t, err)
+	assert.Equal(t, InstallKindCurl, DetectInstallKind(resolved))
+}
+
+func TestHomebrewUpgradeCommand(t *testing.T) {
+	assert.Equal(t, "brew upgrade shelltime/tap/shelltime",
+		HomebrewUpgradeCommand("/opt/homebrew/Caskroom/shelltime/0.1.93/shelltime"))
+	assert.Equal(t, "brew uninstall --formula shelltime && brew install --cask shelltime/tap/shelltime",
+		HomebrewUpgradeCommand("/opt/homebrew/Cellar/shelltime/0.1.40/bin/shelltime"))
+	assert.Equal(t, "brew uninstall --formula shelltime && curl -sSL https://shelltime.xyz/i | bash",
+		HomebrewUpgradeCommand("/home/linuxbrew/.linuxbrew/Cellar/shelltime/0.1.40/bin/shelltime"))
+}
+
+func TestCompareVersions(t *testing.T) {
+	tests := []struct {
+		a, b   string
+		want   int
+		wantOK bool
+	}{
+		{"0.1.93", "v0.1.93", 0, true},
+		{"0.1.92", "v0.1.93", -1, true},
+		{"0.1.94", "v0.1.93", 1, true},
+		{"0.1.100", "v0.1.99", 1, true},
+		{"v1.0.0", "0.99.99", 1, true},
+		{"0.1.94-next", "v0.1.93", 1, true},
+		{"0.1.94-next", "v0.1.94", -1, true},
+		{"dev", "v0.1.93", 0, false},
+		{"0.1", "v0.1.93", 0, false},
+		{"", "v0.1.93", 0, false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.a+"_vs_"+tt.b, func(t *testing.T) {
+			got, ok := CompareVersions(tt.a, tt.b)
+			assert.Equal(t, tt.wantOK, ok)
+			assert.Equal(t, tt.want, got)
 		})
 	}
 }
@@ -279,4 +333,28 @@ func TestReplaceBinaryNoExisting(t *testing.T) {
 
 	_, err = os.Stat(dest + ".bak")
 	assert.True(t, os.IsNotExist(err))
+}
+
+// TestReplaceBinaryKeepsDestOnStagingFailure pins that the old binary stays at
+// destPath until the new one is fully written next to it: the shell hooks run
+// `shelltime` after every command and must never find it missing.
+func TestReplaceBinaryKeepsDestOnStagingFailure(t *testing.T) {
+	tmp := t.TempDir()
+	dest := filepath.Join(tmp, "shelltime")
+	require.NoError(t, os.WriteFile(dest, []byte("OLD"), 0o755))
+
+	// A directory at the staging path makes staging fail.
+	require.NoError(t, os.MkdirAll(filepath.Join(dest+".new", "blocker"), 0o755))
+
+	src := filepath.Join(tmp, "src", "shelltime")
+	require.NoError(t, os.MkdirAll(filepath.Dir(src), 0o755))
+	require.NoError(t, os.WriteFile(src, []byte("NEW"), 0o755))
+
+	require.Error(t, ReplaceBinary(src, dest))
+
+	body, err := os.ReadFile(dest)
+	require.NoError(t, err)
+	assert.Equal(t, "OLD", string(body))
+	_, err = os.Stat(dest + ".bak")
+	assert.True(t, os.IsNotExist(err), "dest must not be moved aside before the new binary is staged")
 }

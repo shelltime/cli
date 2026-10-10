@@ -15,6 +15,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -369,20 +370,33 @@ func stripExe(name string) string {
 // this is safe even while the binary is running because the kernel keeps the
 // old inode alive for the current process.
 func ReplaceBinary(srcPath, destPath string) error {
+	// Stage next to destPath first. moveFile copies when srcPath is on another
+	// filesystem (e.g. a tmpfs /tmp), and destPath must not be missing while
+	// it does: the shell hooks run `shelltime` after every command.
+	staged := destPath + ".new"
+	_ = os.Remove(staged)
+	if err := moveFile(srcPath, staged); err != nil {
+		_ = os.Remove(staged)
+		return err
+	}
+	if err := os.Chmod(staged, 0o755); err != nil {
+		_ = os.Remove(staged)
+		return err
+	}
+
 	bak := destPath + ".bak"
 	_ = os.Remove(bak)
 	if _, err := os.Stat(destPath); err == nil {
 		if err := os.Rename(destPath, bak); err != nil {
+			_ = os.Remove(staged)
 			return fmt.Errorf("rename %s -> %s: %w", destPath, bak, err)
 		}
 	}
-	if err := moveFile(srcPath, destPath); err != nil {
-		// Try to restore .bak on failure so we don't leave the user without a binary.
+	if err := os.Rename(staged, destPath); err != nil {
+		// Restore .bak so we don't leave the user without a binary.
 		_ = os.Rename(bak, destPath)
-		return err
-	}
-	if err := os.Chmod(destPath, 0o755); err != nil {
-		return err
+		_ = os.Remove(staged)
+		return fmt.Errorf("rename %s -> %s: %w", staged, destPath, err)
 	}
 	return nil
 }
@@ -417,6 +431,58 @@ func NormalizeVersion(v string) string {
 	return strings.TrimPrefix(strings.TrimSpace(v), "v")
 }
 
+// CompareVersions compares two MAJOR.MINOR.PATCH versions with an optional
+// "v" prefix and "-prerelease" suffix (e.g. "v0.1.93", "0.1.94-next"),
+// returning -1, 0 or 1. A pre-release sorts before its release. ok is false
+// when either side is not such a version (e.g. "dev").
+func CompareVersions(a, b string) (cmp int, ok bool) {
+	ac, apre, aok := parseVersion(a)
+	bc, bpre, bok := parseVersion(b)
+	if !aok || !bok {
+		return 0, false
+	}
+	for i := range ac {
+		if ac[i] != bc[i] {
+			if ac[i] < bc[i] {
+				return -1, true
+			}
+			return 1, true
+		}
+	}
+	switch {
+	case apre == bpre:
+		return 0, true
+	case apre == "":
+		return 1, true
+	case bpre == "":
+		return -1, true
+	default:
+		return strings.Compare(apre, bpre), true
+	}
+}
+
+func parseVersion(v string) (core [3]int, pre string, ok bool) {
+	v = NormalizeVersion(v)
+	if i := strings.IndexAny(v, "-+"); i >= 0 {
+		if v[i] == '-' {
+			pre = v[i+1:]
+		}
+		v = v[:i]
+	}
+	parts := strings.Split(v, ".")
+	if len(parts) != 3 {
+		return core, "", false
+	}
+	for i, p := range parts {
+		n, err := strconv.Atoi(p)
+		if err != nil || n < 0 {
+			return core, "", false
+		}
+		core[i] = n
+	}
+	return core, pre, true
+}
+
 // ResolveCLIBinaryPath returns the real (symlink-resolved) path of the running
 // CLI binary.
 func ResolveCLIBinaryPath() (string, error) {
@@ -444,16 +510,42 @@ const (
 // install ($HOME/.shelltime/bin), or unknown.
 func DetectInstallKind(binPath string) InstallKind {
 	clean := filepath.Clean(binPath)
-	if strings.Contains(clean, string(filepath.Separator)+"Cellar"+string(filepath.Separator)) ||
+	sep := string(filepath.Separator)
+	// Casks resolve to <prefix>/Caskroom/<cask>/<version>/, which on Intel
+	// Macs (/usr/local) matches none of the other checks.
+	if strings.Contains(clean, sep+"Cellar"+sep) ||
+		strings.Contains(clean, sep+"Caskroom"+sep) ||
 		strings.HasPrefix(clean, "/opt/homebrew/") ||
 		strings.HasPrefix(clean, "/home/linuxbrew/.linuxbrew/") {
 		return InstallKindHomebrew
 	}
+	// binPath is usually symlink-resolved (ResolveCLIBinaryPath), so also
+	// match the resolved bin dir in case $HOME or ~/.shelltime is a symlink.
 	expected := filepath.Clean(filepath.Join(GetBaseStoragePath(), "bin"))
-	if strings.HasPrefix(clean, expected+string(filepath.Separator)) {
+	if strings.HasPrefix(clean, expected+sep) {
+		return InstallKindCurl
+	}
+	if resolved, err := filepath.EvalSymlinks(expected); err == nil && strings.HasPrefix(clean, resolved+sep) {
 		return InstallKindCurl
 	}
 	return InstallKindUnknown
+}
+
+// HomebrewUpgradeCommand returns the command that upgrades the Homebrew
+// install at binPath. shelltime ships as a macOS-only cask now; a formula keg
+// (Cellar) no longer gets releases, so it has to be swapped for the cask, or
+// for the curl installer on Linuxbrew.
+func HomebrewUpgradeCommand(binPath string) string {
+	clean := filepath.Clean(binPath)
+	sep := string(filepath.Separator)
+	switch {
+	case !strings.Contains(clean, sep+"Cellar"+sep):
+		return "brew upgrade shelltime/tap/shelltime"
+	case strings.Contains(clean, sep+".linuxbrew"+sep):
+		return "brew uninstall --formula shelltime && curl -sSL https://shelltime.xyz/i | bash"
+	default:
+		return "brew uninstall --formula shelltime && brew install --cask shelltime/tap/shelltime"
+	}
 }
 
 // CurrentPlatform returns the goos/goarch pair, exposed for tests and logging.

@@ -164,6 +164,11 @@ func TestDoctorCheckSystem(t *testing.T) {
 	assert.Contains(t, update.Message, "v0.2.0")
 	assert.Regexp(t, "shelltime update|brew upgrade", update.Fix)
 
+	doctorFetchLatestVersion = func(context.Context) (string, error) { return "v0.1.0", nil }
+	update = findDoctorResult(t, doctorCheckSystem(env), "system.update")
+	assert.Equal(t, doctorOK, update.Status, "a build newer than the latest release needs no update")
+	assert.Contains(t, update.Message, "ahead")
+
 	env.offline = true
 	assert.Contains(t, findDoctorResult(t, doctorCheckSystem(env), "system.update").Message, "--offline")
 

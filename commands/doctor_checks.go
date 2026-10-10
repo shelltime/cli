@@ -205,11 +205,14 @@ func doctorCheckSystem(env *doctorEnv) []doctorResult {
 		ctx, cancel := context.WithTimeout(env.ctx, doctorUpdateTimeout)
 		latest, err := doctorFetchLatestVersion(ctx)
 		cancel()
+		cmp := compareToLatest(version, latest)
 		switch {
 		case err != nil:
 			update.Status, update.Message = doctorSkip, fmt.Sprintf("Couldn't check for updates: %v", err)
-		case model.NormalizeVersion(latest) == model.NormalizeVersion(version):
+		case cmp == 0:
 			update.Status, update.Message = doctorOK, fmt.Sprintf("You're on the latest version (%s).", latest)
+		case cmp > 0:
+			update.Status, update.Message = doctorOK, fmt.Sprintf("You're ahead of the latest release (%s, you have %s).", latest, version)
 		default:
 			update.Status = doctorWarn
 			update.Message = fmt.Sprintf("A newer version is available: %s (you have %s).", latest, version)
@@ -221,7 +224,7 @@ func doctorCheckSystem(env *doctorEnv) []doctorResult {
 
 func doctorUpdateHint() string {
 	if cliPath, err := model.ResolveCLIBinaryPath(); err == nil && model.DetectInstallKind(cliPath) == model.InstallKindHomebrew {
-		return "Run `brew upgrade shelltime/tap/shelltime`."
+		return fmt.Sprintf("Run `%s`.", model.HomebrewUpgradeCommand(cliPath))
 	}
 	return "Run `shelltime update`."
 }

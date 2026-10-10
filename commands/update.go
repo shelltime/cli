@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log/slog"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"runtime"
 
@@ -53,7 +54,7 @@ func commandUpdate(c *cli.Context) error {
 	switch model.DetectInstallKind(cliPath) {
 	case model.InstallKindHomebrew:
 		color.Yellow.Println("📦 Detected Homebrew installation.")
-		color.Yellow.Println("   Run: brew upgrade shelltime/tap/shelltime")
+		color.Yellow.Printf("   Run: %s\n", model.HomebrewUpgradeCommand(cliPath))
 		return nil
 	case model.InstallKindUnknown:
 		color.Yellow.Printf("⚠️  Binary at %s is not in a known auto-updatable location.\n", cliPath)
@@ -70,16 +71,18 @@ func commandUpdate(c *cli.Context) error {
 	if current == "" {
 		current = "dev"
 	}
-	normalizedLatest := model.NormalizeVersion(latest)
-	normalizedCurrent := model.NormalizeVersion(current)
+	status := compareToLatest(current, latest)
 
 	color.Cyan.Printf("   Current: %s\n", current)
 	color.Cyan.Printf("   Latest:  %s\n", latest)
 
 	if check {
-		if normalizedLatest == normalizedCurrent {
+		switch {
+		case status == 0:
 			color.Green.Println("✅ Already on the latest version.")
-		} else {
+		case status > 0:
+			color.Green.Println("✅ Already newer than the latest release.")
+		default:
 			color.Yellow.Println("⬆️  An update is available. Run `shelltime update` to install it.")
 		}
 		return nil
@@ -90,8 +93,13 @@ func commandUpdate(c *cli.Context) error {
 		return nil
 	}
 
-	if normalizedLatest == normalizedCurrent && !force {
+	if status == 0 && !force {
 		color.Green.Println("✅ Already on the latest version. Use --force to reinstall.")
+		return nil
+	}
+
+	if status > 0 && !force {
+		color.Yellow.Printf("⚠️  %s is newer than the latest release. Use --force to downgrade to %s.\n", current, latest)
 		return nil
 	}
 
@@ -103,8 +111,11 @@ func commandUpdate(c *cli.Context) error {
 
 	expectedSum, ok, err := model.FetchChecksum(ctx, latest, archiveName)
 	if err != nil {
-		color.Yellow.Printf("⚠️  Could not fetch checksums.txt: %v (proceeding without verification)\n", err)
-	} else if !ok {
+		// A missing checksums.txt comes back as !ok. Any other failure (5xx,
+		// network) must not quietly turn this into an unverified install.
+		return fmt.Errorf("fetch checksums.txt: %w", err)
+	}
+	if !ok {
 		color.Yellow.Println("⚠️  No checksum entry for this archive — proceeding without verification.")
 	}
 
@@ -149,7 +160,7 @@ func commandUpdate(c *cli.Context) error {
 
 	if shouldReinstallDaemon(ctx, skipDaemonReinstall) {
 		color.Yellow.Println("🔁 Refreshing daemon service...")
-		if err := commandDaemonReinstall(c); err != nil {
+		if err := runDaemonReinstall(ctx, cliPath); err != nil {
 			color.Yellow.Printf("⚠️  Daemon reinstall reported an error: %v\n", err)
 			color.Yellow.Println("   You can rerun `shelltime daemon reinstall` manually.")
 		}
@@ -159,6 +170,30 @@ func commandUpdate(c *cli.Context) error {
 
 	color.Green.Printf("✅ Updated to %s. Restart your shell to use the new binary.\n", latest)
 	return nil
+}
+
+// compareToLatest reports how the running version compares with the latest
+// release: -1 when an update is available, 0 when up to date, and 1 when the
+// running build is newer (e.g. a local build of an unreleased version).
+func compareToLatest(current, latest string) int {
+	if cmp, ok := model.CompareVersions(current, latest); ok {
+		return cmp
+	}
+	if model.NormalizeVersion(current) == model.NormalizeVersion(latest) {
+		return 0
+	}
+	return -1
+}
+
+// runDaemonReinstall runs `daemon reinstall` with the CLI that was just
+// installed at cliPath. This process is still the previous release, so
+// reinstalling in-process would write that release's service definition.
+func runDaemonReinstall(ctx context.Context, cliPath string) error {
+	cmd := exec.CommandContext(ctx, cliPath, "daemon", "reinstall")
+	cmd.Stdin = os.Stdin
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	return cmd.Run()
 }
 
 // resolveDaemonDest returns the path the daemon binary should be written to.
