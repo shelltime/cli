@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.1.94](https://github.com/shelltime/cli/compare/v0.1.93...v0.1.94) (2026-10-10)
+
+
+### Bug Fixes
+
+* **cli:** make `shelltime update` detect casks, verify downloads and refresh the daemon from the new release ([#324](https://github.com/shelltime/cli/issues/324)) ([639e900](https://github.com/shelltime/cli/commit/639e9006bc53eb29619ba80357e83145a6904cdd))
+* **readme:** correct install, command and privacy details ([#322](https://github.com/shelltime/cli/issues/322)) ([b285af2](https://github.com/shelltime/cli/commit/b285af2b4592534df0d2ebaec9b4a38734e65e6a))
+
 ## [0.1.93](https://github.com/shelltime/cli/compare/v0.1.92...v0.1.93) (2026-10-08)
 
 
