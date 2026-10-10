@@ -120,9 +120,9 @@ func TestWriteBinary_RoundTrip(t *testing.T) {
 	assert.Equal(t, os.FileMode(0o755), info.Mode().Perm())
 }
 
-// TestReplaceBinary_RestoreOnMoveFailure covers ReplaceBinary's failure-recovery
-// branch: when moveFile fails (src missing), the prior binary is restored from
-// the .bak and an error is returned.
+// TestReplaceBinary_RestoreOnMoveFailure covers ReplaceBinary's failure path:
+// when moveFile fails (src missing), the prior binary is still at dest and an
+// error is returned.
 func TestReplaceBinary_RestoreOnMoveFailure(t *testing.T) {
 	dir := t.TempDir()
 	dest := filepath.Join(dir, "shelltime")
@@ -136,5 +136,5 @@ func TestReplaceBinary_RestoreOnMoveFailure(t *testing.T) {
 	// The original binary must have been restored to dest.
 	got, err := os.ReadFile(dest)
 	require.NoError(t, err)
-	assert.Equal(t, "ORIGINAL", string(got), "prior binary restored after failed move")
+	assert.Equal(t, "ORIGINAL", string(got), "prior binary kept after failed move")
 }
