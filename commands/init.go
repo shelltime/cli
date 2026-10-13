@@ -15,6 +15,7 @@ var InitCommand *cli.Command = &cli.Command{
 			Usage:    "Authentication token",
 			Required: false,
 		},
+		emailFlag,
 	},
 	Action: commandInit,
 }

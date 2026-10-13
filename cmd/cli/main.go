@@ -125,7 +125,8 @@ func run() int {
 		slog.Error("CLI error", slog.Any("err", err))
 	}
 	commands.CloseLogger()
-	if doctorFailed {
+	// A sign-in through the iOS app that didn't complete already printed why.
+	if doctorFailed || errors.Is(err, commands.ErrAuthNotApproved) {
 		return 1
 	}
 	return 0
