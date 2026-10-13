@@ -3,8 +3,11 @@ package commands
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"io"
 	"log/slog"
+	"net/http"
 	"os"
 	"time"
 
@@ -28,11 +31,34 @@ var AuthCommand *cli.Command = &cli.Command{
 			Usage:    "Authentication token",
 			Required: false,
 		},
+		emailFlag,
 	},
 	Action: commandAuth,
 }
 
+// emailFlag signs in by approving a request in the ShellTime iOS app instead
+// of the browser. It needs no browser, so agents can run it.
+var emailFlag = &cli.StringFlag{
+	Name:     "email",
+	Aliases:  []string{"e"},
+	Usage:    "Sign in by approving a request on the iPhone of the account with this email (ShellTime iOS app)",
+	Required: false,
+}
+
+// ErrAuthNotApproved means signing in through the iOS app did not complete:
+// the request was denied, expired or refused. The CLI exits non-zero.
+var ErrAuthNotApproved = errors.New("sign-in was not approved")
+
+// newAppApprovalService is replaced in tests.
+var newAppApprovalService = model.NewAppApprovalService
+
 func commandAuth(c *cli.Context) error {
+	newToken := c.String("token")
+	email := c.String("email")
+	if newToken != "" && email != "" {
+		return errors.New("use either --token or --email, not both")
+	}
+
 	ctx, span := commandTracer.Start(c.Context, "auth")
 	defer span.End()
 	configDir := os.ExpandEnv("$HOME/" + model.COMMAND_BASE_STORAGE_FOLDER)
@@ -73,9 +99,13 @@ func commandAuth(c *cli.Context) error {
 		config = existingConfig
 	}
 
-	newToken := c.String("token")
-
-	if newToken == "" {
+	if newToken == "" && email != "" {
+		nt, err := ApplyTokenByAppApproval(ctx, config, email)
+		if err != nil {
+			return err
+		}
+		newToken = nt
+	} else if newToken == "" {
 		nt, err := ApplyTokenByHandshake(ctx, config)
 		if err != nil {
 			return err
@@ -144,6 +174,124 @@ func ApplyTokenByHandshake(_ctx context.Context, config model.ShellTimeConfig) (
 
 		time.Sleep(2 * time.Second)
 	}
+}
+
+// ApplyTokenByAppApproval pushes a sign-in request to the ShellTime iOS app of
+// the account with this email and waits for the user to approve it. Output is
+// plain lines, so an agent driving the CLI can relay the code to the user.
+func ApplyTokenByAppApproval(_ctx context.Context, config model.ShellTimeConfig, email string) (string, error) {
+	ctx, span := commandTracer.Start(_ctx, "appApproval", trace.WithSpanKind(trace.SpanKindClient))
+	defer span.End()
+
+	svc := newAppApprovalService(config)
+	ticket, err := svc.Request(ctx, email)
+	if err != nil {
+		var apiErr *model.AppApprovalError
+		if errors.As(err, &apiErr) {
+			color.Red.Println(" ❌ " + apiErr.Message)
+			if apiErr.StatusCode == http.StatusNotFound {
+				color.Yellow.Println("Run `shelltime auth` without --email to sign in with your browser instead.")
+			}
+		} else {
+			color.Red.Println(fmt.Sprintf(" ❌ Failed to send the sign-in request: %v", err))
+		}
+		return "", fmt.Errorf("%w: %w", ErrAuthNotApproved, err)
+	}
+
+	printAppApprovalIntro(os.Stdout, ticket)
+	stopIndicator := startWaitingIndicator()
+	token, err := waitForAppApproval(ctx, svc, ticket, sleepContext)
+	stopIndicator()
+	if err != nil {
+		color.Red.Println(" ❌ " + err.Error())
+		return "", err
+	}
+
+	color.Green.Println(" ✅ You are ready to go!")
+	return token, nil
+}
+
+func printAppApprovalIntro(out io.Writer, ticket model.AppApprovalTicket) {
+	fmt.Fprintln(out, "Sent a sign-in request to the ShellTime app on your iPhone.")
+	fmt.Fprintf(out, "Code: %s. Check that your iPhone shows the same code, then approve it.\n", ticket.MatchCode)
+	fmt.Fprintf(out, "Waiting for approval (expires in %s)...\n", time.Duration(ticket.ExpiresIn)*time.Second)
+}
+
+// appApprovalPollGrace keeps polling a little past the expiry in case the
+// server's clock is ahead; the server answers "expired" on its own anyway.
+const appApprovalPollGrace = 30 * time.Second
+
+// waitForAppApproval polls until the request is approved, denied or expired.
+// Network and server errors are retried until the request expires; a request
+// the API refuses ends the wait.
+func waitForAppApproval(
+	ctx context.Context,
+	svc model.AppApprovalService,
+	ticket model.AppApprovalTicket,
+	sleep func(context.Context, time.Duration) error,
+) (string, error) {
+	interval := time.Duration(max(ticket.Interval, 1)) * time.Second
+	giveUpAt := time.Now().Add(time.Duration(ticket.ExpiresIn)*time.Second + appApprovalPollGrace)
+
+	for {
+		if err := sleep(ctx, interval); err != nil {
+			return "", err
+		}
+
+		result, err := svc.Poll(ctx, ticket.RequestID, ticket.PollToken)
+		if err != nil {
+			if ctx.Err() != nil {
+				return "", ctx.Err()
+			}
+			var apiErr *model.AppApprovalError
+			if errors.As(err, &apiErr) && apiErr.StatusCode < http.StatusInternalServerError && apiErr.StatusCode != http.StatusTooManyRequests {
+				return "", fmt.Errorf("%w: %s", ErrAuthNotApproved, apiErr.Message)
+			}
+			slog.Warn("app approval poll failed, retrying", slog.Any("err", err))
+		} else {
+			switch result.Status {
+			case model.AppApprovalApproved:
+				if result.OpenToken == nil || result.OpenToken.Token == "" {
+					return "", fmt.Errorf("%w: the server approved the request but sent no token", ErrAuthNotApproved)
+				}
+				return result.OpenToken.Token, nil
+			case model.AppApprovalDenied:
+				return "", fmt.Errorf("%w: the request was denied on your iPhone", ErrAuthNotApproved)
+			case model.AppApprovalExpired:
+				return "", fmt.Errorf("%w: the request expired before it was approved", ErrAuthNotApproved)
+			}
+		}
+
+		if time.Now().After(giveUpAt) {
+			return "", fmt.Errorf("%w: the request expired before it was approved", ErrAuthNotApproved)
+		}
+	}
+}
+
+func sleepContext(ctx context.Context, d time.Duration) error {
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-time.After(d):
+		return nil
+	}
+}
+
+// startWaitingIndicator shows a spinner when a person is watching the
+// terminal; piped output (an agent, a script) stays plain. It returns the
+// function that stops it.
+func startWaitingIndicator() func() {
+	info, err := os.Stdout.Stat()
+	if err != nil || info.Mode()&os.ModeCharDevice == 0 {
+		return func() {}
+	}
+	l := stloader.NewLoader(stloader.LoaderConfig{
+		Text:          "Waiting for approval on your iPhone...",
+		EnableShining: true,
+		BaseColor:     stloader.RGB{R: 100, G: 180, B: 255},
+	})
+	l.Start()
+	return l.Stop
 }
 
 // generateSchemaFile generates the JSON schema file for config autocompletion
