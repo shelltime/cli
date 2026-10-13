@@ -422,8 +422,8 @@ logCleanup:
 
 **Files cleaned:**
 - `~/.shelltime/log.log`
-- `~/.shelltime/heartbeat.log`
-- `~/.shelltime/sync-pending.txt`
+- `~/.shelltime/coding-heartbeat.data.log`
+- `~/.shelltime/sync-pending.jsonl`
 - `~/.shelltime/logs/shelltime-daemon.log` (macOS)
 - `~/.shelltime/logs/shelltime-daemon.err` (macOS)
 
@@ -441,6 +441,22 @@ enableMetrics: false
 ```
 
 **Warning:** Enabling metrics adds overhead to every command. Only use for debugging.
+
+### Local command buffer
+
+| Option | Type | Default | Description |
+|--------|------|---------|-------------|
+| `storage.engine` | string | `file` | `file` stores commands in txt files. `bolt` stores them in a database the daemon owns |
+
+```yaml
+# Machine-specific. config.local.yaml overrides the base config.
+storage:
+  engine: bolt
+```
+
+The bolt engine is opened only by the daemon. The CLI keeps using the txt files when no daemon is running.
+
+`shelltime auth` writes `~/.shelltime` as mode `0700` and `config.yaml` as mode `0600`, so the API token is not readable by other users on the machine.
 
 ---
 
@@ -508,6 +524,8 @@ logCleanup:
 # --- Advanced ---
 socketPath: "/tmp/shelltime.sock"
 enableMetrics: false
+# storage:
+#   engine: bolt   # file (default) or bolt; bolt is daemon-owned
 
 # --- Additional Sync Targets ---
 # endpoints:

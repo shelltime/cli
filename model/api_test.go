@@ -171,6 +171,30 @@ func (s *apiTestSuite) TestSendLocalDataToServer() {
 		assert.Equal(t, int32(3), requestCount.Load()) // Main endpoint + 2 additional endpoints
 	})
 
+	s.T().Run("endpoints only when primary token is empty", func(t *testing.T) {
+		var requestCount atomic.Int32
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			requestCount.Add(1)
+			assert.Equal(t, "CLI endpoint-token", r.Header.Get("Authorization"))
+			w.WriteHeader(http.StatusNoContent)
+		}))
+		defer server.Close()
+
+		config := ShellTimeConfig{
+			Token: "",
+			Endpoints: []Endpoint{{
+				Token:       "endpoint-token",
+				APIEndpoint: server.URL,
+			}},
+		}
+		err := SendLocalDataToServer(context.Background(), config, PostTrackArgs{
+			CursorID: time.Now().UnixNano(),
+			Data:     []TrackingData{{Command: "from-endpoint"}},
+		})
+		assert.NoError(t, err)
+		assert.Equal(t, int32(1), requestCount.Load())
+	})
+
 	s.T().Run("partial failure", func(t *testing.T) {
 		successServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			w.WriteHeader(http.StatusNoContent)

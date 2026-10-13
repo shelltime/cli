@@ -79,6 +79,70 @@ func TestX3SendTrackArgsToServer_EncryptedHappyPath(t *testing.T) {
 	assert.Contains(t, sentBody, "encrypted", "payload should carry the encrypted envelope")
 }
 
+func TestX3SendTrackArgsToServer_EmptyPublicKeyFailsClosed(t *testing.T) {
+	var syncHit bool
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if strings.Contains(r.URL.Path, "/opentoken/publickey") {
+			w.Header().Set("Content-Type", "application/json")
+			_ = json.NewEncoder(w).Encode(model.OpenTokenPublicKeyResponse{
+				Data: model.OpenTokenPublicKey{ID: 1, PublicKey: "   "},
+			})
+			return
+		}
+		syncHit = true
+		w.WriteHeader(http.StatusNoContent)
+	}))
+	t.Cleanup(srv.Close)
+
+	enabled := true
+	mc := model.NewMockConfigService(t)
+	mc.On("ReadConfigFile", mock.Anything).Return(model.ShellTimeConfig{
+		Token: "tok", APIEndpoint: srv.URL, Encrypted: &enabled,
+	}, nil)
+	x3SwapStConfig(t, mc)
+	prevCB := syncCircuitBreaker
+	syncCircuitBreaker = nil
+	t.Cleanup(func() { syncCircuitBreaker = prevCB })
+
+	err := sendTrackArgsToServer(context.Background(), model.PostTrackArgs{
+		Data: []model.TrackingData{{Command: "super-secret-command"}},
+	})
+	require.Error(t, err)
+	assert.False(t, syncHit, "an empty public key must not fall back to plaintext")
+}
+
+func TestX3SendTrackArgsToServer_InvalidPublicKeyFailsClosed(t *testing.T) {
+	var syncHit bool
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if strings.Contains(r.URL.Path, "/opentoken/publickey") {
+			w.Header().Set("Content-Type", "application/json")
+			_ = json.NewEncoder(w).Encode(model.OpenTokenPublicKeyResponse{
+				Data: model.OpenTokenPublicKey{ID: 1, PublicKey: "not-a-pem"},
+			})
+			return
+		}
+		syncHit = true
+		w.WriteHeader(http.StatusNoContent)
+	}))
+	t.Cleanup(srv.Close)
+
+	enabled := true
+	mc := model.NewMockConfigService(t)
+	mc.On("ReadConfigFile", mock.Anything).Return(model.ShellTimeConfig{
+		Token: "tok", APIEndpoint: srv.URL, Encrypted: &enabled,
+	}, nil)
+	x3SwapStConfig(t, mc)
+	prevCB := syncCircuitBreaker
+	syncCircuitBreaker = nil
+	t.Cleanup(func() { syncCircuitBreaker = prevCB })
+
+	err := sendTrackArgsToServer(context.Background(), model.PostTrackArgs{
+		Data: []model.TrackingData{{Command: "super-secret-command"}},
+	})
+	require.Error(t, err)
+	assert.False(t, syncHit, "a public key that cannot wrap the AES key must not be sent")
+}
+
 // The public-key-fetch-failure branch is covered by
 // TestSendTrackArgsToServer_PublicKeyFetchErrorFailsClosed in
 // handlers_sync_pubkey_test.go (it previously panicked on a nil pointer; the

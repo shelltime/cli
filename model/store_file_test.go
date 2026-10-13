@@ -2,6 +2,7 @@ package model
 
 import (
 	"context"
+	"os"
 	"testing"
 	"time"
 
@@ -18,6 +19,9 @@ func TestFileStoreRoundTrip(t *testing.T) {
 	cmd := Command{Shell: "bash", SessionID: 7, Command: "go build", Username: "u", Hostname: "h", Time: start}
 
 	require.NoError(t, store.SavePre(ctx, cmd, start))
+	preInfo, err := os.Stat(GetPreCommandFilePath())
+	require.NoError(t, err)
+	require.Equal(t, os.FileMode(0o600), preInfo.Mode().Perm())
 
 	_, noCursor, err := store.GetLastCursor(ctx)
 	require.NoError(t, err)
@@ -26,6 +30,9 @@ func TestFileStoreRoundTrip(t *testing.T) {
 	post := cmd
 	post.Time = start.Add(time.Second)
 	require.NoError(t, store.SavePost(ctx, post, 0, post.Time))
+	postInfo, err := os.Stat(GetPostCommandFilePath())
+	require.NoError(t, err)
+	require.Equal(t, os.FileMode(0o600), postInfo.Mode().Perm())
 
 	tree, err := store.GetPreTree(ctx)
 	require.NoError(t, err)

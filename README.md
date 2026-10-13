@@ -240,7 +240,8 @@ For Codex, and for Claude Code sessions without the mod, the ShellTime server lo
 
 - **Data masking** (`dataMasking`, on by default) redacts sensitive command content before it leaves your machine.
 - **Exclusion patterns** skip matching commands entirely, so they are never recorded.
-- **Encryption** (`encrypted: true`, set in the config `shelltime auth` creates) makes the daemon encrypt command uploads with your token's public key (RSA + AES-GCM). It only applies in daemon mode, and if the key can't be fetched the upload fails instead of going out unencrypted.
+- **Encryption** (`encrypted: true`, set in the config `shelltime auth` creates) makes the daemon encrypt command uploads with your token's public key (RSA + AES-GCM). It only applies in daemon mode. If the key can't be fetched, is empty, or encryption fails, the upload fails instead of going out unencrypted or with a key the server cannot unwrap.
+- **`shelltime auth`** writes `~/.shelltime` as mode `0700` and `config.yaml` as mode `0600`.
 - **AI coding telemetry** includes prompts and tool details unless you turn them off (see [Claude Code and Codex Telemetry](#claude-code-and-codex-telemetry)). `--no-prompts` keeps prompt text out of a backfill.
 - **Local config overrides** keep secrets like tokens out of your main config file.
 

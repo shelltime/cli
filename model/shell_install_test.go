@@ -146,13 +146,27 @@ func TestEnsureHookFile(t *testing.T) {
 		assert.Equal(t, "HOOK", string(b))
 	})
 
-	t.Run("no-op when present", func(t *testing.T) {
+	t.Run("refreshes stale contents", func(t *testing.T) {
 		p := filepath.Join(dir, "exists.sh")
 		require.NoError(t, os.WriteFile(p, []byte("ORIGINAL"), 0644))
 		require.NoError(t, ensureHookFile(p, []byte("REPLACEMENT")))
 		b, err := os.ReadFile(p)
 		require.NoError(t, err)
-		assert.Equal(t, "ORIGINAL", string(b), "existing file must not be overwritten")
+		assert.Equal(t, "REPLACEMENT", string(b), "hooks install must replace a stale hook script")
+	})
+
+	t.Run("leaves identical contents", func(t *testing.T) {
+		p := filepath.Join(dir, "same.sh")
+		require.NoError(t, os.WriteFile(p, []byte("SAME"), 0644))
+		before, err := os.Stat(p)
+		require.NoError(t, err)
+		require.NoError(t, ensureHookFile(p, []byte("SAME")))
+		b, err := os.ReadFile(p)
+		require.NoError(t, err)
+		assert.Equal(t, "SAME", string(b))
+		after, err := os.Stat(p)
+		require.NoError(t, err)
+		assert.True(t, before.ModTime().Equal(after.ModTime()), "identical hook file must not be rewritten")
 	})
 }
 

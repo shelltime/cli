@@ -48,6 +48,9 @@ precmd_invoke_cmd() {
     local LAST_RESULT=$?
     # BASH_COMMAND in precmd is the *previous* command
     local CMD="$LAST_COMMAND"
+    # Consume it. precmd also runs for an empty prompt (the user pressed
+    # enter), and leaving LAST_COMMAND set would record the same command again.
+    LAST_COMMAND=""
     # Check if command starts with exit, logout, or reboot
     if [[ "$CMD" =~ ^(exit|logout|reboot) ]]; then
         return

@@ -43,7 +43,7 @@ func backupAndWriteFile(filePath string, content []byte) error {
 		}
 	}
 
-	if err := os.WriteFile(filePath, content, 0644); err != nil {
+	if err := model.WritePrivateFile(filePath, content); err != nil {
 		slog.Warn("failed to write file", slog.String("file", filePath), slog.Any("err", err))
 		return fmt.Errorf("failed to write file %s: %w", filePath, err)
 	}

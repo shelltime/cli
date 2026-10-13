@@ -126,6 +126,23 @@ func TestX3CommandTrack_PostSavesAndSyncs(t *testing.T) {
 	assert.GreaterOrEqual(t, atomic.LoadInt32(&calls), int32(1), "post phase should sync the batch over HTTP")
 }
 
+// TestX3CommandTrack_StaleSocketFallsBackToLocalSave covers a socket path that
+// still exists after the daemon has died. Stat succeeds, Dial fails, and the
+// command must be written locally instead of dropped.
+func TestX3CommandTrack_StaleSocketFallsBackToLocalSave(t *testing.T) {
+	_, mc := x3SetupTrack(t)
+	stale := filepath.Join(t.TempDir(), "stale.sock")
+	require.NoError(t, os.WriteFile(stale, []byte("not a socket"), 0o644))
+	mc.On("ReadConfigFile", mock.Anything).Return(model.ShellTimeConfig{SocketPath: stale}, nil)
+
+	app := &cli.App{Name: "t", Commands: []*cli.Command{TrackCommand}}
+	require.NoError(t, app.Run([]string{"t", "track", "--phase", "pre", "--shell", "bash", "--command", "echo stale", "--id", "3"}))
+
+	data, err := os.ReadFile(filepath.Join(model.GetCommandsStoragePath(), "pre.txt"))
+	require.NoError(t, err)
+	assert.Contains(t, string(data), "echo stale")
+}
+
 // --- trySyncLocalToServer direct -----------------------------------------------
 
 // x3SeedPair writes a completed pre/post pair into the local file store under
@@ -215,6 +232,26 @@ func TestX3TrySyncLocalToServer_DryRunSkipsCursor(t *testing.T) {
 	// No cursor file should have been written by the dry-run.
 	_, statErr := os.Stat(model.GetCursorFilePath())
 	assert.True(t, os.IsNotExist(statErr), "dry-run must not advance the cursor")
+}
+
+// TestX3TrySyncLocalToServer_NoTokenDoesNotAdvanceCursor covers an unauthenticated
+// sync: SendLocalDataToServer returns nil without uploading, and the cursor must
+// stay unset so the commands are still eligible after the user authenticates.
+func TestX3TrySyncLocalToServer_NoTokenDoesNotAdvanceCursor(t *testing.T) {
+	otel.SetTracerProvider(noop.NewTracerProvider())
+	SKIP_LOGGER_SETTINGS = true
+	t.Setenv("HOME", t.TempDir())
+	x3SeedPair(t)
+
+	cfg := model.ShellTimeConfig{
+		SocketPath: filepath.Join(t.TempDir(), "absent.sock"),
+		FlushCount: 1,
+	}
+	require.NoError(t, trySyncLocalToServer(context.Background(), cfg, syncOptions{isForceSync: true}))
+
+	_, noCursor, err := model.NewFileStore().GetLastCursor(context.Background())
+	require.NoError(t, err)
+	assert.True(t, noCursor, "commands must stay buffered until a token is configured")
 }
 
 // TestX3TrySyncLocalToServer_SyncErrorPropagates covers the DoSyncData error

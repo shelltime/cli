@@ -32,6 +32,7 @@ type x3TrackStore struct {
 
 	setCursorCalls int
 	pruneCalls     int
+	savePostCalls  int
 }
 
 func (s *x3TrackStore) SavePre(ctx context.Context, cmd model.Command, rt time.Time) error {
@@ -45,6 +46,7 @@ func (s *x3TrackStore) SavePre(ctx context.Context, cmd model.Command, rt time.T
 }
 
 func (s *x3TrackStore) SavePost(ctx context.Context, cmd model.Command, result int, rt time.Time) error {
+	s.savePostCalls++
 	if s.savePostErr != nil {
 		return s.savePostErr
 	}
@@ -209,8 +211,32 @@ func TestX3TrackPost_SendErrorLeavesCursor(t *testing.T) {
 	require.NoError(t, store.SavePre(context.Background(), cmd, now))
 
 	err := handlePubSubTrackPost(context.Background(), TrackEventPayload{Command: cmd, RecordingTimeNano: now.UnixNano()})
-	require.Error(t, err)
+	// Ack the message. A nack redelivers it and SavePost would append the same
+	// command again. The row stays buffered and the cursor does not move, so a
+	// later post retries the upload.
+	require.NoError(t, err)
 	assert.Equal(t, 0, store.setCursorCalls, "cursor must not advance on send failure")
+	assert.Equal(t, 1, store.savePostCalls, "the failed upload must not be saved twice")
+}
+
+// TestX3TrackPost_NoTokenLeavesCursor covers an unauthenticated daemon: the post
+// is stored once, nothing is uploaded, and the cursor does not move.
+func TestX3TrackPost_NoTokenLeavesCursor(t *testing.T) {
+	x3SwapTrackGlobals(t)
+	store := &x3TrackStore{noCursorExist: true}
+	commandStore = store
+	mc := model.NewMockConfigService(t)
+	mc.On("ReadConfigFile", mock.Anything).Return(model.ShellTimeConfig{FlushCount: 1}, nil)
+	stConfig = mc
+
+	now := time.Now()
+	cmd := model.Command{Shell: "bash", SessionID: 1, Command: "ls", Username: "u", Hostname: "h", Time: now}
+	require.NoError(t, store.SavePre(context.Background(), cmd, now))
+
+	err := handlePubSubTrackPost(context.Background(), TrackEventPayload{Command: cmd, RecordingTimeNano: now.UnixNano()})
+	require.NoError(t, err)
+	assert.Equal(t, 0, store.setCursorCalls)
+	assert.Equal(t, 1, store.savePostCalls)
 }
 
 // TestX3TrackPost_SetCursorError covers the SetCursor error branch after a

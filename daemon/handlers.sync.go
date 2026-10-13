@@ -4,7 +4,9 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
+	"fmt"
 	"log/slog"
+	"strings"
 	"time"
 
 	"github.com/malamtime/cli/model"
@@ -80,40 +82,48 @@ func sendTrackArgsToServer(ctx context.Context, syncMsg model.PostTrackArgs) err
 			// configured intent.
 			return err
 		}
-		if len(ot.PublicKey) > 0 {
-			rs := model.NewRSAService()
-			as := model.NewAESGCMService()
+		if strings.TrimSpace(ot.PublicKey) == "" {
+			err := fmt.Errorf("encryption is enabled but the open token public key is empty")
+			slog.Error(err.Error())
+			return err
+		}
 
-			k, _, err := as.GenerateKeys()
+		rs := model.NewRSAService()
+		as := model.NewAESGCMService()
 
-			if err != nil {
-				slog.Error("Failed to generate aes-gcm key", slog.Any("err", err))
-			}
+		k, _, err := as.GenerateKeys()
+		if err != nil {
+			slog.Error("Failed to generate aes-gcm key", slog.Any("err", err))
+			return err
+		}
 
-			encodedKey, _, err := rs.Encrypt(ot.PublicKey, k)
+		encodedKey, _, err := rs.Encrypt(ot.PublicKey, k)
+		if err != nil {
+			slog.Error("Failed to encrypt key", slog.Any("err", err))
+			return err
+		}
 
-			if err != nil {
-				slog.Error("Failed to encrypt key", slog.Any("err", err))
-			}
+		buf, err := json.Marshal(payload)
+		if err != nil {
+			slog.Error("Failed to marshal payload", slog.Any("err", err))
+			return err
+		}
 
-			buf, err := json.Marshal(payload)
+		encryptedData, nonce, err := as.Encrypt(string(k), buf)
+		if err != nil {
+			slog.Error("Failed to encrypt data", slog.Any("err", err))
+			return err
+		}
+		if len(encodedKey) == 0 || len(encryptedData) == 0 || len(nonce) == 0 {
+			err := fmt.Errorf("encryption produced an empty key, ciphertext, or nonce")
+			slog.Error(err.Error())
+			return err
+		}
 
-			if err != nil {
-				slog.Error("Failed to marshal payload", slog.Any("err", err))
-				return err
-			}
-
-			encryptedData, nonce, err := as.Encrypt(string(k), buf)
-			if err != nil {
-				slog.Error("Failed to encrypt data", slog.Any("err", err))
-				return err
-			}
-
-			realPayload = model.PostTrackArgs{
-				Encrypted: base64.StdEncoding.EncodeToString(encryptedData),
-				AesKey:    base64.StdEncoding.EncodeToString(encodedKey),
-				Nonce:     base64.StdEncoding.EncodeToString(nonce),
-			}
+		realPayload = model.PostTrackArgs{
+			Encrypted: base64.StdEncoding.EncodeToString(encryptedData),
+			AesKey:    base64.StdEncoding.EncodeToString(encodedKey),
+			Nonce:     base64.StdEncoding.EncodeToString(nonce),
 		}
 	}
 

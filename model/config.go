@@ -185,6 +185,9 @@ func mergeConfig(base, local *ShellTimeConfig) {
 	if local.Proxy != nil {
 		base.Proxy = local.Proxy
 	}
+	if local.Storage != nil {
+		base.Storage = local.Storage
+	}
 }
 
 func (cs *configService) ReadConfigFile(ctx context.Context, opts ...ReadConfigOption) (config ShellTimeConfig, err error) {

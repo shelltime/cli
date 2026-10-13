@@ -131,7 +131,7 @@ func (p *SocketHandler) Start() error {
 		return err
 	}
 	if err := os.Chmod(p.config.SocketPath, 0777); err != nil {
-		slog.Error("Failed to change the socket permission to 0755", slog.String("socketPath", p.config.SocketPath))
+		slog.Error("Failed to change the socket permission to 0777", slog.String("socketPath", p.config.SocketPath))
 		return err
 	}
 	p.listener = listener
@@ -193,6 +193,7 @@ func (p *SocketHandler) handleConnection(conn net.Conn) {
 		buf, err := json.Marshal(msg)
 		if err != nil {
 			slog.Error("Error encoding message", slog.Any("err", err))
+			return
 		}
 
 		chMsg := message.NewMessage(watermill.NewUUID(), buf)

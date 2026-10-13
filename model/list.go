@@ -43,7 +43,9 @@ func BuildListedCommands(ctx context.Context, store CommandStore) ([]ListedComma
 
 		closestPreCommand := postCommand.FindClosestCommand(preCommands, false)
 		startTime := postCommand.Time
-		if closestPreCommand != nil {
+		// FindClosestCommand returns a non-nil empty command when nothing matches.
+		// Treating that as a hit replaces the real end time with the zero time.
+		if closestPreCommand != nil && !closestPreCommand.IsNil() {
 			startTime = closestPreCommand.Time
 		}
 

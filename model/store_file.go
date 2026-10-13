@@ -5,7 +5,6 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
-	"os"
 	"sort"
 	"time"
 )
@@ -24,7 +23,7 @@ func (s *fileStore) appendLine(path string, cmd Command, recordingTime time.Time
 	if err != nil {
 		return err
 	}
-	f, err := os.OpenFile(path, os.O_APPEND|os.O_WRONLY|os.O_CREATE, 0644)
+	f, err := openPrivateAppend(path)
 	if err != nil {
 		return fmt.Errorf("failed to open command storage file %s: %w", path, err)
 	}
@@ -80,7 +79,7 @@ func (s *fileStore) SetCursor(ctx context.Context, cursor time.Time) error {
 	if err := ensureStorageFolder(); err != nil {
 		return err
 	}
-	cursorFile, err := os.OpenFile(GetCursorFilePath(), os.O_APPEND|os.O_WRONLY|os.O_CREATE, 0644)
+	cursorFile, err := openPrivateAppend(GetCursorFilePath())
 	if err != nil {
 		return err
 	}
@@ -146,13 +145,13 @@ func (s *fileStore) Prune(ctx context.Context, cursor time.Time) error {
 		postBuf.Write(line)
 	}
 
-	if err := os.WriteFile(GetPreCommandFilePath(), preBuf.Bytes(), 0644); err != nil {
+	if err := WritePrivateFile(GetPreCommandFilePath(), preBuf.Bytes()); err != nil {
 		return err
 	}
-	if err := os.WriteFile(GetPostCommandFilePath(), postBuf.Bytes(), 0644); err != nil {
+	if err := WritePrivateFile(GetPostCommandFilePath(), postBuf.Bytes()); err != nil {
 		return err
 	}
-	return os.WriteFile(GetCursorFilePath(), []byte(fmt.Sprintf("%d", cursor.UnixNano())), 0644)
+	return WritePrivateFile(GetCursorFilePath(), []byte(fmt.Sprintf("%d", cursor.UnixNano())))
 }
 
 func (s *fileStore) Engine() string { return StorageEngineFile }

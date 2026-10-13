@@ -367,7 +367,7 @@ func TestCommand_FindClosestCommand(t *testing.T) {
 
 	commands := []*Command{
 		{Shell: "bash", SessionID: 100, Command: "ls", Username: "user", Time: baseTime.Add(-10 * time.Second)},
-		{Shell: "bash", SessionID: 100, Command: "ls", Username: "user", Time: baseTime.Add(-5 * time.Second)},  // Closest
+		{Shell: "bash", SessionID: 100, Command: "ls", Username: "user", Time: baseTime.Add(-5 * time.Second)}, // Closest
 		{Shell: "bash", SessionID: 100, Command: "ls", Username: "user", Time: baseTime.Add(-30 * time.Second)},
 		nil, // Should be skipped
 	}
@@ -380,6 +380,24 @@ func TestCommand_FindClosestCommand(t *testing.T) {
 	expectedTime := baseTime.Add(-5 * time.Second)
 	if !closest.Time.Equal(expectedTime) {
 		t.Errorf("Expected closest command time %v, got %v", expectedTime, closest.Time)
+	}
+}
+
+func TestCommand_FindClosestCommand_UsesNanoseconds(t *testing.T) {
+	base := time.Date(2024, 1, 15, 12, 0, 0, 0, time.UTC)
+	target := Command{
+		Shell:     "bash",
+		SessionID: 100,
+		Command:   "ls",
+		Username:  "user",
+		Time:      base.Add(900 * time.Millisecond),
+	}
+	earlier := &Command{Shell: "bash", SessionID: 100, Command: "ls", Username: "user", Time: base.Add(100 * time.Millisecond)}
+	closer := &Command{Shell: "bash", SessionID: 100, Command: "ls", Username: "user", Time: base.Add(700 * time.Millisecond)}
+
+	got := target.FindClosestCommand([]*Command{earlier, closer}, true)
+	if got == nil || !got.Time.Equal(closer.Time) {
+		t.Fatalf("expected the pre 200ms earlier, got %#v", got)
 	}
 }
 

@@ -17,7 +17,7 @@ func SetupLogger(baseFolder string) {
 	logFilePath := baseFolder + "/log.log"
 
 	if _, err := os.Stat(logFilePath); os.IsNotExist(err) {
-		err := os.MkdirAll(baseFolder, 0755)
+		err := os.MkdirAll(baseFolder, 0700)
 		if err != nil {
 			slog.Error("[ShellTime.xyz] failed to create log directory", slog.Any("err", err))
 			return
@@ -29,8 +29,13 @@ func SetupLogger(baseFolder string) {
 			return
 		}
 	}
+	// Logs can echo command lines. Tighten a world-readable file once; skip
+	// when it is already private so the per-command track path stays cheap.
+	if st, err := os.Stat(logFilePath); err == nil && st.Mode().Perm()&0o077 != 0 {
+		_ = os.Chmod(logFilePath, 0600)
+	}
 
-	f, err := os.OpenFile(logFilePath, os.O_WRONLY|os.O_CREATE|os.O_APPEND, 0755)
+	f, err := os.OpenFile(logFilePath, os.O_WRONLY|os.O_CREATE|os.O_APPEND, 0600)
 	if err != nil {
 		os.Stdout.WriteString(err.Error())
 		slog.Error("[ShellTime.xyz] on setup logger error", slog.Any("err", err))

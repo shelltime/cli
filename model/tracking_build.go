@@ -68,7 +68,11 @@ func BuildTrackingData(ctx context.Context, store CommandStore, config ShellTime
 		}
 
 		recordingTime := postCommand.RecordingTime
-		if recordingTime.Before(cursor) {
+		// The cursor is the recording time of the last command included in a
+		// successful sync. Equality means that command was already sent; Before
+		// alone would upload it again on every later flush (the file store is
+		// not pruned on the daemon-less path).
+		if !recordingTime.After(cursor) {
 			continue
 		}
 		if recordingTime.After(latest) {
