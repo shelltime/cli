@@ -45,15 +45,44 @@ type Command struct {
 	RecordingTime time.Time `json:"-"`
 }
 
+// privateFileMode keeps command history, cursors, and queued sync payloads
+// readable only by the owning user. Those files can contain secrets that were
+// typed into the shell.
+const privateFileMode os.FileMode = 0o600
+
 func ensureStorageFolder() error {
 	storageFolder := GetCommandsStoragePath()
 	if _, err := os.Stat(storageFolder); os.IsNotExist(err) {
-		if err := os.MkdirAll(storageFolder, 0755); err != nil {
+		if err := os.MkdirAll(storageFolder, 0o700); err != nil {
 			return fmt.Errorf("failed to create command storage folder: %v", err)
 		}
 	}
 
 	return nil
+}
+
+// openPrivateAppend opens path for append, creating it if needed, and forces
+// owner-only permissions. OpenFile's mode is masked by umask and does not
+// change an existing file.
+func openPrivateAppend(path string) (*os.File, error) {
+	f, err := os.OpenFile(path, os.O_APPEND|os.O_WRONLY|os.O_CREATE, privateFileMode)
+	if err != nil {
+		return nil, err
+	}
+	if err := f.Chmod(privateFileMode); err != nil {
+		f.Close()
+		return nil, err
+	}
+	return f, nil
+}
+
+// WritePrivateFile writes data and forces owner-only permissions, including
+// when the file already exists (WriteFile leaves an existing mode unchanged).
+func WritePrivateFile(path string, data []byte) error {
+	if err := os.WriteFile(path, data, privateFileMode); err != nil {
+		return err
+	}
+	return os.Chmod(path, privateFileMode)
 }
 
 func (c Command) DoSavePre() error {
@@ -67,7 +96,7 @@ func (c Command) DoSavePre() error {
 	}
 
 	preFile := GetPreCommandFilePath()
-	f, err := os.OpenFile(preFile, os.O_APPEND|os.O_WRONLY|os.O_CREATE, 0644)
+	f, err := openPrivateAppend(preFile)
 	if err != nil {
 		slog.Error("failed to open pre-command storage file", slog.Any("err", err))
 		return fmt.Errorf("failed to open pre-command storage file: %v", err)
@@ -95,7 +124,7 @@ func (c Command) DoUpdate(result int) error {
 	}
 
 	postFile := GetPostCommandFilePath()
-	f, err := os.OpenFile(postFile, os.O_APPEND|os.O_WRONLY|os.O_CREATE, 0644)
+	f, err := openPrivateAppend(postFile)
 	if err != nil {
 		return fmt.Errorf("failed to open post-command storage file: %v", err)
 	}
@@ -223,7 +252,7 @@ func (cmd *Command) FromLineBytes(line []byte) (recordingTime time.Time, err err
 }
 
 func (cmd Command) FindClosestCommand(commandList []*Command, withSameKey bool) *Command {
-	closestPreCommand := new(Command)
+	var closestPreCommand *Command
 	minTimeDiff := int64(^uint64(0) >> 1) // Max int64 value
 
 	myKey := cmd.GetUniqueKey()
@@ -239,12 +268,18 @@ func (cmd Command) FindClosestCommand(commandList []*Command, withSameKey bool) 
 			}
 		}
 
-		timeDiff := cmd.Time.Unix() - c.Time.Unix()
+		// Whole seconds collapse two commands that ran in the same second onto
+		// the same diff, so the first candidate wins instead of the closest.
+		timeDiff := cmd.Time.UnixNano() - c.Time.UnixNano()
 		if timeDiff >= 0 && timeDiff < minTimeDiff {
 			minTimeDiff = timeDiff
 			closestPreCommand = c
 		}
 	}
 
+	if closestPreCommand == nil {
+		// Callers historically check IsNil() on a non-nil result.
+		return new(Command)
+	}
 	return closestPreCommand
 }

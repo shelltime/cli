@@ -99,6 +99,14 @@ func handlePubSubTrackPost(ctx context.Context, payload interface{}) error {
 		return nil
 	}
 
+	// Nothing would be uploaded. Ack the message (a nack re-runs SavePost and
+	// duplicates the command) and leave the cursor where it is so a later
+	// authenticated sync can still send this batch.
+	if cfg.Token == "" && len(cfg.Endpoints) == 0 {
+		slog.Debug("no token configured; leaving commands buffered for a later sync")
+		return nil
+	}
+
 	args := model.PostTrackArgs{
 		CursorID: result.LatestRecordingTime.UnixNano(),
 		Data:     result.Data,
@@ -107,8 +115,10 @@ func handlePubSubTrackPost(ctx context.Context, payload interface{}) error {
 
 	if err := sendTrackArgsToServer(ctx, args); err != nil {
 		slog.Error("Failed to send tracking data from command store", slog.Any("err", err))
-		// Leave the data in the store; a later post will retry. Do not advance cursor.
-		return err
+		// Leave the data in the store; a later post will retry. Do not advance
+		// the cursor. Returning an error nacks the message, and the subscriber
+		// redelivers it — which appends this post command again.
+		return nil
 	}
 
 	if err := store.SetCursor(ctx, result.LatestRecordingTime); err != nil {

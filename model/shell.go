@@ -3,6 +3,7 @@ package model
 
 import (
 	"bufio"
+	"bytes"
 	"fmt"
 	"io"
 	"os"
@@ -19,11 +20,17 @@ type ShellHookService interface {
 	ShellName() string
 }
 
-// ensureHookFile writes the embedded hook script to disk if it doesn't already exist.
+// ensureHookFile writes the embedded hook script to disk.
 // This allows Homebrew-installed users to get hook files without the curl installer.
+// An existing file is replaced when its contents differ so `hooks install` picks
+// up hook bugfixes. Identical contents are left untouched.
 func ensureHookFile(hookFilePath string, embeddedContent []byte) error {
-	if _, err := os.Stat(hookFilePath); err == nil {
-		return nil // already exists
+	existing, err := os.ReadFile(hookFilePath)
+	if err == nil && bytes.Equal(existing, embeddedContent) {
+		return nil
+	}
+	if err != nil && !os.IsNotExist(err) {
+		return fmt.Errorf("failed to read hook file: %w", err)
 	}
 	hookDir := filepath.Dir(hookFilePath)
 	if err := os.MkdirAll(hookDir, 0755); err != nil {

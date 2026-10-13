@@ -36,3 +36,26 @@ func TestBuildListedCommands(t *testing.T) {
 	require.Equal(t, start.Unix(), listed[0].StartTime.Unix())
 	require.Equal(t, post.Time.Unix(), listed[0].EndTime.Unix())
 }
+
+func TestBuildListedCommands_SameSecondFuturePreDoesNotWin(t *testing.T) {
+	store, err := newBoltStore(filepath.Join(t.TempDir(), "commands.db"))
+	require.NoError(t, err)
+	defer store.Close()
+
+	ctx := context.Background()
+	base := time.Date(2024, 6, 1, 12, 0, 0, 0, time.UTC)
+	postTime := base.Add(100 * time.Millisecond)
+	preTime := base.Add(500 * time.Millisecond)
+	cmd := Command{Shell: "bash", SessionID: 1, Command: "make", Username: "u", Hostname: "h", Time: preTime}
+	require.NoError(t, store.SavePre(ctx, cmd, preTime))
+	post := cmd
+	post.Time = postTime
+	require.NoError(t, store.SavePost(ctx, post, 0, postTime))
+
+	listed, err := BuildListedCommands(ctx, store)
+	require.NoError(t, err)
+	require.Len(t, listed, 1)
+	require.True(t, listed[0].StartTime.Equal(postTime), "a pre later in the same second must not replace the start time")
+	require.False(t, listed[0].StartTime.IsZero())
+	require.True(t, listed[0].EndTime.Equal(postTime))
+}

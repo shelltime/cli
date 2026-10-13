@@ -111,6 +111,31 @@ func TestBuildTrackingDataExcludes(t *testing.T) {
 	require.Empty(t, res.Data, "excluded command must not be synced")
 }
 
+func TestBuildTrackingData_SkipsCommandAtCursor(t *testing.T) {
+	store, err := newBoltStore(filepath.Join(t.TempDir(), "commands.db"))
+	require.NoError(t, err)
+	defer store.Close()
+
+	ctx := context.Background()
+	at := time.Date(2024, 6, 1, 12, 0, 0, 0, time.UTC)
+	newer := at.Add(time.Second)
+
+	synced := Command{Shell: "bash", SessionID: 1, Command: "already-sent", Username: "u", Hostname: "h", Time: at}
+	require.NoError(t, store.SavePre(ctx, synced, at))
+	require.NoError(t, store.SavePost(ctx, synced, 0, at))
+
+	fresh := Command{Shell: "bash", SessionID: 2, Command: "still-pending", Username: "u", Hostname: "h", Time: newer}
+	require.NoError(t, store.SavePre(ctx, fresh, newer))
+	require.NoError(t, store.SavePost(ctx, fresh, 0, newer))
+
+	require.NoError(t, store.SetCursor(ctx, at))
+
+	res, err := BuildTrackingData(ctx, store, ShellTimeConfig{})
+	require.NoError(t, err)
+	require.Len(t, res.Data, 1)
+	require.Equal(t, "still-pending", res.Data[0].Command)
+}
+
 func TestBuildTrackingDataEmpty(t *testing.T) {
 	store, err := newBoltStore(filepath.Join(t.TempDir(), "commands.db"))
 	require.NoError(t, err)

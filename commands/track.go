@@ -27,7 +27,7 @@ var TrackCommand *cli.Command = &cli.Command{
 			Name:    "sessionId",
 			Aliases: []string{"id"},
 			Value:   0,
-			Usage:   "unix timestamp of the session",
+			Usage:   "session identifier shared by the pre and post events (hooks pass a per-shell id)",
 		},
 		&cli.StringFlag{
 			Name:    "command",
@@ -99,8 +99,10 @@ func commandTrack(c *cli.Context) error {
 	// default socket, hand it the raw event (fire-and-forget) and return. The daemon
 	// is a long-lived process: it reads config once (cached) and owns the
 	// storage-engine decision (bolt vs txt), exclude filtering, sync and pruning.
-	if daemon.IsSocketReady(ctx, model.DefaultSocketPath) {
-		return sendTrackEventToDaemon(ctx, span, model.DefaultSocketPath, cmdPhase, instance, result)
+	// A socket file left behind by a dead daemon still stats as present; if the
+	// send fails, fall through and persist locally instead of dropping the command.
+	if forwarded, err := forwardTrackToDaemon(ctx, span, model.DefaultSocketPath, cmdPhase, instance, result); forwarded || err != nil {
+		return err
 	}
 
 	// Slow path: no daemon on the default socket. We can now afford to read config —
@@ -119,8 +121,10 @@ func commandTrack(c *cli.Context) error {
 	}
 
 	// A daemon may still be listening on a non-default socket path.
-	if config.SocketPath != model.DefaultSocketPath && daemon.IsSocketReady(ctx, config.SocketPath) {
-		return sendTrackEventToDaemon(ctx, span, config.SocketPath, cmdPhase, instance, result)
+	if config.SocketPath != model.DefaultSocketPath {
+		if forwarded, err := forwardTrackToDaemon(ctx, span, config.SocketPath, cmdPhase, instance, result); forwarded || err != nil {
+			return err
+		}
 	}
 
 	// No daemon at all: persist to the local txt store and sync directly over HTTP.
@@ -144,6 +148,21 @@ func commandTrack(c *cli.Context) error {
 		})
 	}
 	return nil
+}
+
+// forwardTrackToDaemon reports whether the event was accepted by a daemon on
+// socketPath. A missing socket is not an error. A present socket that refuses
+// the connection (stale socket file) is logged and reported as not forwarded
+// so the caller can persist the command itself.
+func forwardTrackToDaemon(ctx context.Context, span trace.Span, socketPath, cmdPhase string, instance *model.Command, result int) (bool, error) {
+	if !daemon.IsSocketReady(ctx, socketPath) {
+		return false, nil
+	}
+	if err := sendTrackEventToDaemon(ctx, span, socketPath, cmdPhase, instance, result); err != nil {
+		slog.Warn("failed to send track event to daemon; saving locally", slog.String("socket", socketPath), slog.Any("err", err))
+		return false, nil
+	}
+	return true, nil
 }
 
 // sendTrackEventToDaemon forwards a single raw pre/post command event to the
@@ -205,6 +224,13 @@ func trySyncLocalToServer(
 	}
 
 	if isDryRun {
+		return nil
+	}
+	// SendLocalDataToServer returns nil without uploading when no token is
+	// configured. Advancing the cursor here would permanently skip those
+	// commands once the user authenticates.
+	if config.Token == "" && len(config.Endpoints) == 0 {
+		slog.Debug("no token configured; leaving commands buffered for a later sync")
 		return nil
 	}
 	return store.SetCursor(ctx, result.LatestRecordingTime)

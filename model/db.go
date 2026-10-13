@@ -187,7 +187,11 @@ func GetPostCommands(ctx context.Context) ([][]byte, int, error) {
 		if len(l) == 0 {
 			continue
 		}
-		nonEmptyContent = append(nonEmptyContent, l)
+		// Scanner.Bytes shares its buffer. Once the file is larger than that
+		// buffer, Scan shifts it and every previously stored slice is overwritten.
+		copied := make([]byte, len(l))
+		copy(copied, l)
+		nonEmptyContent = append(nonEmptyContent, copied)
 	}
 
 	if err := scanner.Err(); err != nil {

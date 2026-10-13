@@ -66,10 +66,17 @@ func commandAuth(c *cli.Context) error {
 	defer span.End()
 	configDir := os.ExpandEnv("$HOME/" + model.COMMAND_BASE_STORAGE_FOLDER)
 	if _, err := os.Stat(configDir); os.IsNotExist(err) {
-		err = os.Mkdir(configDir, 0755)
+		err = os.Mkdir(configDir, 0700)
 		if err != nil {
 			return fmt.Errorf("failed to create config directory: %w", err)
 		}
+	} else if err != nil {
+		return fmt.Errorf("failed to stat config directory: %w", err)
+	}
+	// The directory holds the API token. 0755 lets other users on the machine
+	// traverse it and read a world-readable config.yaml.
+	if err := os.Chmod(configDir, 0700); err != nil {
+		return fmt.Errorf("failed to restrict config directory permissions: %w", err)
 	}
 	SetupLogger(configDir)
 
@@ -89,7 +96,7 @@ func commandAuth(c *cli.Context) error {
 		// Prepend $schema for IDE autocompletion support
 		schemaHeader := "# yaml-language-server: $schema=./config-schema.json\n"
 		content = append([]byte(schemaHeader), content...)
-		err = os.WriteFile(configFile, content, 0644)
+		err = writeTokenConfig(configFile, content)
 		if err != nil {
 			return fmt.Errorf("failed to create config file: %w", err)
 		}
@@ -121,7 +128,7 @@ func commandAuth(c *cli.Context) error {
 	if err != nil {
 		return fmt.Errorf("failed to marshal config: %w", err)
 	}
-	err = os.WriteFile(configFile, content, 0644)
+	err = writeTokenConfig(configFile, content)
 	if err != nil {
 		return fmt.Errorf("failed to write config file: %w", err)
 	}
@@ -177,6 +184,16 @@ func ApplyTokenByHandshake(_ctx context.Context, config model.ShellTimeConfig) (
 
 		time.Sleep(2 * time.Second)
 	}
+}
+
+// writeTokenConfig writes the config that contains the API token and forces
+// owner-only permissions. WriteFile does not change the mode of a file that
+// already exists, so a previous 0644 config would stay world-readable.
+func writeTokenConfig(path string, content []byte) error {
+	if err := os.WriteFile(path, content, 0600); err != nil {
+		return err
+	}
+	return os.Chmod(path, 0600)
 }
 
 // ApplyTokenByAppApproval pushes a sign-in request to the ShellTime iOS app of

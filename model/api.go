@@ -25,11 +25,11 @@ type TrackingData struct {
 }
 
 type TrackingMetaData struct {
-	Hostname  string `json:"hostname"`
-	Username  string `json:"username"`
-	OS        string `json:"os"`
-	OSVersion string `json:"osVersion"`
-	Shell     string `json:"shell"`
+	Hostname    string `json:"hostname"`
+	Username    string `json:"username"`
+	OS          string `json:"os"`
+	OSVersion   string `json:"osVersion"`
+	Shell       string `json:"shell"`
 	Terminal    string `json:"terminal,omitempty"`
 	Multiplexer string `json:"multiplexer,omitempty"`
 
@@ -76,23 +76,22 @@ func doSendData(ctx context.Context, endpoint Endpoint, data PostTrackArgs) erro
 func SendLocalDataToServer(ctx context.Context, config ShellTimeConfig, data PostTrackArgs) error {
 	ctx, span := modelTracer.Start(ctx, "sync.local")
 	defer span.End()
-	if config.Token == "" {
+	authPair := make([]Endpoint, 0, len(config.Endpoints)+1)
+	if config.Token != "" {
+		authPair = append(authPair, Endpoint{
+			Token:       config.Token,
+			APIEndpoint: config.APIEndpoint,
+		})
+	}
+	authPair = append(authPair, config.Endpoints...)
+	if len(authPair) == 0 {
 		slog.Debug("no token available. do not sync to server")
 		return nil
 	}
 
 	var wg sync.WaitGroup
 
-	wg.Add(len(config.Endpoints) + 1)
-
-	authPair := make([]Endpoint, len(config.Endpoints)+1)
-
-	authPair[0] = Endpoint{
-		Token:       config.Token,
-		APIEndpoint: config.APIEndpoint,
-	}
-
-	copy(authPair[1:], config.Endpoints)
+	wg.Add(len(authPair))
 
 	errs := make(chan error, len(authPair))
 

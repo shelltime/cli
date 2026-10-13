@@ -126,11 +126,14 @@ func (s *CircuitBreakerService) RecordFailure() {
 func (s *CircuitBreakerService) SaveForRetry(ctx context.Context, payload []byte) error {
 	filePath := os.ExpandEnv(fmt.Sprintf("%s/%s", "$HOME", SYNC_PENDING_FILE))
 
-	file, err := os.OpenFile(filePath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+	file, err := os.OpenFile(filePath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0600)
 	if err != nil {
 		return err
 	}
 	defer file.Close()
+	if err := file.Chmod(0600); err != nil {
+		return err
+	}
 
 	_, err = file.Write(payload)
 	if err != nil {
@@ -237,7 +240,7 @@ func (s *CircuitBreakerService) rewriteLogFile(logFilePath string, lines []strin
 	}
 
 	tempFile := logFilePath + ".tmp"
-	file, err := os.OpenFile(tempFile, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0644)
+	file, err := os.OpenFile(tempFile, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0600)
 	if err != nil {
 		return fmt.Errorf("failed to create temp file: %w", err)
 	}
@@ -250,6 +253,11 @@ func (s *CircuitBreakerService) rewriteLogFile(logFilePath string, lines []strin
 		}
 	}
 
+	if err := file.Chmod(0600); err != nil {
+		file.Close()
+		os.Remove(tempFile)
+		return fmt.Errorf("failed to restrict pending sync file permissions: %w", err)
+	}
 	if err := file.Close(); err != nil {
 		os.Remove(tempFile)
 		return fmt.Errorf("failed to close temp file: %w", err)

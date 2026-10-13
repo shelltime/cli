@@ -40,6 +40,7 @@ func TestMergeConfig_AllOverrides(t *testing.T) {
 		SocketPath:    "/tmp/local.sock",
 		CodeTracking:  &CodeTracking{Token: "ct"},
 		Proxy:         &ProxyConfig{URL: "socks5://127.0.0.1:1080"},
+		Storage:       &StorageConfig{Engine: StorageEngineBolt},
 	}
 
 	mergeConfig(base, local)
@@ -62,6 +63,8 @@ func TestMergeConfig_AllOverrides(t *testing.T) {
 	require.NotNil(t, base.CodeTracking)
 	require.NotNil(t, base.Proxy)
 	assert.Equal(t, "socks5://127.0.0.1:1080", base.Proxy.URL)
+	require.NotNil(t, base.Storage)
+	assert.Equal(t, StorageEngineBolt, base.Storage.Engine)
 }
 
 // TestMergeConfig_NoOverrides ensures zero-valued local fields leave base intact.
@@ -91,6 +94,22 @@ func TestReadConfigFile_MergesLocalOverBase(t *testing.T) {
 	assert.Equal(t, "https://base", cfg.APIEndpoint, "base value preserved when local omits it")
 	assert.Equal(t, 50, cfg.FlushCount, "base flushCount kept")
 	require.Contains(t, cfg.Exclude, "secret-cmd")
+}
+
+// TestReadConfigFile_LocalStorageOverridesBase covers config.local.yaml
+// replacing the base storage engine. mergeConfig used to drop Storage entirely.
+func TestReadConfigFile_LocalStorageOverridesBase(t *testing.T) {
+	dir := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "config.yaml"),
+		[]byte("token: base-tok\nstorage:\n  engine: file\n"), 0o644))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "config.local.yaml"),
+		[]byte("storage:\n  engine: bolt\n"), 0o644))
+
+	cs := NewConfigService(dir)
+	cfg, err := cs.ReadConfigFile(context.Background())
+	require.NoError(t, err)
+	require.NotNil(t, cfg.Storage)
+	assert.Equal(t, StorageEngineBolt, cfg.Storage.Engine)
 }
 
 // TestReadConfigFile_InvalidLocalIsIgnored covers the branch where the local
