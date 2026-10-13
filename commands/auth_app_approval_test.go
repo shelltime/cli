@@ -111,6 +111,30 @@ func TestWaitForAppApprovalRetriesServerErrors(t *testing.T) {
 	assert.Equal(t, "st_v1_token", token)
 }
 
+func TestWaitForAppApprovalRetriesProxyTimeouts(t *testing.T) {
+	svc := &fakeAppApproval{ticket: testTicket, steps: []pollStep{
+		{err: &model.AppApprovalError{StatusCode: http.StatusRequestTimeout, Message: "Request Timeout"}},
+		{err: &model.AppApprovalError{StatusCode: http.StatusTooManyRequests, Message: "slow down"}},
+		approvedWith("st_v1_token"),
+	}}
+	var waits []time.Duration
+
+	token, err := waitForAppApproval(context.Background(), svc, testTicket, noSleep(&waits))
+	require.NoError(t, err)
+	assert.Equal(t, "st_v1_token", token)
+}
+
+func TestWaitForAppApprovalClampsTheInterval(t *testing.T) {
+	ticket := testTicket
+	ticket.Interval = 3600
+	svc := &fakeAppApproval{ticket: ticket, steps: []pollStep{approvedWith("st_v1_token")}}
+	var waits []time.Duration
+
+	_, err := waitForAppApproval(context.Background(), svc, ticket, noSleep(&waits))
+	require.NoError(t, err)
+	assert.Equal(t, []time.Duration{30 * time.Second}, waits)
+}
+
 func TestWaitForAppApprovalStopsOnRefusal(t *testing.T) {
 	svc := &fakeAppApproval{ticket: testTicket, steps: []pollStep{
 		{err: &model.AppApprovalError{StatusCode: http.StatusBadRequest, Message: "Invalid sign-in request"}},

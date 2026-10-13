@@ -233,7 +233,8 @@ func waitForAppApproval(
 	ticket model.AppApprovalTicket,
 	sleep func(context.Context, time.Duration) error,
 ) (string, error) {
-	interval := time.Duration(max(ticket.Interval, 1)) * time.Second
+	// The server sends 2 s; keep a bad value from stalling or hammering it
+	interval := time.Duration(min(max(ticket.Interval, 1), 30)) * time.Second
 	giveUpAt := time.Now().Add(time.Duration(ticket.ExpiresIn)*time.Second + appApprovalPollGrace)
 
 	for {
@@ -247,7 +248,7 @@ func waitForAppApproval(
 				return "", ctx.Err()
 			}
 			var apiErr *model.AppApprovalError
-			if errors.As(err, &apiErr) && apiErr.StatusCode < http.StatusInternalServerError && apiErr.StatusCode != http.StatusTooManyRequests {
+			if errors.As(err, &apiErr) && !retryableAppApprovalStatus(apiErr.StatusCode) {
 				return "", fmt.Errorf("%w: %s", ErrAuthNotApproved, apiErr.Message)
 			}
 			slog.Warn("app approval poll failed, retrying", slog.Any("err", err))
@@ -268,6 +269,17 @@ func waitForAppApproval(
 		if time.Now().After(giveUpAt) {
 			return "", fmt.Errorf("%w: the request expired before it was approved", ErrAuthNotApproved)
 		}
+	}
+}
+
+// retryableAppApprovalStatus: a poll that failed with this status may succeed
+// next time (a server error, rate limiting, or a proxy timing out).
+func retryableAppApprovalStatus(status int) bool {
+	switch status {
+	case http.StatusRequestTimeout, http.StatusTooEarly, http.StatusTooManyRequests:
+		return true
+	default:
+		return status >= http.StatusInternalServerError
 	}
 }
 
