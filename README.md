@@ -43,7 +43,7 @@ The fastest way to get set up is a single command:
 shelltime init
 ```
 
-`shelltime init` authenticates the CLI (in the browser, or pass `--token`), installs the bash, zsh and fish hooks and the daemon, and tries to wire up Claude Code and Codex OTEL integration for you.
+`shelltime init` authenticates the CLI (in the browser, with `--email` to approve on your iPhone in the ShellTime iOS app, or with `--token`), installs the bash, zsh and fish hooks and the daemon, and tries to wire up Claude Code and Codex OTEL integration for you.
 
 Prefer to do it step by step?
 
@@ -73,7 +73,7 @@ shelltime codex install
 | Command | Description |
 |---------|-------------|
 | `shelltime init` | Bootstrap auth, hooks, daemon, and AI-code integrations |
-| `shelltime auth` | Authenticate with `shelltime.xyz` (`--token` skips the browser flow) |
+| `shelltime auth` | Authenticate with `shelltime.xyz` (`--token` skips the browser flow; `--email you@example.com` asks the ShellTime iOS app to approve instead, with no browser, so agents can run it) |
 | `shelltime update` | Download and install the latest release in place (`--check`, `--force`, `--skip-daemon-reinstall`) |
 | `shelltime doctor` | Diagnose setup problems and show how to fix each one. `--fix` applies the safe fixes after asking (`--yes` skips the prompt), `--offline` skips network checks, `--format json` prints a machine-readable report. Exits non-zero when a check fails |
 | `shelltime web` | Open the ShellTime dashboard in a browser |
