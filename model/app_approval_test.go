@@ -48,6 +48,7 @@ func TestAppApprovalRequestRefused(t *testing.T) {
 	require.True(t, errors.As(err, &apiErr))
 	assert.Equal(t, http.StatusNotFound, apiErr.StatusCode)
 	assert.Equal(t, "This account can't approve sign-ins in the ShellTime iOS app.", apiErr.Message)
+	assert.Contains(t, err.Error(), "HTTP 404")
 }
 
 func TestAppApprovalErrorWithoutEnvelope(t *testing.T) {

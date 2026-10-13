@@ -5,6 +5,8 @@ import (
 	"context"
 	"errors"
 	"net/http"
+	"os"
+	"path/filepath"
 	"testing"
 	"time"
 
@@ -168,4 +170,67 @@ func TestAuthRejectsTokenWithEmail(t *testing.T) {
 	err := app.Run([]string{"shelltime", "auth", "--token", "abc", "--email", "me@example.com"})
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "either --token or --email")
+}
+
+// useFakeAppApproval swaps in svc and a sleep that returns at once.
+func useFakeAppApproval(t *testing.T, svc *fakeAppApproval) {
+	originalService, originalSleep := newAppApprovalService, appApprovalSleep
+	t.Cleanup(func() { newAppApprovalService, appApprovalSleep = originalService, originalSleep })
+	newAppApprovalService = func(model.ShellTimeConfig) model.AppApprovalService { return svc }
+	appApprovalSleep = func(ctx context.Context, _ time.Duration) error { return ctx.Err() }
+}
+
+func TestApplyTokenByAppApprovalApproved(t *testing.T) {
+	svc := &fakeAppApproval{ticket: testTicket, steps: []pollStep{
+		statusStep(model.AppApprovalPending),
+		approvedWith("st_v1_token"),
+	}}
+	useFakeAppApproval(t, svc)
+
+	token, err := ApplyTokenByAppApproval(context.Background(), model.ShellTimeConfig{}, "me@example.com")
+	require.NoError(t, err)
+	assert.Equal(t, "st_v1_token", token)
+	assert.Equal(t, 2, svc.polls)
+}
+
+func TestApplyTokenByAppApprovalDenied(t *testing.T) {
+	useFakeAppApproval(t, &fakeAppApproval{ticket: testTicket, steps: []pollStep{statusStep(model.AppApprovalDenied)}})
+
+	_, err := ApplyTokenByAppApproval(context.Background(), model.ShellTimeConfig{}, "me@example.com")
+	assert.ErrorIs(t, err, ErrAuthNotApproved)
+}
+
+func TestApplyTokenByAppApprovalUnreachable(t *testing.T) {
+	useFakeAppApproval(t, &fakeAppApproval{err: errors.New("connection refused")})
+
+	_, err := ApplyTokenByAppApproval(context.Background(), model.ShellTimeConfig{}, "me@example.com")
+	assert.ErrorIs(t, err, ErrAuthNotApproved)
+	assert.Contains(t, err.Error(), "connection refused")
+}
+
+func TestAuthWithEmailSavesTheToken(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	useFakeAppApproval(t, &fakeAppApproval{ticket: testTicket, steps: []pollStep{approvedWith("st_v1_saved")}})
+
+	app := &cli.App{Commands: []*cli.Command{AuthCommand}}
+	require.NoError(t, app.Run([]string{"shelltime", "auth", "--email", "me@example.com"}))
+
+	content, err := os.ReadFile(filepath.Join(home, model.COMMAND_BASE_STORAGE_FOLDER, "config.yaml"))
+	require.NoError(t, err)
+	assert.Contains(t, string(content), "st_v1_saved")
+}
+
+func TestSleepContext(t *testing.T) {
+	assert.NoError(t, sleepContext(context.Background(), time.Millisecond))
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	assert.ErrorIs(t, sleepContext(ctx, time.Hour), context.Canceled)
+}
+
+func TestWaitingIndicatorIsQuietWhenPiped(t *testing.T) {
+	// go test's stdout is not a terminal, so this must be a no-op
+	stop := startWaitingIndicator()
+	stop()
 }

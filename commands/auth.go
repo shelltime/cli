@@ -49,8 +49,11 @@ var emailFlag = &cli.StringFlag{
 // the request was denied, expired or refused. The CLI exits non-zero.
 var ErrAuthNotApproved = errors.New("sign-in was not approved")
 
-// newAppApprovalService is replaced in tests.
-var newAppApprovalService = model.NewAppApprovalService
+// newAppApprovalService and appApprovalSleep are replaced in tests.
+var (
+	newAppApprovalService = model.NewAppApprovalService
+	appApprovalSleep      = sleepContext
+)
 
 func commandAuth(c *cli.Context) error {
 	newToken := c.String("token")
@@ -200,7 +203,7 @@ func ApplyTokenByAppApproval(_ctx context.Context, config model.ShellTimeConfig,
 
 	printAppApprovalIntro(os.Stdout, ticket)
 	stopIndicator := startWaitingIndicator()
-	token, err := waitForAppApproval(ctx, svc, ticket, sleepContext)
+	token, err := waitForAppApproval(ctx, svc, ticket, appApprovalSleep)
 	stopIndicator()
 	if err != nil {
 		color.Red.Println(" ❌ " + err.Error())
