@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.1.94](https://github.com/shelltime/cli/compare/v0.1.93...v0.1.94) (2026-10-14)
+
+
+### Features
+
+* **cli:** sign in by approving on your iPhone with `auth --email` ([#326](https://github.com/shelltime/cli/issues/326)) ([34a67d9](https://github.com/shelltime/cli/commit/34a67d942eb9e62b9111b6e308e25294f18dfd29))
+
+
+### Bug Fixes
+
+* **ci:** make the Claude PR review read the diff ([#327](https://github.com/shelltime/cli/issues/327)) ([a39d654](https://github.com/shelltime/cli/commit/a39d65454ea0cd85751540855422097d106c066b))
+* **cli:** make `shelltime update` detect casks, verify downloads and refresh the daemon from the new release ([#324](https://github.com/shelltime/cli/issues/324)) ([639e900](https://github.com/shelltime/cli/commit/639e9006bc53eb29619ba80357e83145a6904cdd))
+* **readme:** correct install, command and privacy details ([#322](https://github.com/shelltime/cli/issues/322)) ([b285af2](https://github.com/shelltime/cli/commit/b285af2b4592534df0d2ebaec9b4a38734e65e6a))
+* stop losing, duplicating, and exposing tracked commands ([#325](https://github.com/shelltime/cli/issues/325)) ([1098c98](https://github.com/shelltime/cli/commit/1098c98984f3e73a9a709cd86dd8cfff0c63a922))
+
 ## [0.1.93](https://github.com/shelltime/cli/compare/v0.1.92...v0.1.93) (2026-10-08)
 
 
