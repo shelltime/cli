@@ -10,42 +10,93 @@ on:
     #   - "src/**/*.js"
     #   - "src/**/*.jsx"
 
+# A push while a review is still running replaces it, rather than stacking a
+# second review of a diff that is already stale.
+concurrency:
+  group: claude-review-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
 jobs:
   claude-review:
-    # Optional: Filter by PR author
-    # if: |
-    #   github.event.pull_request.user.login == 'external-contributor' ||
-    #   github.event.pull_request.user.login == 'new-developer' ||
-    #   github.event.pull_request.author_association == 'FIRST_TIME_CONTRIBUTOR'
+    # Drafts are reviewed once they are marked ready. Bot PRs (release-please)
+    # need no review and only queue up as action_required.
+    if: github.event.pull_request.draft == false && github.event.pull_request.user.type != 'Bot'
 
     runs-on: blacksmith-2vcpu-ubuntu-2404
     permissions:
       contents: read
-      pull-requests: read
-      issues: read
+      pull-requests: write
+      issues: write
       id-token: write
+      checks: read
+      statuses: read
+      actions: read # Required for Claude to read CI results on PRs
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
-          fetch-depth: 1
+          # Full history, so the review can diff, log and blame against the base
+          # branch instead of piecing the PR together from `gh pr diff`.
+          fetch-depth: 0
+
+      # - name: Trust workspace directory
+      # run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
 
       - name: Run Claude Code Review
         id: claude-review
         uses: anthropics/claude-code-action@v1
-        env:
-          # The code-review plugin launches subagents, which Claude Code runs in the
-          # background by default. The action exits on the first SDK result, so the
-          # run ends green before any review is posted. Force foreground subagents.
-          # https://github.com/anthropics/claude-code-action/issues/1646
-          CLAUDE_CODE_DISABLE_BACKGROUND_TASKS: "1"
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
-          plugin_marketplaces: 'https://github.com/anthropics/claude-code.git'
-          plugins: 'code-review@claude-code-plugins'
-          prompt: '/code-review:code-review --comment ${{ github.repository }}/pull/${{ github.event.pull_request.number }}'
-          claude_args: '--allowedTools "mcp__github_inline_comment__create_inline_comment,Bash(gh pr comment:*)"'
+          # Print Claude's messages to the job log. Without it a run that stops
+          # early or skims gives no reason. This repository's Actions logs are public.
+          show_full_output: true
+          # anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          # The built-in /code-review, not the code-review@claude-code-plugins
+          # command. The plugin's procedure (eligibility check, four parallel
+          # reviewers, validators) was routinely skipped by its Sonnet main loop:
+          # on #654 it said "I didn't launch the subagents the review steps
+          # describe", read a few line ranges of a diff too big for one tool
+          # result, and posted "No issues found" after 16s. Since Claude Code
+          # 2.1.x the built-in takes a PR number, an effort level and --comment,
+          # and verifies its findings before posting them.
+          prompt: '/code-review high ${{ github.event.pull_request.number }} --comment'
           # See https://github.com/anthropics/claude-code-action/blob/main/docs/usage.md
           # or https://code.claude.com/docs/en/cli-reference for available options
+          additional_permissions: |
+            actions: read
+          claude_args: |
+            --allowedTools "Bash(gh:*),Bash(git:*),mcp__github_inline_comment__create_inline_comment"
 
+      # The action reports success whenever the SDK returns is_error: false, even
+      # if Claude never did anything (unresolved slash command, missing plugin,
+      # empty prompt). That failure mode hid behind months of green runs, so
+      # assert that work actually happened.
+      #
+      # Check cost as well as turns: a real review delegates to subagents and can
+      # legitimately report num_turns 0 while spending several dollars. Only a run
+      # that is zero on BOTH counts truly did nothing.
+      #
+      # A run that did work but never delegated is the quieter failure: one
+      # agent skimming the diff and calling it clean. That only warns, because a
+      # tiny diff may not need subagents.
+      - name: Assert the review actually ran
+        if: always() && steps.claude-review.conclusion == 'success'
+        run: |
+          file="${{ steps.claude-review.outputs.execution_file }}"
+          if [ -z "$file" ] || [ ! -f "$file" ]; then
+            echo "::warning::No execution file — the action exited before starting Claude. Expected on PRs that modify this workflow (the action requires it to match the default branch); investigate otherwise."
+            exit 0
+          fi
+          result=$(jq -r '[.. | objects | select(.type == "result")] | last' "$file")
+          turns=$(jq -r '.num_turns // 0' <<<"$result")
+          cost=$(jq -r '.total_cost_usd // 0' <<<"$result")
+          delegations=$(jq -r '[.. | objects | select(.type == "tool_use" and (.name == "Agent" or .name == "Task" or .name == "Workflow"))] | length' "$file")
+          echo "Claude turns: $turns, cost: \$$cost, subagent launches: $delegations"
+          if [ "$turns" -eq 0 ] && [ "$(jq -rn --argjson c "$cost" '$c > 0')" = "false" ]; then
+            echo "::error::Claude did no work — 0 turns and \$0 spent. The review was a no-op (bad prompt or unresolved slash command)."
+            exit 1
+          fi
+          if [ "$delegations" -eq 0 ]; then
+            echo "::warning::The review launched no subagents. On anything but a tiny diff that means one agent skimmed it, so treat a clean result with suspicion."
+          fi
