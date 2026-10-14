@@ -3,307 +3,100 @@ name: Claude Code Review
 on:
   pull_request:
     types: [opened, synchronize, ready_for_review, reopened]
+    # Optional: Only run on specific file changes
+    # paths:
+    #   - "src/**/*.ts"
+    #   - "src/**/*.tsx"
+    #   - "src/**/*.js"
+    #   - "src/**/*.jsx"
+
+# A push while a review is still running replaces it, rather than stacking a
+# second review of a diff that is already stale.
+concurrency:
+  group: claude-review-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
 
 jobs:
   claude-review:
-    # cursor[bot] opens and updates agent PRs in this repo. Without this, the
-    # action exits before reviewing (run 38426519086 on shelltime/cli#325).
-    # The prompt below is fixed in this file; the bot cannot supply its own.
+    # Drafts are reviewed once they are marked ready. Bot PRs (release-please)
+    # need no review and only queue up as action_required.
+    if: github.event.pull_request.draft == false && github.event.pull_request.user.type != 'Bot'
+
     runs-on: blacksmith-2vcpu-ubuntu-2404
-    timeout-minutes: 20
     permissions:
       contents: read
-      # gh pr comment posts an issue comment; inline comments need pull-requests.
-      # Read-only scopes let the job go green while nothing is posted.
       pull-requests: write
       issues: write
       id-token: write
+      checks: read
+      statuses: read
+      actions: read # Required for Claude to read CI results on PRs
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
-          # Depth 1 checks out the merge commit without its parents, so a local
-          # git diff cannot see the change. Full history keeps base and head.
+          # Full history, so the review can diff, log and blame against the base
+          # branch instead of piecing the PR together from `gh pr diff`.
           fetch-depth: 0
 
-      - name: Record review start
-        id: review-start
-        run: echo "started_at=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$GITHUB_OUTPUT"
+      # - name: Trust workspace directory
+      # run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
 
       - name: Run Claude Code Review
         id: claude-review
         uses: anthropics/claude-code-action@v1
-        env:
-          # The action returns on the first SDK result. Background subagents
-          # (the code-review plugin's default) make that result arrive before
-          # any review is posted. Keep every tool call in the foreground.
-          # https://github.com/anthropics/claude-code-action/issues/1646
-          CLAUDE_CODE_DISABLE_BACKGROUND_TASKS: "1"
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
-          allowed_bots: "cursor[bot]"
-          # Public job logs. Turn this off if a review starts echoing secrets.
+          # Print Claude's messages to the job log. Without it a run that stops
+          # early or skims gives no reason. This repository's Actions logs are public.
           show_full_output: true
-          # Not the code-review plugin. That command only emits inline comments
-          # for issues that "will definitely produce wrong results", tells its
-          # bug agent not to read outside the diff, and otherwise posts the
-          # fixed line "No issues found. Checked for bugs and CLAUDE.md
-          # compliance." --allowedTools also replaces the plugin's own tool
-          # list, so a comment-only allowlist cannot run gh pr diff or Read
-          # (shelltime/cli#325, run 38401010946: 11 turns, 2 permission
-          # denials, then that stock comment).
-          prompt: |
-            Review pull request #${{ github.event.pull_request.number }} in ${{ github.repository }}.
-            Head SHA: ${{ github.event.pull_request.head.sha }}
-            Base SHA: ${{ github.event.pull_request.base.sha }}
+          # anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          # The built-in /code-review, not the code-review@claude-code-plugins
+          # command. The plugin's procedure (eligibility check, four parallel
+          # reviewers, validators) was routinely skipped by its Sonnet main loop:
+          # on #654 it said "I didn't launch the subagents the review steps
+          # describe", read a few line ranges of a diff too big for one tool
+          # result, and posted "No issues found" after 16s. Since Claude Code
+          # 2.1.x the built-in takes a PR number, an effort level and --comment,
+          # and verifies its findings before posting them.
+          prompt: '/code-review high ${{ github.event.pull_request.number }} --comment'
+          # See https://github.com/anthropics/claude-code-action/blob/main/docs/usage.md
+          # or https://code.claude.com/docs/en/cli-reference for available options
+          additional_permissions: |
+            actions: read
+          claude_args: |
+            --allowedTools "Bash(gh:*),Bash(git:*),mcp__github_inline_comment__create_inline_comment"
 
-            This is the ShellTime CLI (Go module github.com/malamtime/cli). Read CLAUDE.md and AGENTS.md and apply them. Review this push even if the PR is a draft, the diff looks small, or a Claude comment already exists. Do the review in this session. Do not launch subagents.
-
-            1. Read the full diff. Run both of these:
-               gh pr diff ${{ github.event.pull_request.number }}
-               git diff ${{ github.event.pull_request.base.sha }} ${{ github.event.pull_request.head.sha }}
-               If the local git diff fails, continue from `gh pr diff` and the checked-out tree.
-            2. Read the surrounding code for every changed area: the functions and types the new code calls, and the callers of anything it changes. Use Read, Grep, and Glob. Do not review from the diff alone.
-            3. For each real issue (bug, wrong behavior, security problem, data loss, or a broken contract), post one inline comment with mcp__github_inline_comment__create_inline_comment and confirmed set to true, on a changed line. Skip style, naming, and speculative nits. If GitHub rejects the line, keep that issue in the summary instead of retrying.
-            4. Always post exactly one summary with `gh pr comment ${{ github.event.pull_request.number }} --body-file -` and a heredoc, including when nothing is blocking. The body starts with this marker on its own line:
-
-               <!-- shelltime-claude-review -->
-
-               Then these headings, each followed by prose rather than an empty section:
-
-               ## What changed
-               What this PR does, with the files and the behavior.
-
-               ## Risks
-               What could break. "Low" is fine when you say why.
-
-               ## Findings
-               Each real issue, or a direct statement that nothing is blocking and what you checked.
-
-               Never write this sentence: "No issues found. Checked for bugs and CLAUDE.md compliance."
-
-            Do not edit files, push, or approve the PR. A review that did not read the diff and post that comment did not run.
-          claude_args: >-
-            --max-turns 40
-            --allowedTools "Read,Grep,Glob,Bash(gh pr diff:*),Bash(gh pr view:*),Bash(gh pr comment:*),Bash(git diff:*),Bash(git log:*),Bash(git show:*),mcp__github_inline_comment__create_inline_comment"
-
+      # The action reports success whenever the SDK returns is_error: false, even
+      # if Claude never did anything (unresolved slash command, missing plugin,
+      # empty prompt). That failure mode hid behind months of green runs, so
+      # assert that work actually happened.
+      #
+      # Check cost as well as turns: a real review delegates to subagents and can
+      # legitimately report num_turns 0 while spending several dollars. Only a run
+      # that is zero on BOTH counts truly did nothing.
+      #
+      # A run that did work but never delegated is the quieter failure: one
+      # agent skimming the diff and calling it clean. That only warns, because a
+      # tiny diff may not need subagents.
       - name: Assert the review actually ran
-        if: success()
-        env:
-          PR_NUMBER: ${{ github.event.pull_request.number }}
-          REVIEW_SINCE: ${{ steps.review-start.outputs.started_at }}
-          EXECUTION_FILE: ${{ steps.claude-review.outputs.execution_file }}
-          REPOSITORY: ${{ github.repository }}
-          BASE_REF: ${{ github.base_ref }}
+        if: always() && steps.claude-review.conclusion == 'success'
         run: |
-          # claude-code-action will not execute a prompt from a workflow file
-          # that differs from the default branch. That skip is exit 0 and
-          # leaves no execution log. It is not a review that failed to run.
-          if [ -z "${EXECUTION_FILE}" ] || [ ! -f "${EXECUTION_FILE}" ]; then
-            git diff --quiet "origin/${BASE_REF}" -- .github/workflows/claude-code-review.yml && diff_status=0 || diff_status=$?
-            if [ "${diff_status}" -eq 1 ]; then
-              echo "::notice::Claude Code skipped this run because the workflow file differs from ${BASE_REF}. The review starts after merge."
-              exit 0
-            fi
+          file="${{ steps.claude-review.outputs.execution_file }}"
+          if [ -z "$file" ] || [ ! -f "$file" ]; then
+            echo "::warning::No execution file — the action exited before starting Claude. Expected on PRs that modify this workflow (the action requires it to match the default branch); investigate otherwise."
+            exit 0
           fi
-          python3 - << 'PY'
-          import json
-          import os
-          import subprocess
-          import sys
-          from datetime import datetime, timezone
-
-          MARKER = "<!-- shelltime-claude-review -->"
-          HEADINGS = ["## What changed", "## Risks", "## Findings"]
-          STOCK = "No issues found. Checked for bugs and CLAUDE.md compliance."
-          CODE_TOOLS = {"read", "grep", "glob"}
-          REVIEW_AUTHORS = {"claude[bot]", "claude", "github-actions[bot]"}
-
-          def fail(message):
-              print(f"::error::{message}")
-              print(message, file=sys.stderr)
-              sys.exit(1)
-
-          def parse_time(value):
-              if not value:
-                  return None
-              text = value.strip().replace("Z", "+00:00")
-              try:
-                  parsed = datetime.fromisoformat(text)
-              except ValueError:
-                  return None
-              if parsed.tzinfo is None:
-                  parsed = parsed.replace(tzinfo=timezone.utc)
-              return parsed
-
-          def load_events(path):
-              with open(path, encoding="utf-8") as handle:
-                  raw = handle.read().strip()
-              if not raw:
-                  return []
-              try:
-                  data = json.loads(raw)
-              except json.JSONDecodeError:
-                  events = []
-                  for line in raw.splitlines():
-                      line = line.strip()
-                      if not line:
-                          continue
-                      events.append(json.loads(line))
-                  return events
-              if isinstance(data, list):
-                  return data
-              if isinstance(data, dict):
-                  for key in ("messages", "turns", "events"):
-                      if isinstance(data.get(key), list):
-                          return data[key]
-                  return [data]
-              return []
-
-          def content_blocks(event):
-              message = event.get("message") if isinstance(event, dict) else None
-              content = message.get("content") if isinstance(message, dict) else None
-              if isinstance(content, list):
-                  return [block for block in content if isinstance(block, dict)]
-              if isinstance(event, dict) and event.get("type") in ("tool_use", "tool_result"):
-                  return [event]
-              return []
-
-          def section_bodies(body):
-              lines = body.splitlines()
-              found = []
-              for index, line in enumerate(lines):
-                  heading = line.strip()
-                  if heading in HEADINGS:
-                      found.append((heading, index))
-              missing = [heading for heading in HEADINGS if heading not in {name for name, _ in found}]
-              bodies = {}
-              for position, (heading, index) in enumerate(found):
-                  end = found[position + 1][1] if position + 1 < len(found) else len(lines)
-                  bodies[heading] = "\n".join(lines[index + 1 : end]).strip()
-              return missing, bodies
-
-          path = os.environ.get("EXECUTION_FILE", "").strip()
-          if not path or not os.path.isfile(path):
-              fail(f"Claude execution log is missing ({path or 'empty path'}). The review did not run.")
-
-          events = load_events(path)
-          uses = {}
-          denial_count = None
-          for event in events:
-              if not isinstance(event, dict):
-                  continue
-              if event.get("type") == "result":
-                  if event.get("permission_denials_count") is not None:
-                      denial_count = event.get("permission_denials_count")
-                  denials = event.get("permission_denials")
-                  if denial_count is None and isinstance(denials, list):
-                      denial_count = len(denials)
-                  if isinstance(denials, list):
-                      for denial in denials:
-                          if not isinstance(denial, dict):
-                              continue
-                          tool_input = denial.get("tool_input") or {}
-                          command = tool_input.get("command") or ""
-                          uses[f"denied-{len(uses)}"] = {
-                              "name": str(denial.get("tool_name") or ""),
-                              "command": command if isinstance(command, str) else json.dumps(command),
-                              "denied": True,
-                          }
-              for block in content_blocks(event):
-                  kind = block.get("type")
-                  if kind == "tool_use":
-                      tool_input = block.get("input") if isinstance(block.get("input"), dict) else {}
-                      command = tool_input.get("command") or ""
-                      uses[block.get("id") or f"use-{len(uses)}"] = {
-                          "name": str(block.get("name") or ""),
-                          "command": command if isinstance(command, str) else json.dumps(command),
-                          "denied": False,
-                          "saw_result": False,
-                      }
-                  elif kind == "tool_result":
-                      tool_id = block.get("tool_use_id")
-                      if tool_id in uses:
-                          uses[tool_id]["saw_result"] = True
-                          # is_error only. A real diff can mention "permission denied".
-                          if block.get("is_error"):
-                              uses[tool_id]["denied"] = True
-
-          def succeeded(predicate):
-              matched = [item for item in uses.values() if predicate(item)]
-              if not matched:
-                  return False
-              decided = [item for item in matched if item["saw_result"] or item["denied"]]
-              if not decided:
-                  return True
-              return any(not item["denied"] for item in decided)
-
-          read_diff = succeeded(
-              lambda item: "gh pr diff" in item["command"] or "git diff" in item["command"]
-          )
-          read_code = succeeded(lambda item: item["name"].lower() in CODE_TOOLS)
-          tool_names = sorted({item["name"] for item in uses.values() if item["name"]})
-          print(f"Review tools observed: {', '.join(tool_names) or '(none)'}")
-          print(f"Permission denials reported: {denial_count if denial_count is not None else 'unknown'}")
-          if not read_diff:
-              fail("The review never successfully read the pull request diff (gh pr diff or git diff).")
-          if not read_code:
-              fail("The review never successfully read surrounding code with Read, Grep, or Glob.")
-
-          since = os.environ["REVIEW_SINCE"]
-          listed = subprocess.run(
-              [
-                  "gh",
-                  "api",
-                  "--paginate",
-                  f"repos/{os.environ['REPOSITORY']}/issues/{os.environ['PR_NUMBER']}/comments",
-                  "-f",
-                  f"since={since}",
-                  "-F",
-                  "per_page=100",
-              ],
-              check=False,
-              capture_output=True,
-              text=True,
-          )
-          if listed.returncode != 0:
-              fail(f"Could not list PR comments: {listed.stderr.strip() or listed.stdout.strip()}")
-          try:
-              comments = json.loads(listed.stdout or "[]")
-          except json.JSONDecodeError as exc:
-              fail(f"PR comment list was not JSON: {exc}")
-          if isinstance(comments, dict):
-              comments = comments.get("comments") or []
-
-          started = parse_time(since)
-          candidates = []
-          for comment in comments:
-              if not isinstance(comment, dict):
-                  continue
-              author = ((comment.get("user") or {}).get("login") or "")
-              if author not in REVIEW_AUTHORS:
-                  continue
-              updated = parse_time(comment.get("updated_at") or comment.get("created_at"))
-              if started and updated and updated < started:
-                  continue
-              body = comment.get("body") or ""
-              if MARKER in body:
-                  candidates.append(comment)
-          if not candidates:
-              fail(
-                  "No summary comment with the shelltime-claude-review marker was posted "
-                  "after this run started."
-              )
-          body = candidates[-1].get("body") or ""
-          if STOCK in body:
-              fail("The summary is the stock 'No issues found' comment, not a review of this PR.")
-          missing, bodies = section_bodies(body)
-          if missing:
-              fail(f"The summary comment is missing: {', '.join(missing)}")
-          thin = [heading for heading, text in bodies.items() if len(text) < 40]
-          if thin:
-              fail(f"The summary comment has an empty section: {', '.join(thin)}")
-          url = candidates[-1].get("html_url") or "(no url)"
-          print(f"Review summary posted: {url}")
-          PY
+          result=$(jq -r '[.. | objects | select(.type == "result")] | last' "$file")
+          turns=$(jq -r '.num_turns // 0' <<<"$result")
+          cost=$(jq -r '.total_cost_usd // 0' <<<"$result")
+          delegations=$(jq -r '[.. | objects | select(.type == "tool_use" and (.name == "Agent" or .name == "Task" or .name == "Workflow"))] | length' "$file")
+          echo "Claude turns: $turns, cost: \$$cost, subagent launches: $delegations"
+          if [ "$turns" -eq 0 ] && [ "$(jq -rn --argjson c "$cost" '$c > 0')" = "false" ]; then
+            echo "::error::Claude did no work — 0 turns and \$0 spent. The review was a no-op (bad prompt or unresolved slash command)."
+            exit 1
+          fi
+          if [ "$delegations" -eq 0 ]; then
+            echo "::warning::The review launched no subagents. On anything but a tiny diff that means one agent skimmed it, so treat a clean result with suspicion."
+          fi
