@@ -95,7 +95,18 @@ jobs:
           REVIEW_SINCE: ${{ steps.review-start.outputs.started_at }}
           EXECUTION_FILE: ${{ steps.claude-review.outputs.execution_file }}
           REPOSITORY: ${{ github.repository }}
+          BASE_REF: ${{ github.base_ref }}
         run: |
+          # claude-code-action will not execute a prompt from a workflow file
+          # that differs from the default branch. That skip is exit 0 and
+          # leaves no execution log. It is not a review that failed to run.
+          if [ -z "${EXECUTION_FILE}" ] || [ ! -f "${EXECUTION_FILE}" ]; then
+            git diff --quiet "origin/${BASE_REF}" -- .github/workflows/claude-code-review.yml && diff_status=0 || diff_status=$?
+            if [ "${diff_status}" -eq 1 ]; then
+              echo "::notice::Claude Code skipped this run because the workflow file differs from ${BASE_REF}. The review starts after merge."
+              exit 0
+            fi
+          fi
           python3 - << 'PY'
           import json
           import os
