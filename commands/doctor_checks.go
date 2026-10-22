@@ -443,7 +443,14 @@ func doctorCheckAccount(env *doctorEnv) []doctorResult {
 			Fix:     "Run `shelltime auth` to sign in.",
 		}}
 	}
-	results := []doctorResult{{ID: "auth.token", Status: doctorOK, Message: fmt.Sprintf("An API token is configured (%s).", maskDoctorToken(cfg.Token))}}
+	proxyInjected := cfg.Token == model.ProxyInjectedToken
+	tokenResult := doctorResult{ID: "auth.token", Status: doctorOK, Message: fmt.Sprintf("An API token is configured (%s).", maskDoctorToken(cfg.Token))}
+	reauthFix := "Run `shelltime auth` to sign in again."
+	if proxyInjected {
+		tokenResult.Message = "The API token is a network secret of this Claude Code cloud environment, added to requests by its agent proxy."
+		reauthFix = "In the cloud environment's settings, add your ShellTime token as a network secret for api.shelltime.xyz (header Authorization, prefix CLI), or replace a revoked one."
+	}
+	results := []doctorResult{tokenResult}
 
 	switch {
 	case env.offline:
@@ -466,11 +473,16 @@ func doctorCheckAccount(env *doctorEnv) []doctorResult {
 	case errors.As(err, &statusErr) && (statusErr.StatusCode == 401 || statusErr.StatusCode == 403):
 		result.Status = doctorFail
 		result.Message = fmt.Sprintf("The server rejected your token (HTTP %d): it's expired, revoked or disabled, so nothing is being uploaded.", statusErr.StatusCode)
-		result.Fix = "Run `shelltime auth` to sign in again."
+		result.Fix = reauthFix
+	case proxyInjected && errors.As(err, &statusErr) && statusErr.StatusCode == 404:
+		// A request without a token reads as an unknown user
+		result.Status = doctorFail
+		result.Message = "No token reached the server: the cloud environment has no network secret for api.shelltime.xyz, or its agent proxy didn't send it, so nothing is being uploaded."
+		result.Fix = reauthFix
 	case err == nil:
 		result.Status = doctorFail
 		result.Message = "The server didn't recognise your token, so nothing is being uploaded."
-		result.Fix = "Run `shelltime auth` to sign in again."
+		result.Fix = reauthFix
 	default:
 		result.Status = doctorWarn
 		result.Message = fmt.Sprintf("Couldn't reach %s to verify your token: %v", cfg.APIEndpoint, err)

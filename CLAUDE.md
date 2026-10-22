@@ -112,6 +112,7 @@ Services initialize in `cmd/daemon/main.go`: check enabled flag → create → s
 - Daemon socket: `/tmp/shelltime.sock` (configurable via `socketPath`)
 - AICodeOtel gRPC port: configurable via `aiCodeOtel.grpcPort` (default: 54027)
 - Outbound proxy: `proxy.url` / `proxy.noProxy` (http, https, socks5, socks5h). Applied once at startup via `model.ConfigureProxy`; every outbound HTTP client must use `model.NewHTTPClient` or `model.HTTPTransport()` so the proxy applies
+- Token `proxy-injected` (`model.ProxyInjectedToken`): a Claude Code cloud environment keeps the real token as a network secret, and its agent proxy adds `Authorization: CLI <token>` to requests for `api.shelltime.xyz`. Requests to the API then carry no `Authorization` header of their own (`setCLIAuthorization`); set it through that helper, never by hand. `cloud.bash` in the installation repo writes it
 
 ## Commit Rules
 

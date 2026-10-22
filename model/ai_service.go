@@ -51,7 +51,7 @@ func (s *sseAIService) QueryCommandStream(
 	}
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Accept", "text/event-stream")
-	req.Header.Set("Authorization", "CLI "+endpoint.Token)
+	setCLIAuthorization(req, endpoint.Token)
 
 	client := &http.Client{Timeout: 2 * time.Minute, Transport: HTTPTransport()}
 	resp, err := client.Do(req)
