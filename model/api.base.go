@@ -65,7 +65,7 @@ func SendHTTPRequestJSON[T any, R any](opts HTTPRequestOptions[T, R]) error {
 
 	req.Header.Set("Content-Type", contentType)
 	req.Header.Set("User-Agent", fmt.Sprintf("shelltimeCLI@%s", commitID))
-	req.Header.Set("Authorization", "CLI "+opts.Endpoint.Token)
+	setCLIAuthorization(req, opts.Endpoint.Token)
 
 	slog.Debug("http request", slog.String("url", req.URL.String()))
 

@@ -341,6 +341,47 @@ func TestDoctorCheckAccount(t *testing.T) {
 	assert.Equal(t, doctorWarn, findDoctorResult(t, doctorCheckAccount(env), "auth.server").Status, "unreachable server")
 }
 
+// In a Claude Code cloud environment the token is a network secret: doctor says so, checks it
+// through the request the agent proxy completes, and points a rejection at the secret.
+func TestDoctorCheckAccount_ProxyInjectedToken(t *testing.T) {
+	setupDoctorTest(t)
+
+	var status int
+	var body string
+	authHeaders := []string{"unset"}
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		authHeaders = r.Header.Values("Authorization")
+		w.WriteHeader(status)
+		_, _ = w.Write([]byte(body))
+	}))
+	defer srv.Close()
+
+	env := newTestDoctorEnv(doctorTestConfig(t))
+	env.cfg.Token = model.ProxyInjectedToken
+	env.cfg.APIEndpoint = srv.URL
+
+	status, body = http.StatusOK, `{"data":{"fetchUser":{"id":1,"login":"annatar"}}}`
+	results := doctorCheckAccount(env)
+	token := findDoctorResult(t, results, "auth.token")
+	assert.Equal(t, doctorOK, token.Status)
+	assert.Contains(t, token.Message, "network secret")
+	assert.Equal(t, doctorOK, findDoctorResult(t, results, "auth.server").Status)
+	assert.Empty(t, authHeaders, "the agent proxy adds the header")
+
+	status, body = http.StatusUnauthorized, `{"code":401,"error":"unauthorized"}`
+	server := findDoctorResult(t, doctorCheckAccount(env), "auth.server")
+	assert.Equal(t, doctorFail, server.Status)
+	assert.Contains(t, server.Fix, "network secret")
+	assert.NotContains(t, server.Fix, "shelltime auth")
+
+	// No secret: the request arrives without a token and the user isn't found
+	status, body = http.StatusNotFound, `{"errors":[{"message":"[404]: ent: user not found"}],"data":null}`
+	server = findDoctorResult(t, doctorCheckAccount(env), "auth.server")
+	assert.Equal(t, doctorFail, server.Status)
+	assert.Contains(t, server.Message, "No token reached the server")
+	assert.Contains(t, server.Fix, "network secret")
+}
+
 // --- Privacy ------------------------------------------------------------------
 
 func TestDoctorCheckPrivacy(t *testing.T) {

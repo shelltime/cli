@@ -90,6 +90,8 @@ apiEndpoint: "https://api.shelltime.xyz"
 webEndpoint: "https://shelltime.xyz"
 ```
 
+In a Claude Code cloud environment set up with [cloud.bash](https://github.com/shelltime/installation/blob/main/cloud.bash), the token is `proxy-injected`: the environment keeps your real token as a network secret, and its agent proxy adds it to every request for `api.shelltime.xyz`, so the CLI sends none itself. See [Track your Claude Code cloud sessions](https://shelltime.xyz/blogs/track-claude-code-cloud-sessions).
+
 ### Sync Settings
 
 | Option | Type | Default | Description |

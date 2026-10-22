@@ -1,6 +1,9 @@
 package model
 
-import "strings"
+import (
+	"net/http"
+	"strings"
+)
 
 // AICodeCloudSessionIDAttribute is the standard attribute Claude Code puts on every event and
 // metric of a cloud session (claude.ai/code): its CLAUDE_CODE_REMOTE_SESSION_ID, like cse_01AbC.
@@ -16,4 +19,19 @@ func CloudSessionIDFromEnv(getenv func(string) string) string {
 		return ""
 	}
 	return strings.TrimSpace(getenv("CLAUDE_CODE_REMOTE_SESSION_ID"))
+}
+
+// ProxyInjectedToken is the token a Claude Code cloud environment's sessions sign in with when
+// the real one is a network secret: the agent proxy adds `Authorization: CLI <token>` to every
+// request for api.shelltime.xyz after it leaves the VM, so the token is never on disk or in the
+// environment. Cloud sessions read GITHUB_TOKEN as the same placeholder for the GitHub proxy.
+const ProxyInjectedToken = "proxy-injected"
+
+// setCLIAuthorization authenticates a request to the ShellTime API. With ProxyInjectedToken it
+// sends no Authorization header, so the one the proxy adds is the only one the server reads.
+func setCLIAuthorization(req *http.Request, token string) {
+	if token == ProxyInjectedToken {
+		return
+	}
+	req.Header.Set("Authorization", "CLI "+token)
 }
