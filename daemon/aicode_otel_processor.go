@@ -35,6 +35,9 @@ type AICodeOtelProcessor struct {
 	endpoint model.Endpoint
 	hostname string
 	debug    bool
+	// cloudSessionID is the Claude Code cloud session the daemon runs in (from its environment),
+	// added to Claude Code records that don't carry one. Empty on a local machine.
+	cloudSessionID string
 
 	// maxRequestBytes bounds the JSON body of one backend request; larger batches are split.
 	maxRequestBytes int
@@ -59,8 +62,22 @@ func NewAICodeOtelProcessor(config model.ShellTimeConfig) *AICodeOtelProcessor {
 		},
 		hostname:        hostname,
 		debug:           debug,
+		cloudSessionID:  model.CloudSessionIDFromEnv(os.Getenv),
 		maxRequestBytes: model.AICodeOtelMaxRequestBytes,
 	}
+}
+
+// fillCloudSessionID adds the daemon's cloud session id to the attributes of a Claude Code
+// record that doesn't carry ccr.session.id yet. In a cloud VM the daemon is started by the
+// session's SessionStart hook, so every Claude Code record it receives belongs to that session.
+func (p *AICodeOtelProcessor) fillCloudSessionID(attrs map[string]any, source string) map[string]any {
+	if p.cloudSessionID == "" || source != model.AICodeOtelSourceClaudeCode {
+		return attrs
+	}
+	if _, ok := attrs[model.AICodeCloudSessionIDAttribute]; ok {
+		return attrs
+	}
+	return setAttribute(attrs, model.AICodeCloudSessionIDAttribute, p.cloudSessionID)
 }
 
 // writeDebugFile appends JSON-formatted data to a debug file
@@ -474,6 +491,9 @@ func (p *AICodeOtelProcessor) parseMetric(m *metricsv1.Metric, res *otelResource
 		}
 		// Apply resource attributes first
 		applyResourceAttributesToMetric(&metric, res.attrs)
+		// Seeded before the data point's attributes, so they can't crowd it out; a ccr.session.id
+		// on the data point still wins.
+		metric.Attributes = p.fillCloudSessionID(metric.Attributes, res.source)
 		// Then extract data point attributes (can override resource attrs)
 		for _, attr := range dp.GetAttributes() {
 			applyMetricAttribute(&metric, attr, metricType)
@@ -562,6 +582,8 @@ func (p *AICodeOtelProcessor) parseLogRecord(lr *logsv1.LogRecord, res *otelReso
 	for _, key := range keys {
 		event.Attributes = setAttribute(event.Attributes, key, res.attrs.Attributes[key])
 	}
+	// Seeded the same way: a ccr.session.id on the record itself still wins.
+	event.Attributes = p.fillCloudSessionID(event.Attributes, res.source)
 
 	var fallbacks eventFallbacks
 	for _, attr := range lr.GetAttributes() {
