@@ -81,12 +81,32 @@ func ParseProxyURL(raw string) (*url.URL, error) {
 }
 
 // RedactProxyURL hides the password of a proxy URL for display and logging.
+// Like ParseProxyURL it reads a URL without a scheme as http, so a bare
+// "user:pass@host:port" is redacted too. When the URL doesn't parse into user
+// info (a password with an unescaped '/', '%', '?' or '#'), everything between
+// the scheme and the last '@' is hidden.
 func RedactProxyURL(raw string) string {
-	u, err := url.Parse(raw)
-	if err != nil || u.User == nil {
+	bare := !strings.Contains(raw, "://")
+	toParse := raw
+	if bare {
+		toParse = "http://" + raw
+	}
+	if u, err := url.Parse(toParse); err == nil && u.User != nil {
+		if bare {
+			return strings.TrimPrefix(u.Redacted(), "http://")
+		}
+		return u.Redacted()
+	}
+
+	at := strings.LastIndex(raw, "@")
+	if at < 0 {
 		return raw
 	}
-	return u.Redacted()
+	start := 0
+	if i := strings.Index(raw, "://"); i >= 0 && i < at {
+		start = i + len("://")
+	}
+	return raw[:start] + "xxxxx" + raw[at:]
 }
 
 // HTTPTransport returns the shared, proxy-aware base transport.
