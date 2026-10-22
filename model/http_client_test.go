@@ -67,6 +67,11 @@ func TestRedactProxyURL(t *testing.T) {
 	assert.Equal(t, "socks5://u:xxxxx@h:1", RedactProxyURL("socks5://u:secret@h:1"))
 	assert.Equal(t, "http://h:1", RedactProxyURL("http://h:1"))
 	assert.Equal(t, "", RedactProxyURL(""))
+	assert.Equal(t, "h:1", RedactProxyURL("h:1"))
+	assert.Equal(t, "u:xxxxx@h:1", RedactProxyURL("u:secret@h:1"))
+	assert.Equal(t, "http://xxxxx@h:1", RedactProxyURL("http://u:sec/ret@h:1"))
+	assert.Equal(t, "http://xxxxx@h:1", RedactProxyURL("http://u:sec%zzret@h:1"))
+	assert.Equal(t, "xxxxx@h:1", RedactProxyURL("u:sec/ret@h:1"))
 }
 
 func TestConfigureProxy_NilOrEmptyKeepsEnvBehavior(t *testing.T) {
