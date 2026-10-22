@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.1.95](https://github.com/shelltime/cli/compare/v0.1.94...v0.1.95) (2026-10-22)
+
+
+### Features
+
+* **daemon:** mark Claude Code cloud session telemetry ([#330](https://github.com/shelltime/cli/issues/330)) ([5d8553c](https://github.com/shelltime/cli/commit/5d8553ccd53a26cd5b2837428b6af65dae27b217))
+* **model:** sign in through a Claude Code cloud network secret ([#331](https://github.com/shelltime/cli/issues/331)) ([c816342](https://github.com/shelltime/cli/commit/c816342459e32f6e9c31412b8e3132399152f182))
+
+
+### Bug Fixes
+
+* **daemon:** mask the API token in the startup config log ([#328](https://github.com/shelltime/cli/issues/328)) ([4d80820](https://github.com/shelltime/cli/commit/4d80820b0051ff9b9772939f83e315c26587104c))
+
 ## [0.1.94](https://github.com/shelltime/cli/compare/v0.1.93...v0.1.94) (2026-10-14)
 
 
