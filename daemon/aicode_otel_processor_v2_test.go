@@ -842,6 +842,45 @@ func TestParseMetric_TypeRoutingAndAttributes(t *testing.T) {
 	assert.Equal(t, "Write", legacyTool.Tool)
 }
 
+// In a cloud VM the daemon adds its session's ccr.session.id to Claude Code records that lack
+// it; a value Claude Code sent wins, and Codex records are left alone.
+func TestCloudSessionIDFallback(t *testing.T) {
+	t.Setenv("CLAUDE_CODE_REMOTE", "true")
+	t.Setenv("CLAUDE_CODE_REMOTE_SESSION_ID", "cse_01Daemon")
+	p := NewAICodeOtelProcessor(model.ShellTimeConfig{})
+	require.Equal(t, "cse_01Daemon", p.cloudSessionID)
+
+	claude := newOtelResource(claudeTestResource(), model.AICodeOtelSourceClaudeCode)
+	event := p.parseLogRecord(claudeRecord("user_prompt", kv("prompt", strVal("hi"))), claude, "test-scope")
+	require.NotNil(t, event)
+	assert.Equal(t, "cse_01Daemon", event.Attributes[model.AICodeCloudSessionIDAttribute])
+
+	event = p.parseLogRecord(claudeRecord("user_prompt", kv("ccr.session.id", strVal("cse_01Claude"))), claude, "test-scope")
+	require.NotNil(t, event)
+	assert.Equal(t, "cse_01Claude", event.Attributes[model.AICodeCloudSessionIDAttribute], "Claude Code's own value wins")
+
+	delta := metricsv1.AggregationTemporality_AGGREGATION_TEMPORALITY_DELTA
+	metrics := p.parseMetric(sumMetric("claude_code.active_time.total", delta, 30, kv("type", strVal("cli"))), claude, "com.anthropic.claude_code")
+	require.Len(t, metrics, 1)
+	assert.Equal(t, "cse_01Daemon", metrics[0].Attributes[model.AICodeCloudSessionIDAttribute])
+
+	metrics = p.parseMetric(sumMetric("claude_code.active_time.total", delta, 30, kv("ccr.session.id", strVal("cse_01Claude"))), claude, "com.anthropic.claude_code")
+	require.Len(t, metrics, 1)
+	assert.Equal(t, "cse_01Claude", metrics[0].Attributes[model.AICodeCloudSessionIDAttribute])
+
+	codex := newOtelResource(codexTestResource(), model.AICodeOtelSourceCodex)
+	event = p.parseLogRecord(codexRecord("user_prompt", kv("prompt", strVal("hi"))), codex, "test-scope")
+	require.NotNil(t, event)
+	assert.NotContains(t, event.Attributes, model.AICodeCloudSessionIDAttribute, "Codex isn't a Claude Code cloud session")
+
+	// On a local machine nothing is added.
+	local := NewAICodeOtelProcessor(model.ShellTimeConfig{})
+	local.cloudSessionID = ""
+	event = local.parseLogRecord(claudeRecord("user_prompt", kv("prompt", strVal("hi"))), claude, "test-scope")
+	require.NotNil(t, event)
+	assert.NotContains(t, event.Attributes, model.AICodeCloudSessionIDAttribute)
+}
+
 func TestParseMetric_CumulativeTemporalityWarnsOnce(t *testing.T) {
 	var buf bytes.Buffer
 	var mu sync.Mutex
