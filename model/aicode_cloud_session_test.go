@@ -17,6 +17,7 @@ func TestCloudSessionIDFromEnv(t *testing.T) {
 		{name: "remote flag off", env: map[string]string{"CLAUDE_CODE_REMOTE": "false", "CLAUDE_CODE_REMOTE_SESSION_ID": "cse_01AbC"}, want: ""},
 		{name: "id without the flag", env: map[string]string{"CLAUDE_CODE_REMOTE_SESSION_ID": "cse_01AbC"}, want: ""},
 		{name: "flag without an id", env: map[string]string{"CLAUDE_CODE_REMOTE": "true"}, want: ""},
+		{name: "blank id", env: map[string]string{"CLAUDE_CODE_REMOTE": "true", "CLAUDE_CODE_REMOTE_SESSION_ID": "   "}, want: ""},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

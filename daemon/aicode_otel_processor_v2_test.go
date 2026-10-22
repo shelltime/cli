@@ -868,6 +868,16 @@ func TestCloudSessionIDFallback(t *testing.T) {
 	require.Len(t, metrics, 1)
 	assert.Equal(t, "cse_01Claude", metrics[0].Attributes[model.AICodeCloudSessionIDAttribute])
 
+	// Seeded before the data point's attributes, so a data point at the attribute cap can't crowd
+	// it out.
+	full := make([]*commonv1.KeyValue, 0, model.AICodeOtelMaxAttributes)
+	for i := range model.AICodeOtelMaxAttributes {
+		full = append(full, kv(fmt.Sprintf("attr.%d", i), strVal("v")))
+	}
+	metrics = p.parseMetric(sumMetric("claude_code.active_time.total", delta, 30, full...), claude, "com.anthropic.claude_code")
+	require.Len(t, metrics, 1)
+	assert.Equal(t, "cse_01Daemon", metrics[0].Attributes[model.AICodeCloudSessionIDAttribute])
+
 	codex := newOtelResource(codexTestResource(), model.AICodeOtelSourceCodex)
 	event = p.parseLogRecord(codexRecord("user_prompt", kv("prompt", strVal("hi"))), codex, "test-scope")
 	require.NotNil(t, event)

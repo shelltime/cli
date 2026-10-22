@@ -491,11 +491,13 @@ func (p *AICodeOtelProcessor) parseMetric(m *metricsv1.Metric, res *otelResource
 		}
 		// Apply resource attributes first
 		applyResourceAttributesToMetric(&metric, res.attrs)
+		// Seeded before the data point's attributes, so they can't crowd it out; a ccr.session.id
+		// on the data point still wins.
+		metric.Attributes = p.fillCloudSessionID(metric.Attributes, res.source)
 		// Then extract data point attributes (can override resource attrs)
 		for _, attr := range dp.GetAttributes() {
 			applyMetricAttribute(&metric, attr, metricType)
 		}
-		metric.Attributes = p.fillCloudSessionID(metric.Attributes, res.source)
 		metrics = append(metrics, metric)
 	}
 
