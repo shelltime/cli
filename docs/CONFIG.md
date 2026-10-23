@@ -306,6 +306,27 @@ aiCodeOtel:
 3. ShellTime auto-detects the source from service.name attribute
 4. Data is forwarded to shelltime.xyz for analysis
 
+### AI Cloud Only
+
+Collect only AI coding agent usage (the AICodeOtel data above) on a machine that isn't yours, such as a Claude Code cloud environment's VM:
+
+| Option | Type | Default | Description |
+|--------|------|---------|-------------|
+| `aiCloudOnly` | boolean | on in a Claude Code cloud environment, else off | Collect AI coding agent usage only |
+
+```yaml
+# Collect only AI coding agent usage on this machine
+aiCloudOnly: true
+```
+
+In this mode ShellTime records nothing about the machine, so it never shows up as a host:
+
+- The daemon drops tracked commands, syncs and editor heartbeats, and doesn't start the services that store or resend them.
+- `shelltime track` without a daemon stores nothing, and `shelltime sync`, `alias import`, `dotfiles push` and `hooks install` say so and do nothing.
+- Claude Code and Codex sessions, prompts, tokens, cost and the pull requests they open are collected as usual.
+
+You don't need to set it in a Claude Code cloud environment ([cloud.bash](https://github.com/shelltime/installation/blob/main/cloud.bash)): when `aiCloudOnly` is unset, the mode is on wherever `CLAUDE_CODE_REMOTE=true`, which cloud environments set and your own machines never do. To track a cloud VM's commands anyway, set `aiCloudOnly: false`. `shelltime doctor` shows whether the mode is on and why.
+
 ## Codex Usage Tracking
 
 Codex usage has two separate data paths:

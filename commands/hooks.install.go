@@ -17,6 +17,10 @@ var HooksInstallCommand = &cli.Command{
 }
 
 func commandHooksInstall(c *cli.Context) error {
+	if skippedInAICloudOnly(configForAICloudOnly(c.Context), "Shell hooks not installed") {
+		return nil
+	}
+
 	binFolder := os.ExpandEnv(fmt.Sprintf("$HOME/%s/bin", model.COMMAND_BASE_STORAGE_FOLDER))
 	_, binFolderErr := os.Stat(binFolder)
 	_, lookPathErr := exec.LookPath("shelltime")

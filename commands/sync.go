@@ -37,6 +37,9 @@ func commandSync(c *cli.Context) error {
 		slog.Error("failed to read config file", slog.Any("err", err))
 		return err
 	}
+	if skippedInAICloudOnly(config, "Nothing synced") {
+		return nil
+	}
 
 	isDryRun := c.Bool("dry-run")
 	return trySyncLocalToServer(ctx, config, syncOptions{

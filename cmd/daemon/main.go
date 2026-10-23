@@ -87,9 +87,17 @@ func main() {
 	daemon.Init(daemonConfigService, version)
 	model.InjectVar(version)
 
+	// In AI cloud only mode (on by default in a Claude Code cloud environment) the socket drops
+	// commands and heartbeats, so nothing that stores, syncs or resends them is started.
+	aiCloudOnly := model.IsAICloudOnly(cfg, os.Getenv)
+	if aiCloudOnly {
+		slog.Info("AI cloud only mode: only AI coding agent telemetry is collected, no commands, heartbeats or host info",
+			slog.Bool("fromConfig", cfg.AICloudOnly != nil))
+	}
+
 	// When the bolt storage engine is enabled, the daemon owns the bolt-backed
 	// command store for its lifetime (bbolt holds an exclusive file lock).
-	if cfg.Storage != nil && cfg.Storage.Engine == model.StorageEngineBolt {
+	if !aiCloudOnly && cfg.Storage != nil && cfg.Storage.Engine == model.StorageEngineBolt {
 		store, err := model.NewCommandStore(cfg)
 		if err != nil {
 			slog.Error("Failed to open bolt command store", slog.Any("err", err))
@@ -109,12 +117,14 @@ func main() {
 	}
 
 	// Start sync circuit breaker service
-	syncCircuitBreakerService := daemon.NewSyncCircuitBreakerService(pubsub)
-	if err := syncCircuitBreakerService.Start(ctx); err != nil {
-		slog.Error("Failed to start sync circuit breaker service", slog.Any("err", err))
-	} else {
-		slog.Info("Sync circuit breaker service started")
-		defer syncCircuitBreakerService.Stop()
+	if !aiCloudOnly {
+		syncCircuitBreakerService := daemon.NewSyncCircuitBreakerService(pubsub)
+		if err := syncCircuitBreakerService.Start(ctx); err != nil {
+			slog.Error("Failed to start sync circuit breaker service", slog.Any("err", err))
+		} else {
+			slog.Info("Sync circuit breaker service started")
+			defer syncCircuitBreakerService.Stop()
+		}
 	}
 
 	// Start cleanup timer service if enabled (enabled by default)
@@ -145,7 +155,7 @@ func main() {
 	}
 
 	// Start heartbeat resync service if codeTracking is enabled
-	if cfg.CodeTracking != nil && cfg.CodeTracking.Enabled != nil && *cfg.CodeTracking.Enabled {
+	if !aiCloudOnly && cfg.CodeTracking != nil && cfg.CodeTracking.Enabled != nil && *cfg.CodeTracking.Enabled {
 		heartbeatResyncService := daemon.NewHeartbeatResyncService(cfg)
 		if err := heartbeatResyncService.Start(ctx); err != nil {
 			slog.Error("Failed to start heartbeat resync service", slog.Any("err", err))

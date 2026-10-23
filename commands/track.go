@@ -118,6 +118,12 @@ func commandTrack(c *cli.Context) error {
 		return err
 	}
 
+	// A daemon in AI cloud only mode drops the event itself; without one, drop it here.
+	if model.IsAICloudOnly(config, os.Getenv) {
+		slog.Debug("Command not tracked: AI cloud only mode")
+		return nil
+	}
+
 	// Check if command should be excluded
 	if model.ShouldExcludeCommand(cmdCommand, config.Exclude) {
 		slog.Debug("Command excluded by pattern", slog.String("command", cmdCommand))

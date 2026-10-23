@@ -85,6 +85,12 @@ type ShellTimeConfig struct {
 	// CodeTracking configuration for coding activity heartbeat tracking
 	CodeTracking *CodeTracking `toml:"codeTracking" yaml:"codeTracking" json:"codeTracking"`
 
+	// AICloudOnly collects only AI coding agent telemetry (aiCodeOtel) and nothing about the
+	// machine: no shell commands, editor heartbeats, aliases or dotfiles, so it never becomes a
+	// host. Unset, it is on in a Claude Code cloud environment (CLAUDE_CODE_REMOTE=true), whose
+	// VMs aren't the user's machines. See IsAICloudOnly.
+	AICloudOnly *bool `toml:"aiCloudOnly,omitempty" yaml:"aiCloudOnly,omitempty" json:"aiCloudOnly,omitempty"`
+
 	// LogCleanup configuration for automatic log file cleanup in daemon
 	LogCleanup *LogCleanup `toml:"logCleanup" yaml:"logCleanup" json:"logCleanup"`
 

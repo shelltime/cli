@@ -71,6 +71,9 @@ func importAliases(c *cli.Context) error {
 		slog.Error("failed to read config file", slog.Any("err", err))
 		return err
 	}
+	if skippedInAICloudOnly(config, "Aliases not imported") {
+		return nil
+	}
 
 	mainEndpoint := model.Endpoint{
 		APIEndpoint: config.APIEndpoint,

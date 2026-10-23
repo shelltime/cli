@@ -141,6 +141,76 @@ func TestSocketHandler_TrackEventPublishes(t *testing.T) {
 	}
 }
 
+// In AI cloud only mode the socket drops commands and heartbeats, so the VM never becomes a host,
+// while the Claude Code session's own data, like the pull requests it opened, still goes through.
+func TestSocketHandler_AICloudOnlyDropsCommandsAndHeartbeats(t *testing.T) {
+	tests := []struct {
+		name   string
+		config model.ShellTimeConfig
+		remote string
+	}{
+		{name: "config", config: model.ShellTimeConfig{AICloudOnly: boolPtr(true)}},
+		{name: "cloud environment", remote: "true"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if tt.remote != "" {
+				t.Setenv("CLAUDE_CODE_REMOTE", tt.remote)
+			}
+			paths := make(chan string, 4)
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				paths <- r.URL.Path
+				w.WriteHeader(http.StatusNoContent)
+			}))
+			t.Cleanup(server.Close)
+
+			config := tt.config
+			config.Token = "tok"
+			config.APIEndpoint = server.URL
+			config.CodeTracking = &model.CodeTracking{Enabled: boolPtr(true)}
+			handler, socketPath := startHandler(t, &config)
+			require.True(t, handler.aiCloudOnly)
+			msgs, err := handler.channel.Subscribe(context.Background(), PubSubTopic)
+			require.NoError(t, err)
+
+			ctx := context.Background()
+			cmd := model.Command{Shell: "bash", SessionID: 1, Command: "go test ./...", Username: "root", Hostname: "vm", Time: time.Now()}
+			require.NoError(t, SendTrackEvent(ctx, socketPath, SocketMessageTypeTrackPre, cmd, time.Now()))
+			require.NoError(t, SendTrackEvent(ctx, socketPath, SocketMessageTypeTrackPost, cmd, time.Now()))
+			require.NoError(t, SendLocalDataToSocket(ctx, socketPath, config, time.Now(),
+				[]model.TrackingData{{Command: "ls"}}, model.TrackingMetaData{Hostname: "vm", OS: "linux", Shell: "bash"}))
+
+			conn, err := net.Dial("unix", socketPath)
+			require.NoError(t, err)
+			defer conn.Close()
+			require.NoError(t, json.NewEncoder(conn).Encode(SocketMessage{
+				Type:    SocketMessageTypeHeartbeat,
+				Payload: model.HeartbeatPayload{Heartbeats: []model.HeartbeatData{{HeartbeatID: "hb"}}},
+			}))
+			var resp map[string]string
+			require.NoError(t, json.NewDecoder(conn).Decode(&resp))
+			assert.Equal(t, "disabled", resp["status"])
+
+			require.NoError(t, SendSessionPullRequests(socketPath, "sess-1", []string{"https://github.com/o/r/pull/1"}))
+			select {
+			case path := <-paths:
+				assert.Equal(t, "/api/v1/cc/session-pull-requests", path)
+			case <-time.After(2 * time.Second):
+				t.Fatal("daemon did not send the session's pull requests")
+			}
+
+			select {
+			case published := <-msgs:
+				published.Ack()
+				t.Fatalf("a message was published in AI cloud only mode: %s", published.Payload)
+			case path := <-paths:
+				t.Fatalf("a request was sent in AI cloud only mode: %s", path)
+			case <-time.After(200 * time.Millisecond):
+			}
+		})
+	}
+}
+
 func TestSocketHandler_ListCommands_NilStore(t *testing.T) {
 	// With no commandStore set, list_commands returns an empty (non-nil) slice.
 	prev := commandStore

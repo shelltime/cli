@@ -115,6 +115,7 @@ Services initialize in `cmd/daemon/main.go`: check enabled flag → create → s
 - AICodeOtel gRPC port: configurable via `aiCodeOtel.grpcPort` (default: 54027)
 - Outbound proxy: `proxy.url` / `proxy.noProxy` (http, https, socks5, socks5h). Applied once at startup via `model.ConfigureProxy`; every outbound HTTP client must use `model.NewHTTPClient` or `model.HTTPTransport()` so the proxy applies
 - Token `proxy-injected` (`model.ProxyInjectedToken`): a Claude Code cloud environment keeps the real token as a network secret, and its agent proxy adds `Authorization: CLI <token>` to requests for `api.shelltime.xyz`. Requests to the API then carry no `Authorization` header of their own (`setCLIAuthorization`); set it through that helper, never by hand. `cloud.bash` in the installation repo writes it
+- AI cloud only (`aiCloudOnly`, `model.IsAICloudOnly`): collect only AI coding agent telemetry and nothing about the machine, so it never becomes a host. Unset, it is on where `CLAUDE_CODE_REMOTE=true` (a Claude Code cloud VM); an explicit value wins. The daemon's socket drops `track_pre`/`track_post`/`sync` and heartbeats, and `cmd/daemon/main.go` skips the bolt store, sync circuit breaker and heartbeat resync; OTEL, `cc pr` and session-project pass through. In the CLI, `track` without a daemon stores nothing, and `sync`, `alias import`, `dotfiles push` and `hooks install` print why and return nil (`skippedInAICloudOnly`). `doctor` reports it under Configuration and skips Shell Hooks
 
 ## Commit Rules
 
