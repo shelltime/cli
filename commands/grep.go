@@ -68,11 +68,11 @@ var GrepCommand *cli.Command = &cli.Command{
 		},
 		&cli.StringFlag{
 			Name:  "since",
-			Usage: "filter commands since date (2024, 2024-01, or 2024-01-15)",
+			Usage: "filter commands since date in local time (2024, 2024-01, or 2024-01-15)",
 		},
 		&cli.StringFlag{
 			Name:  "until",
-			Usage: "filter commands until date (2024, 2024-01, or 2024-01-15)",
+			Usage: "filter commands until date in local time (2024, 2024-01, or 2024-01-15)",
 		},
 	},
 	Action: commandGrep,
@@ -237,31 +237,33 @@ func buildGrepFilter(c *cli.Context, searchText string) (*model.SearchCommandsFi
 }
 
 // parseFlexibleDate parses dates in formats: 2024, 2024-01, 2024-01-15
-// If isEndOfPeriod is true, returns end of the period (for --until)
+// If isEndOfPeriod is true, returns end of the period (for --until).
+// Dates are calendar days of the machine's timezone, like everything else the
+// user sees in the terminal; the server only receives the resulting instants.
 func parseFlexibleDate(s string, isEndOfPeriod bool) (time.Time, error) {
 	// Try year only: 2024
-	if t, err := time.Parse("2006", s); err == nil {
+	if t, err := time.ParseInLocation("2006", s, time.Local); err == nil {
 		if isEndOfPeriod {
-			return time.Date(t.Year(), 12, 31, 23, 59, 59, 0, time.UTC), nil
+			return time.Date(t.Year(), 12, 31, 23, 59, 59, 0, time.Local), nil
 		}
-		return time.Date(t.Year(), 1, 1, 0, 0, 0, 0, time.UTC), nil
+		return time.Date(t.Year(), 1, 1, 0, 0, 0, 0, time.Local), nil
 	}
 
 	// Try year-month: 2024-01
-	if t, err := time.Parse("2006-01", s); err == nil {
+	if t, err := time.ParseInLocation("2006-01", s, time.Local); err == nil {
 		if isEndOfPeriod {
 			// End of month: go to next month, then subtract 1 second
 			return t.AddDate(0, 1, 0).Add(-time.Second), nil
 		}
-		return time.Date(t.Year(), t.Month(), 1, 0, 0, 0, 0, time.UTC), nil
+		return time.Date(t.Year(), t.Month(), 1, 0, 0, 0, 0, time.Local), nil
 	}
 
 	// Try year-month-day: 2024-01-15
-	if t, err := time.Parse("2006-01-02", s); err == nil {
+	if t, err := time.ParseInLocation("2006-01-02", s, time.Local); err == nil {
 		if isEndOfPeriod {
-			return time.Date(t.Year(), t.Month(), t.Day(), 23, 59, 59, 0, time.UTC), nil
+			return time.Date(t.Year(), t.Month(), t.Day(), 23, 59, 59, 0, time.Local), nil
 		}
-		return time.Date(t.Year(), t.Month(), t.Day(), 0, 0, 0, 0, time.UTC), nil
+		return time.Date(t.Year(), t.Month(), t.Day(), 0, 0, 0, 0, time.Local), nil
 	}
 
 	return time.Time{}, fmt.Errorf("use format: 2024, 2024-01, or 2024-01-15")
