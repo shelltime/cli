@@ -69,6 +69,8 @@ type doctorEnv struct {
 	cfgErr     error
 	shell      string
 	socketPath string
+	// aiCloudOnly: shell commands and anything else about the machine aren't collected here.
+	aiCloudOnly bool
 
 	daemonStatus *daemon.StatusResponse
 
@@ -136,6 +138,11 @@ func newDoctorEnv(ctx context.Context, opts doctorOptions) *doctorEnv {
 	env.cfg, env.cfgErr = configService.ReadConfigFile(ctx)
 	if env.cfgErr == nil && env.cfg.SocketPath != "" {
 		env.socketPath = env.cfg.SocketPath
+	}
+	if env.cfgErr == nil {
+		env.aiCloudOnly = model.IsAICloudOnly(env.cfg, os.Getenv)
+	} else {
+		env.aiCloudOnly = model.IsAICloudOnly(model.ShellTimeConfig{}, os.Getenv)
 	}
 	if status, _, err := requestDaemonStatus(env.socketPath, doctorDaemonProbeTimeout); err == nil {
 		env.daemonStatus = status
@@ -354,6 +361,18 @@ func doctorCheckConfig(env *doctorEnv) []doctorResult {
 	}
 
 	cfg := env.cfg
+	if env.aiCloudOnly {
+		source := "on by default in a Claude Code cloud environment"
+		if cfg.AICloudOnly != nil {
+			source = "aiCloudOnly is on in your config"
+		}
+		results = append(results, doctorResult{
+			ID:      "config.ai_cloud_only",
+			Status:  doctorInfo,
+			Message: fmt.Sprintf("AI cloud only mode (%s): only AI coding agent usage is uploaded, never shell commands, editor activity, aliases, dotfiles or this machine.", source),
+		})
+	}
+
 	endpointFix := fmt.Sprintf("Set `apiEndpoint: https://api.shelltime.xyz` in %s.", base)
 	if cfg.APIEndpoint == "" {
 		results = append(results, doctorResult{
@@ -647,6 +666,9 @@ var doctorShellFiles = map[string]struct{ rc, hook string }{
 }
 
 func doctorCheckHooks(env *doctorEnv) []doctorResult {
+	if env.aiCloudOnly {
+		return []doctorResult{{ID: "hooks.shell", Status: doctorSkip, Message: "Skipped: AI cloud only mode collects no shell commands, so no hooks are needed (see Configuration)."}}
+	}
 	if env.shell == "" {
 		return []doctorResult{{
 			ID:      "hooks.shell",

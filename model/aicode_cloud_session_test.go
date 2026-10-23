@@ -4,9 +4,12 @@ import (
 	"context"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/stretchr/testify/require"
+	"gopkg.in/yaml.v3"
 )
 
 func TestCloudSessionIDFromEnv(t *testing.T) {
@@ -27,6 +30,48 @@ func TestCloudSessionIDFromEnv(t *testing.T) {
 			require.Equal(t, tt.want, CloudSessionIDFromEnv(func(k string) string { return tt.env[k] }))
 		})
 	}
+}
+
+func TestIsAICloudOnly(t *testing.T) {
+	on, off := true, false
+	cloud := map[string]string{"CLAUDE_CODE_REMOTE": "true", "CLAUDE_CODE_REMOTE_SESSION_ID": "cse_01AbC"}
+	tests := []struct {
+		name string
+		cfg  ShellTimeConfig
+		env  map[string]string
+		want bool
+	}{
+		{name: "local machine", env: map[string]string{"TERM_PROGRAM": "ghostty"}, want: false},
+		{name: "cloud environment", env: cloud, want: true},
+		{name: "remote flag off", env: map[string]string{"CLAUDE_CODE_REMOTE": "false"}, want: false},
+		{name: "on in the config", cfg: ShellTimeConfig{AICloudOnly: &on}, want: true},
+		{name: "off in the config wins in the cloud", cfg: ShellTimeConfig{AICloudOnly: &off}, env: cloud, want: false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			require.Equal(t, tt.want, IsAICloudOnly(tt.cfg, func(k string) string { return tt.env[k] }))
+		})
+	}
+}
+
+// aiCloudOnly is read from either config file, and `shelltime auth` never writes it, so an
+// unset value keeps following the environment.
+func TestAICloudOnlyConfigFile(t *testing.T) {
+	dir := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "config.yaml"), []byte("token: tok\n"), 0600))
+	cfg, err := NewConfigService(dir).ReadConfigFile(context.Background())
+	require.NoError(t, err)
+	require.Nil(t, cfg.AICloudOnly)
+
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "config.local.yaml"), []byte("aiCloudOnly: true\n"), 0600))
+	cfg, err = NewConfigService(dir).ReadConfigFile(context.Background())
+	require.NoError(t, err)
+	require.NotNil(t, cfg.AICloudOnly)
+	require.True(t, *cfg.AICloudOnly)
+
+	written, err := yaml.Marshal(DefaultConfig)
+	require.NoError(t, err)
+	require.NotContains(t, string(written), "aiCloudOnly")
 }
 
 // With the network secret's placeholder, requests to the ShellTime API carry no Authorization

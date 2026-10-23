@@ -182,6 +182,9 @@ func mergeConfig(base, local *ShellTimeConfig) {
 	if local.CodeTracking != nil {
 		base.CodeTracking = local.CodeTracking
 	}
+	if local.AICloudOnly != nil {
+		base.AICloudOnly = local.AICloudOnly
+	}
 	if local.Proxy != nil {
 		base.Proxy = local.Proxy
 	}

@@ -21,6 +21,17 @@ func CloudSessionIDFromEnv(getenv func(string) string) string {
 	return strings.TrimSpace(getenv("CLAUDE_CODE_REMOTE_SESSION_ID"))
 }
 
+// IsAICloudOnly reports whether this machine collects only AI coding agent telemetry, and no
+// shell commands, editor heartbeats, aliases, dotfiles or anything else that would make it a
+// host. cfg.AICloudOnly decides when it is set; unset, the mode is on in a Claude Code cloud
+// environment, a throwaway VM that isn't one of the user's machines.
+func IsAICloudOnly(cfg ShellTimeConfig, getenv func(string) string) bool {
+	if cfg.AICloudOnly != nil {
+		return *cfg.AICloudOnly
+	}
+	return getenv("CLAUDE_CODE_REMOTE") == "true"
+}
+
 // ProxyInjectedToken is the token a Claude Code cloud environment's sessions sign in with when
 // the real one is a network secret: the agent proxy adds `Authorization: CLI <token>` to every
 // request for api.shelltime.xyz after it leaves the VM, so the token is never on disk or in the

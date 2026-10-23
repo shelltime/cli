@@ -40,6 +40,8 @@ go test -run TestHandlerName ./daemon/
 
 Tests use **testify** (assertions + suites). Suite-based tests use `suite.Suite` with `SetupTest`/`TearDownTest` lifecycle hooks (see `daemon/cc_info_handler_test.go` for example). Simple functions use table-driven tests.
 
+Tests must never reach the daemon running on the machine (yours, or a Claude Code cloud session's): it uploads to a real account. `commands/main_test.go` points `track`'s fast-path socket (`trackSocketPath`) at a path that doesn't exist, and every other test uses a temp `socketPath`. The `commands` and `daemon` `TestMain`s clear `CLAUDE_CODE_REMOTE*`, so tests behave the same inside a cloud session as on CI.
+
 ### Performance (`shelltime track` latency)
 `perf/` is a separate Go module (root `./...` skips it). It benchmarks the real binary the way the shell hooks run it: daemon and direct paths, pre and post, plus a sync. See `perf/README.md`.
 ```bash
@@ -113,6 +115,7 @@ Services initialize in `cmd/daemon/main.go`: check enabled flag → create → s
 - AICodeOtel gRPC port: configurable via `aiCodeOtel.grpcPort` (default: 54027)
 - Outbound proxy: `proxy.url` / `proxy.noProxy` (http, https, socks5, socks5h). Applied once at startup via `model.ConfigureProxy`; every outbound HTTP client must use `model.NewHTTPClient` or `model.HTTPTransport()` so the proxy applies
 - Token `proxy-injected` (`model.ProxyInjectedToken`): a Claude Code cloud environment keeps the real token as a network secret, and its agent proxy adds `Authorization: CLI <token>` to requests for `api.shelltime.xyz`. Requests to the API then carry no `Authorization` header of their own (`setCLIAuthorization`); set it through that helper, never by hand. `cloud.bash` in the installation repo writes it
+- AI cloud only (`aiCloudOnly`, `model.IsAICloudOnly`): collect only AI coding agent telemetry and nothing about the machine, so it never becomes a host. Unset, it is on where `CLAUDE_CODE_REMOTE=true` (a Claude Code cloud VM); an explicit value wins. The daemon's socket drops `track_pre`/`track_post`/`sync` and heartbeats, and `cmd/daemon/main.go` skips the bolt store, sync circuit breaker and heartbeat resync; OTEL, `cc pr` and session-project pass through. In the CLI, `track` without a daemon stores nothing, and `sync`, `alias import`, `dotfiles push` and `hooks install` print why and return nil (`skippedInAICloudOnly`). `doctor` reports it under Configuration and skips Shell Hooks
 
 ## Commit Rules
 

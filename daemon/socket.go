@@ -108,6 +108,8 @@ type SocketHandler struct {
 	channel     *GoChannel
 	stopChan    chan struct{}
 	ccInfoTimer *CCInfoTimerService
+	// aiCloudOnly drops the commands and heartbeats sent to the socket (model.IsAICloudOnly).
+	aiCloudOnly bool
 }
 
 func NewSocketHandler(config *model.ShellTimeConfig, ch *GoChannel) *SocketHandler {
@@ -116,6 +118,7 @@ func NewSocketHandler(config *model.ShellTimeConfig, ch *GoChannel) *SocketHandl
 		channel:     ch,
 		stopChan:    make(chan struct{}),
 		ccInfoTimer: NewCCInfoTimerService(config),
+		aiCloudOnly: model.IsAICloudOnly(*config, os.Getenv),
 	}
 }
 
@@ -189,31 +192,25 @@ func (p *SocketHandler) handleConnection(conn net.Conn) {
 	switch msg.Type {
 	case SocketMessageTypeStatus:
 		p.handleStatus(conn)
-	case SocketMessageTypeSync:
+	case SocketMessageTypeSync, SocketMessageTypeTrackPre, SocketMessageTypeTrackPost:
+		if p.aiCloudOnly {
+			slog.Debug("Command message dropped: AI cloud only mode collects no commands", slog.String("messageType", string(msg.Type)))
+			return
+		}
 		buf, err := json.Marshal(msg)
 		if err != nil {
-			slog.Error("Error encoding message", slog.Any("err", err))
+			slog.Error("Error encoding message", slog.String("messageType", string(msg.Type)), slog.Any("err", err))
 			return
 		}
 
 		chMsg := message.NewMessage(watermill.NewUUID(), buf)
 		if err := p.channel.Publish(PubSubTopic, chMsg); err != nil {
-			slog.Error("Error to publish topic", slog.Any("err", err))
-		}
-	case SocketMessageTypeTrackPre, SocketMessageTypeTrackPost:
-		buf, err := json.Marshal(msg)
-		if err != nil {
-			slog.Error("Error encoding track message", slog.Any("err", err))
-			return
-		}
-		chMsg := message.NewMessage(watermill.NewUUID(), buf)
-		if err := p.channel.Publish(PubSubTopic, chMsg); err != nil {
-			slog.Error("Error publishing track topic", slog.Any("err", err))
+			slog.Error("Error to publish topic", slog.String("messageType", string(msg.Type)), slog.Any("err", err))
 		}
 	case SocketMessageTypeHeartbeat:
 		// Only process heartbeat if codeTracking is enabled
-		if p.config.CodeTracking == nil || p.config.CodeTracking.Enabled == nil || !*p.config.CodeTracking.Enabled {
-			slog.Debug("Heartbeat message received but codeTracking is disabled, ignoring")
+		if p.aiCloudOnly || p.config.CodeTracking == nil || p.config.CodeTracking.Enabled == nil || !*p.config.CodeTracking.Enabled {
+			slog.Debug("Heartbeat message received but codeTracking is disabled, ignoring", slog.Bool("aiCloudOnly", p.aiCloudOnly))
 			encoder := json.NewEncoder(conn)
 			encoder.Encode(map[string]string{"status": "disabled"})
 			return
