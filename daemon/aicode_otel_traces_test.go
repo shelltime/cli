@@ -3,6 +3,7 @@ package daemon
 import (
 	"context"
 	"encoding/json"
+	"strings"
 	"testing"
 	"time"
 
@@ -148,6 +149,45 @@ func TestParseSpan_EventsAreCapped(t *testing.T) {
 	span := parseTestSpan(t, claudeTestResource(), s)
 	require.NotNil(t, span)
 	assert.Len(t, span.Events, model.AICodeOtelMaxSpanEvents)
+}
+
+func TestParseSpan_KindAndStatus(t *testing.T) {
+	testCases := []struct {
+		kind       tracev1.Span_SpanKind
+		status     tracev1.Status_StatusCode
+		wantKind   string
+		wantStatus string
+	}{
+		{tracev1.Span_SPAN_KIND_UNSPECIFIED, tracev1.Status_STATUS_CODE_UNSET, "", ""},
+		{tracev1.Span_SPAN_KIND_INTERNAL, tracev1.Status_STATUS_CODE_OK, "internal", "ok"},
+		{tracev1.Span_SPAN_KIND_SERVER, tracev1.Status_STATUS_CODE_ERROR, "server", "error"},
+		{tracev1.Span_SPAN_KIND_CLIENT, tracev1.Status_STATUS_CODE_OK, "client", "ok"},
+		{tracev1.Span_SPAN_KIND_PRODUCER, tracev1.Status_STATUS_CODE_UNSET, "producer", ""},
+		{tracev1.Span_SPAN_KIND_CONSUMER, tracev1.Status_STATUS_CODE_UNSET, "consumer", ""},
+	}
+	for _, tc := range testCases {
+		t.Run(tc.kind.String()+"/"+tc.status.String(), func(t *testing.T) {
+			s := claudeSpan("claude_code.tool", testLLMID, testRootID, 0, time.Second)
+			s.Kind = tc.kind
+			s.Status = &tracev1.Status{Code: tc.status}
+			span := parseTestSpan(t, claudeTestResource(), s)
+			require.NotNil(t, span)
+			assert.Equal(t, tc.wantKind, span.Kind)
+			assert.Equal(t, tc.wantStatus, span.StatusCode)
+		})
+	}
+}
+
+func TestParseSpan_NamesAreCapped(t *testing.T) {
+	long := strings.Repeat("n", model.AICodeOtelMaxAttributeBytes*3)
+	s := claudeSpan(long, testLLMID, testRootID, 0, time.Second)
+	s.Events = []*tracev1.Span_Event{{Name: long, TimeUnixNano: uint64(v2TestTimeNano)}}
+
+	span := parseTestSpan(t, claudeTestResource(), s)
+	require.NotNil(t, span)
+	assert.Len(t, span.Name, model.AICodeOtelMaxAttributeBytes)
+	require.Len(t, span.Events, 1)
+	assert.Len(t, span.Events[0].Name, model.AICodeOtelMaxAttributeBytes)
 }
 
 func TestParseSpan_CodexConversationID(t *testing.T) {

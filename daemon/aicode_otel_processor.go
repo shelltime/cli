@@ -322,7 +322,7 @@ func parseSpan(s *tracev1.Span, source string, res *model.AICodeOtelResourceAttr
 		TraceID:           traceID,
 		SpanID:            spanID,
 		ParentSpanID:      otelID(s.GetParentSpanId(), 8),
-		Name:              s.GetName(),
+		Name:              model.CapAICodeText(s.GetName(), model.AICodeOtelMaxAttributeBytes),
 		Kind:              spanKind(s.GetKind()),
 		StartTimeUnixNano: unixNano(s.GetStartTimeUnixNano()),
 		EndTimeUnixNano:   unixNano(s.GetEndTimeUnixNano()),
@@ -352,6 +352,7 @@ func parseSpan(s *tracev1.Span, source string, res *model.AICodeOtelResourceAttr
 		case key == "conversation.id":
 			conversationID = anyString(attr.GetValue())
 		case spanIdentityAttributes[key]:
+			// Dropped: the same for every span of the session.
 		default:
 			span.Attributes = setAttribute(span.Attributes, key, anyValueToGo(attr.GetValue()))
 		}
@@ -365,7 +366,7 @@ func parseSpan(s *tracev1.Span, source string, res *model.AICodeOtelResourceAttr
 			break
 		}
 		event := model.AICodeOtelSpanEvent{
-			Name:         ev.GetName(),
+			Name:         model.CapAICodeText(ev.GetName(), model.AICodeOtelMaxAttributeBytes),
 			TimeUnixNano: unixNano(ev.GetTimeUnixNano()),
 		}
 		for _, attr := range ev.GetAttributes() {
