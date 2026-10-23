@@ -22,10 +22,12 @@ import (
 	"github.com/malamtime/cli/model"
 	collogsv1 "go.opentelemetry.io/proto/otlp/collector/logs/v1"
 	collmetricsv1 "go.opentelemetry.io/proto/otlp/collector/metrics/v1"
+	colltracev1 "go.opentelemetry.io/proto/otlp/collector/trace/v1"
 	commonv1 "go.opentelemetry.io/proto/otlp/common/v1"
 	logsv1 "go.opentelemetry.io/proto/otlp/logs/v1"
 	metricsv1 "go.opentelemetry.io/proto/otlp/metrics/v1"
 	resourcev1 "go.opentelemetry.io/proto/otlp/resource/v1"
+	tracev1 "go.opentelemetry.io/proto/otlp/trace/v1"
 	"google.golang.org/protobuf/proto"
 )
 
@@ -257,6 +259,180 @@ func (p *AICodeOtelProcessor) ProcessLogs(ctx context.Context, req *collogsv1.Ex
 	return &collogsv1.ExportLogsServiceResponse{}, nil
 }
 
+// ProcessTraces receives OTEL spans and forwards them to the backend immediately
+func (p *AICodeOtelProcessor) ProcessTraces(ctx context.Context, req *colltracev1.ExportTraceServiceRequest) (*colltracev1.ExportTraceServiceResponse, error) {
+	slog.Debug("AICodeOtel: Processing traces request", "resourceSpansCount", len(req.GetResourceSpans()), slog.Bool("debug", p.debug))
+
+	if p.debug {
+		p.writeDebugFile("aicode-otel-debug-traces.txt", req)
+	}
+
+	for _, rs := range req.GetResourceSpans() {
+		resource := rs.GetResource()
+
+		source := detectOtelSource(resource)
+		if source == "" {
+			slog.Debug("AICodeOtel: Skipping unknown resource")
+			continue
+		}
+
+		attrs := extractResourceAttributes(resource)
+		var spans []model.AICodeOtelSpan
+		for _, ss := range rs.GetScopeSpans() {
+			for _, s := range ss.GetSpans() {
+				if span := parseSpan(s, source, attrs); span != nil {
+					spans = append(spans, *span)
+				}
+			}
+		}
+		if len(spans) == 0 {
+			continue
+		}
+		fillSpanSessionIDs(spans)
+
+		p.send(ctx, &model.AICodeOtelRequest{
+			Host:    p.hostname,
+			Project: p.detectProject(resource, source),
+			Source:  source,
+			Spans:   spans,
+		})
+	}
+
+	return &colltracev1.ExportTraceServiceResponse{}, nil
+}
+
+// spanIdentityAttributes are the account attributes Claude Code repeats on every span. They are
+// the same for the whole session, so they are not forwarded with each span.
+var spanIdentityAttributes = map[string]bool{
+	"user.id":           true,
+	"user.email":        true,
+	"user.account_uuid": true,
+	"user.account_id":   true,
+	"organization.id":   true,
+}
+
+// parseSpan converts an OTLP span into an AICodeOtelSpan. It returns nil for a span without
+// valid trace and span ids.
+func parseSpan(s *tracev1.Span, source string, res *model.AICodeOtelResourceAttributes) *model.AICodeOtelSpan {
+	traceID, spanID := otelID(s.GetTraceId(), 16), otelID(s.GetSpanId(), 8)
+	if traceID == "" || spanID == "" {
+		return nil
+	}
+	span := &model.AICodeOtelSpan{
+		TraceID:           traceID,
+		SpanID:            spanID,
+		ParentSpanID:      otelID(s.GetParentSpanId(), 8),
+		Name:              s.GetName(),
+		Kind:              spanKind(s.GetKind()),
+		StartTimeUnixNano: unixNano(s.GetStartTimeUnixNano()),
+		EndTimeUnixNano:   unixNano(s.GetEndTimeUnixNano()),
+		StatusMessage:     model.CapAICodeText(s.GetStatus().GetMessage(), model.AICodeOtelMaxAttributeBytes),
+		SessionID:         firstNonEmpty(res.SessionID, res.ConversationID),
+		ClientType:        source,
+	}
+	switch s.GetStatus().GetCode() {
+	case tracev1.Status_STATUS_CODE_OK:
+		span.StatusCode = "ok"
+	case tracev1.Status_STATUS_CODE_ERROR:
+		span.StatusCode = "error"
+	}
+	if span.EndTimeUnixNano < span.StartTimeUnixNano {
+		span.EndTimeUnixNano = span.StartTimeUnixNano
+	}
+
+	var conversationID string
+	for _, attr := range s.GetAttributes() {
+		key := attr.GetKey()
+		switch {
+		// The session is kept in SessionID, not in the attributes.
+		case key == "session.id":
+			if id := anyString(attr.GetValue()); id != "" {
+				span.SessionID = id
+			}
+		case key == "conversation.id":
+			conversationID = anyString(attr.GetValue())
+		case spanIdentityAttributes[key]:
+		default:
+			span.Attributes = setAttribute(span.Attributes, key, anyValueToGo(attr.GetValue()))
+		}
+	}
+	if span.SessionID == "" {
+		span.SessionID = conversationID
+	}
+
+	for i, ev := range s.GetEvents() {
+		if i >= model.AICodeOtelMaxSpanEvents {
+			break
+		}
+		event := model.AICodeOtelSpanEvent{
+			Name:         ev.GetName(),
+			TimeUnixNano: unixNano(ev.GetTimeUnixNano()),
+		}
+		for _, attr := range ev.GetAttributes() {
+			event.Attributes = setAttribute(event.Attributes, attr.GetKey(), anyValueToGo(attr.GetValue()))
+		}
+		span.Events = append(span.Events, event)
+	}
+
+	return span
+}
+
+// fillSpanSessionIDs gives spans without a session id the one another span of the same trace
+// carries.
+func fillSpanSessionIDs(spans []model.AICodeOtelSpan) {
+	sessions := make(map[string]string)
+	for _, s := range spans {
+		if s.SessionID != "" {
+			if _, ok := sessions[s.TraceID]; !ok {
+				sessions[s.TraceID] = s.SessionID
+			}
+		}
+	}
+	for i := range spans {
+		if spans[i].SessionID == "" {
+			spans[i].SessionID = sessions[spans[i].TraceID]
+		}
+	}
+}
+
+// otelID hex-encodes a trace or span id of the given byte length. A missing, malformed or
+// all-zero id yields "".
+func otelID(id []byte, size int) string {
+	if len(id) != size {
+		return ""
+	}
+	for _, b := range id {
+		if b != 0 {
+			return hex.EncodeToString(id)
+		}
+	}
+	return ""
+}
+
+func spanKind(kind tracev1.Span_SpanKind) string {
+	switch kind {
+	case tracev1.Span_SPAN_KIND_INTERNAL:
+		return "internal"
+	case tracev1.Span_SPAN_KIND_SERVER:
+		return "server"
+	case tracev1.Span_SPAN_KIND_CLIENT:
+		return "client"
+	case tracev1.Span_SPAN_KIND_PRODUCER:
+		return "producer"
+	case tracev1.Span_SPAN_KIND_CONSUMER:
+		return "consumer"
+	}
+	return ""
+}
+
+// unixNano converts an OTLP timestamp to int64, clamping values past the year 2262.
+func unixNano(ts uint64) int64 {
+	if ts > math.MaxInt64 {
+		return math.MaxInt64
+	}
+	return int64(ts)
+}
+
 // send forwards a request to the backend, split so that each body stays within maxRequestBytes.
 // Passthrough mode: failures are logged, not retried.
 func (p *AICodeOtelProcessor) send(ctx context.Context, req *model.AICodeOtelRequest) {
@@ -267,10 +443,10 @@ func (p *AICodeOtelProcessor) send(ctx context.Context, req *model.AICodeOtelReq
 	for _, chunk := range model.SplitAICodeOtelRequest(req, maxBytes) {
 		resp, err := model.SendAICodeOtelData(ctx, chunk, p.endpoint)
 		if err != nil {
-			slog.Error("AICodeOtel: Failed to send data to backend", "error", err, "events", len(chunk.Events), "metrics", len(chunk.Metrics))
+			slog.Error("AICodeOtel: Failed to send data to backend", "error", err, "events", len(chunk.Events), "metrics", len(chunk.Metrics), "spans", len(chunk.Spans))
 			continue
 		}
-		slog.Debug("AICodeOtel: Data sent to backend", "eventsProcessed", resp.EventsProcessed, "metricsProcessed", resp.MetricsProcessed)
+		slog.Debug("AICodeOtel: Data sent to backend", "eventsProcessed", resp.EventsProcessed, "metricsProcessed", resp.MetricsProcessed, "spansProcessed", resp.SpansProcessed)
 	}
 }
 

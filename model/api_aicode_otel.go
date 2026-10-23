@@ -32,21 +32,24 @@ func SendAICodeOtelData(ctx context.Context, req *AICodeOtelRequest, endpoint En
 }
 
 // SplitAICodeOtelRequest splits req into requests whose JSON bodies stay within maxBytes, keeping
-// events and metrics in their original order. Like PackBackfillBatches it estimates each item by
+// events, metrics and spans in their original order. Like PackBackfillBatches it estimates each item by
 // encoding it on its own; an item larger than the budget goes alone in its request.
 func SplitAICodeOtelRequest(req *AICodeOtelRequest, maxBytes int) []*AICodeOtelRequest {
 	if req == nil {
 		return nil
 	}
 	envelope := AICodeOtelRequest{Host: req.Host, Project: req.Project, Source: req.Source}
-	// `,"events":[]` and `,"metrics":[]` are not part of the empty envelope's encoding.
-	budget := maxBytes - aiCodeOtelJSONSize(envelope) - len(`,"events":[],"metrics":[]`)
+	// `,"events":[]`, `,"metrics":[]` and `,"spans":[]` are not part of the empty envelope's encoding.
+	budget := maxBytes - aiCodeOtelJSONSize(envelope) - len(`,"events":[],"metrics":[],"spans":[]`)
 
 	var out []*AICodeOtelRequest
 	cur := envelope
 	curBytes := 0
+	empty := func() bool {
+		return len(cur.Events) == 0 && len(cur.Metrics) == 0 && len(cur.Spans) == 0
+	}
 	flush := func() {
-		if len(cur.Events) > 0 || len(cur.Metrics) > 0 {
+		if !empty() {
 			chunk := cur
 			out = append(out, &chunk)
 		}
@@ -54,7 +57,7 @@ func SplitAICodeOtelRequest(req *AICodeOtelRequest, maxBytes int) []*AICodeOtelR
 		curBytes = 0
 	}
 	fits := func(size int) bool {
-		return (len(cur.Events) == 0 && len(cur.Metrics) == 0) || curBytes+size <= budget
+		return empty() || curBytes+size <= budget
 	}
 
 	for _, e := range req.Events {
@@ -71,6 +74,14 @@ func SplitAICodeOtelRequest(req *AICodeOtelRequest, maxBytes int) []*AICodeOtelR
 			flush()
 		}
 		cur.Metrics = append(cur.Metrics, m)
+		curBytes += size
+	}
+	for _, sp := range req.Spans {
+		size := aiCodeOtelJSONSize(sp) + 1
+		if !fits(size) {
+			flush()
+		}
+		cur.Spans = append(cur.Spans, sp)
 		curBytes += size
 	}
 	flush()

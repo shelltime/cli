@@ -281,6 +281,8 @@ func TestClaudeSettingsOtel_InstallEnablesDetailsAndDeltaTemporality(t *testing.
 	assert.Equal(t, "true", env["OTEL_METRICS_INCLUDE_ENTRYPOINT"])
 	assert.Equal(t, "true", env["OTEL_METRICS_INCLUDE_REPOSITORY"])
 	assert.Equal(t, "delta", env["OTEL_EXPORTER_OTLP_METRICS_TEMPORALITY_PREFERENCE"])
+	assert.Equal(t, "1", env["CLAUDE_CODE_ENHANCED_TELEMETRY_BETA"])
+	assert.Equal(t, "otlp", env["OTEL_TRACES_EXPORTER"])
 }
 
 func TestClaudeSettingsOtel_MissingManagedKeys(t *testing.T) {
@@ -305,6 +307,8 @@ func TestClaudeSettingsOtel_MissingManagedKeys(t *testing.T) {
 	missing, err = svc.MissingManagedKeys()
 	require.NoError(t, err)
 	assert.Equal(t, []string{
+		"CLAUDE_CODE_ENHANCED_TELEMETRY_BETA",
+		"OTEL_TRACES_EXPORTER",
 		"OTEL_LOG_TOOL_DETAILS",
 		"OTEL_LOG_ASSISTANT_RESPONSES",
 		"OTEL_METRICS_INCLUDE_ENTRYPOINT",

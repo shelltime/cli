@@ -768,7 +768,7 @@ func doctorCheckClaude(env *doctorEnv) []doctorResult {
 		results = append(results, doctorResult{ID: "claude.otel", Status: doctorOK, Message: fmt.Sprintf("Claude Code reports usage to shelltime (%s).", svc.SettingsPath())})
 
 		// Settings written by an older `cc install` lack the newer keys (tool details,
-		// assistant responses, delta temporality, ...).
+		// assistant responses, delta temporality, traces, ...).
 		if missing, err := svc.MissingManagedKeys(); err == nil && len(missing) > 0 {
 			results = append(results, doctorResult{
 				ID:      "claude.otel_keys",

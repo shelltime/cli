@@ -54,6 +54,38 @@ func TestSplitAICodeOtelRequest(t *testing.T) {
 	}
 }
 
+func TestSplitAICodeOtelRequest_Spans(t *testing.T) {
+	req := &AICodeOtelRequest{Host: "host", Project: "/repo", Source: AICodeOtelSourceClaudeCode}
+	for i := 0; i < 40; i++ {
+		req.Spans = append(req.Spans, AICodeOtelSpan{
+			TraceID:    "0af7651916cd43dd8448eb211c80319c",
+			SpanID:     fmt.Sprintf("%016x", i+1),
+			Name:       "claude_code.tool",
+			Attributes: map[string]any{"full_command": strings.Repeat("x", 500)},
+		})
+	}
+
+	const maxBytes = 4 << 10
+	chunks := SplitAICodeOtelRequest(req, maxBytes)
+	require.Greater(t, len(chunks), 1)
+
+	var spanIDs []string
+	for _, chunk := range chunks {
+		body, err := json.Marshal(chunk)
+		require.NoError(t, err)
+		assert.LessOrEqual(t, len(body), maxBytes, "each body stays within the limit")
+		assert.Empty(t, chunk.Events)
+		assert.Empty(t, chunk.Metrics)
+		for _, s := range chunk.Spans {
+			spanIDs = append(spanIDs, s.SpanID)
+		}
+	}
+	require.Len(t, spanIDs, 40)
+	for i, id := range spanIDs {
+		assert.Equal(t, fmt.Sprintf("%016x", i+1), id, "order is kept")
+	}
+}
+
 func TestSplitAICodeOtelRequest_SmallRequestIsOneChunk(t *testing.T) {
 	req := &AICodeOtelRequest{Host: "h", Project: "p", Events: []AICodeOtelEvent{{EventID: "a"}, {EventID: "b"}}}
 	chunks := SplitAICodeOtelRequest(req, AICodeOtelMaxRequestBytes)
