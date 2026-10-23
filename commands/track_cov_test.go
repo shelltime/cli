@@ -22,17 +22,13 @@ import (
 	"go.opentelemetry.io/otel/trace/noop"
 )
 
-// x3SetupTrack isolates HOME, installs a mock ConfigService, and skips the test
-// if a real daemon happens to own the hardcoded default socket (which would
-// otherwise divert commandTrack down the daemon path). Returns the temp HOME and
-// the mock.
+// x3SetupTrack isolates HOME and installs a mock ConfigService. TestMain points
+// the fast path's socket away from a real daemon, so commandTrack takes the slow
+// path. Returns the temp HOME and the mock.
 func x3SetupTrack(t *testing.T) (string, *model.MockConfigService) {
 	t.Helper()
 	otel.SetTracerProvider(noop.NewTracerProvider())
 	SKIP_LOGGER_SETTINGS = true
-	if _, err := os.Stat(model.DefaultSocketPath); err == nil {
-		t.Skip("default daemon socket present; commandTrack would take the daemon path")
-	}
 	home := t.TempDir()
 	t.Setenv("HOME", home)
 	t.Setenv("USER", "tester")

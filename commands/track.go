@@ -57,6 +57,10 @@ var TrackCommand *cli.Command = &cli.Command{
 	},
 }
 
+// trackSocketPath is the daemon socket the fast path tries before reading any config. Tests
+// point it elsewhere, so they never hand their commands to a real daemon on this machine.
+var trackSocketPath = model.DefaultSocketPath
+
 func commandTrack(c *cli.Context) error {
 	ctx, span := commandTracer.Start(c.Context, "track", trace.WithSpanKind(trace.SpanKindClient))
 	defer span.End()
@@ -101,7 +105,7 @@ func commandTrack(c *cli.Context) error {
 	// storage-engine decision (bolt vs txt), exclude filtering, sync and pruning.
 	// A socket file left behind by a dead daemon still stats as present; if the
 	// send fails, fall through and persist locally instead of dropping the command.
-	if forwarded, err := forwardTrackToDaemon(ctx, span, model.DefaultSocketPath, cmdPhase, instance, result); forwarded || err != nil {
+	if forwarded, err := forwardTrackToDaemon(ctx, span, trackSocketPath, cmdPhase, instance, result); forwarded || err != nil {
 		return err
 	}
 

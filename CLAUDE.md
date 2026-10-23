@@ -40,6 +40,8 @@ go test -run TestHandlerName ./daemon/
 
 Tests use **testify** (assertions + suites). Suite-based tests use `suite.Suite` with `SetupTest`/`TearDownTest` lifecycle hooks (see `daemon/cc_info_handler_test.go` for example). Simple functions use table-driven tests.
 
+Tests must never reach the daemon running on the machine (yours, or a Claude Code cloud session's): it uploads to a real account. `commands/main_test.go` points `track`'s fast-path socket (`trackSocketPath`) at a path that doesn't exist, and every other test uses a temp `socketPath`. The `commands` and `daemon` `TestMain`s clear `CLAUDE_CODE_REMOTE*`, so tests behave the same inside a cloud session as on CI.
+
 ### Performance (`shelltime track` latency)
 `perf/` is a separate Go module (root `./...` skips it). It benchmarks the real binary the way the shell hooks run it: daemon and direct paths, pre and post, plus a sync. See `perf/README.md`.
 ```bash
