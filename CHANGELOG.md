@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.1.96](https://github.com/shelltime/cli/compare/v0.1.95...v0.1.96) (2026-10-23)
+
+
+### Features
+
+* **daemon:** collect only AI coding agent telemetry in Claude Code cloud sessions ([#335](https://github.com/shelltime/cli/issues/335)) ([c54f47f](https://github.com/shelltime/cli/commit/c54f47fb2100dfc54e8e6279bc90a033fd1d2f61))
+* **daemon:** receive Claude Code OTEL traces and forward spans ([#332](https://github.com/shelltime/cli/issues/332)) ([babae9d](https://github.com/shelltime/cli/commit/babae9d0445af055e85e425f0f4b192a8458f24b))
+
+
+### Bug Fixes
+
+* **commands:** read grep --since/--until as local calendar days ([#334](https://github.com/shelltime/cli/issues/334)) ([c75ec6a](https://github.com/shelltime/cli/commit/c75ec6ab58600ecd7ca47ebdea30cb70ceeccbff))
+
 ## [0.1.95](https://github.com/shelltime/cli/compare/v0.1.94...v0.1.95) (2026-10-22)
 
 
