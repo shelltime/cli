@@ -10,6 +10,7 @@ type AICodeOtelRequest struct {
 	Source  string             `json:"source,omitempty"` // "claude-code" or "codex" - identifies the CLI source
 	Events  []AICodeOtelEvent  `json:"events,omitempty"`
 	Metrics []AICodeOtelMetric `json:"metrics,omitempty"`
+	Spans   []AICodeOtelSpan   `json:"spans,omitempty"`
 }
 
 // AICodeOtelResourceAttributes contains common resource-level attributes
@@ -192,11 +193,45 @@ type AICodeOtelMetric struct {
 	ClientType string `json:"clientType"` // claude_code, codex (defaults to claude_code)
 }
 
+// AICodeOtelSpan is one finished span from Claude Code traces (OTEL_TRACES_EXPORTER), such as
+// claude_code.interaction, claude_code.llm_request or claude_code.tool.
+type AICodeOtelSpan struct {
+	TraceID      string `json:"traceId"`                // 32 hex characters
+	SpanID       string `json:"spanId"`                 // 16 hex characters
+	ParentSpanID string `json:"parentSpanId,omitempty"` // empty for a root span
+	Name         string `json:"name"`
+	Kind         string `json:"kind,omitempty"` // internal, server, client, producer, consumer
+
+	StartTimeUnixNano int64 `json:"startTimeUnixNano"`
+	EndTimeUnixNano   int64 `json:"endTimeUnixNano"`
+
+	StatusCode    string `json:"statusCode,omitempty"` // "ok" or "error"; empty when unset
+	StatusMessage string `json:"statusMessage,omitempty"`
+
+	// SessionID is the span's session.id (Codex: conversation.id). Spans of a trace that carry
+	// none take it from another span of the same trace in the export.
+	SessionID string `json:"sessionId,omitempty"`
+
+	// Attributes holds the span's own attributes without the session identity ones.
+	Attributes map[string]any        `json:"attributes,omitempty"`
+	Events     []AICodeOtelSpanEvent `json:"events,omitempty"`
+
+	ClientType string `json:"clientType"` // claude-code, codex
+}
+
+// AICodeOtelSpanEvent is a timed event inside a span (gen_ai.request.attempt, tool.output).
+type AICodeOtelSpanEvent struct {
+	Name         string         `json:"name"`
+	TimeUnixNano int64          `json:"timeUnixNano"`
+	Attributes   map[string]any `json:"attributes,omitempty"`
+}
+
 // AICodeOtelResponse is the response from POST /api/v1/cc/otel
 type AICodeOtelResponse struct {
 	Success          bool   `json:"success"`
 	EventsProcessed  int    `json:"eventsProcessed"`
 	MetricsProcessed int    `json:"metricsProcessed"`
+	SpansProcessed   int    `json:"spansProcessed"`
 	Message          string `json:"message,omitempty"`
 }
 
@@ -214,6 +249,8 @@ const (
 	AICodeOtelMaxAttributes = 64
 	// AICodeOtelMaxRequestBytes bounds the JSON body of one POST /api/v1/cc/otel request.
 	AICodeOtelMaxRequestBytes = 8 << 20
+	// AICodeOtelMaxSpanEvents caps the events kept per span.
+	AICodeOtelMaxSpanEvents = 32
 )
 
 // AICodeOtelDroppedEvents lists event names (without the claude_code./codex. prefix) that the

@@ -43,6 +43,9 @@ func claudeSettingsOtelEnvVars() []claudeSettingsEnvVar {
 		{"CLAUDE_CODE_ENABLE_TELEMETRY", "1"},
 		{"OTEL_METRICS_EXPORTER", "otlp"},
 		{"OTEL_LOGS_EXPORTER", "otlp"},
+		// Traces (claude_code.interaction, llm_request, tool, ... spans) need both of these.
+		{"CLAUDE_CODE_ENHANCED_TELEMETRY_BETA", "1"},
+		{"OTEL_TRACES_EXPORTER", "otlp"},
 		{"OTEL_EXPORTER_OTLP_PROTOCOL", "grpc"},
 		{"OTEL_EXPORTER_OTLP_ENDPOINT", AICodeOtelEndpoint},
 		{"OTEL_METRIC_EXPORT_INTERVAL", "10000"},

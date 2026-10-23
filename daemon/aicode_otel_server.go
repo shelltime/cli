@@ -8,6 +8,7 @@ import (
 
 	collogsv1 "go.opentelemetry.io/proto/otlp/collector/logs/v1"
 	collmetricsv1 "go.opentelemetry.io/proto/otlp/collector/metrics/v1"
+	colltracev1 "go.opentelemetry.io/proto/otlp/collector/trace/v1"
 	"google.golang.org/grpc"
 )
 
@@ -45,6 +46,7 @@ func (s *AICodeOtelServer) Start() error {
 	// Register OTEL collector services
 	collmetricsv1.RegisterMetricsServiceServer(s.grpcServer, &metricsServiceServer{processor: s.processor})
 	collogsv1.RegisterLogsServiceServer(s.grpcServer, &logsServiceServer{processor: s.processor})
+	colltracev1.RegisterTraceServiceServer(s.grpcServer, &traceServiceServer{processor: s.processor})
 
 	slog.Info("AICodeOtel gRPC server starting", "port", s.port)
 
@@ -86,4 +88,15 @@ type logsServiceServer struct {
 // Export handles incoming logs export requests
 func (s *logsServiceServer) Export(ctx context.Context, req *collogsv1.ExportLogsServiceRequest) (*collogsv1.ExportLogsServiceResponse, error) {
 	return s.processor.ProcessLogs(ctx, req)
+}
+
+// traceServiceServer implements the OTEL TraceService
+type traceServiceServer struct {
+	colltracev1.UnimplementedTraceServiceServer
+	processor *AICodeOtelProcessor
+}
+
+// Export handles incoming trace export requests
+func (s *traceServiceServer) Export(ctx context.Context, req *colltracev1.ExportTraceServiceRequest) (*colltracev1.ExportTraceServiceResponse, error) {
+	return s.processor.ProcessTraces(ctx, req)
 }
