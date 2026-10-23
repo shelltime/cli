@@ -36,21 +36,21 @@ func setupGrepActionTest(t *testing.T) *model.MockConfigService {
 func TestParseFlexibleDate_YearStart(t *testing.T) {
 	got, err := parseFlexibleDate("2024", false)
 	require.NoError(t, err)
-	want := time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC)
+	want := time.Date(2024, 1, 1, 0, 0, 0, 0, time.Local)
 	assert.True(t, got.Equal(want), "got %v want %v", got, want)
 }
 
 func TestParseFlexibleDate_YearEnd(t *testing.T) {
 	got, err := parseFlexibleDate("2024", true)
 	require.NoError(t, err)
-	want := time.Date(2024, 12, 31, 23, 59, 59, 0, time.UTC)
+	want := time.Date(2024, 12, 31, 23, 59, 59, 0, time.Local)
 	assert.True(t, got.Equal(want), "got %v want %v", got, want)
 }
 
 func TestParseFlexibleDate_YearMonthStart(t *testing.T) {
 	got, err := parseFlexibleDate("2024-02", false)
 	require.NoError(t, err)
-	want := time.Date(2024, 2, 1, 0, 0, 0, 0, time.UTC)
+	want := time.Date(2024, 2, 1, 0, 0, 0, 0, time.Local)
 	assert.True(t, got.Equal(want), "got %v want %v", got, want)
 }
 
@@ -77,15 +77,29 @@ func TestParseFlexibleDate_YearMonthEnd_NonLeapFeb(t *testing.T) {
 func TestParseFlexibleDate_FullDateStart(t *testing.T) {
 	got, err := parseFlexibleDate("2024-01-15", false)
 	require.NoError(t, err)
-	want := time.Date(2024, 1, 15, 0, 0, 0, 0, time.UTC)
+	want := time.Date(2024, 1, 15, 0, 0, 0, 0, time.Local)
 	assert.True(t, got.Equal(want), "got %v want %v", got, want)
 }
 
 func TestParseFlexibleDate_FullDateEnd(t *testing.T) {
 	got, err := parseFlexibleDate("2024-01-15", true)
 	require.NoError(t, err)
-	want := time.Date(2024, 1, 15, 23, 59, 59, 0, time.UTC)
+	want := time.Date(2024, 1, 15, 23, 59, 59, 0, time.Local)
 	assert.True(t, got.Equal(want), "got %v want %v", got, want)
+}
+
+func TestParseFlexibleDate_UsesMachineTimezone(t *testing.T) {
+	saved := time.Local
+	time.Local = time.FixedZone("JST", 9*3600)
+	t.Cleanup(func() { time.Local = saved })
+
+	start, err := parseFlexibleDate("2024-01-15", false)
+	require.NoError(t, err)
+	assert.Equal(t, time.Date(2024, 1, 14, 15, 0, 0, 0, time.UTC).Unix(), start.Unix(), "local midnight in Tokyo")
+
+	end, err := parseFlexibleDate("2024-01", true)
+	require.NoError(t, err)
+	assert.Equal(t, time.Date(2024, 1, 31, 14, 59, 59, 0, time.UTC).Unix(), end.Unix())
 }
 
 func TestParseFlexibleDate_Garbage(t *testing.T) {
@@ -176,10 +190,10 @@ func TestBuildGrepFilter_SinceAndUntilTimeWindow(t *testing.T) {
 
 	// The server reads the window in unix seconds.
 	require.Len(t, filter.Time, 2)
-	since := time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC)
+	since := time.Date(2024, 1, 1, 0, 0, 0, 0, time.Local)
 	assert.Equal(t, float64(since.Unix()), filter.Time[0])
 	// until=2024-06 end-of-period -> 2024-06-30 23:59:59 UTC.
-	untilEnd := time.Date(2024, 6, 30, 23, 59, 59, 0, time.UTC)
+	untilEnd := time.Date(2024, 6, 30, 23, 59, 59, 0, time.Local)
 	assert.Equal(t, float64(untilEnd.Unix()), filter.Time[1])
 }
 
@@ -192,7 +206,7 @@ func TestBuildGrepFilter_SinceOnlyRunsUntilNow(t *testing.T) {
 
 	// A single value would be read as "that one day", so the end is filled in.
 	require.Len(t, filter.Time, 2)
-	since := time.Date(2024, 1, 15, 0, 0, 0, 0, time.UTC)
+	since := time.Date(2024, 1, 15, 0, 0, 0, 0, time.Local)
 	assert.Equal(t, float64(since.Unix()), filter.Time[0])
 	assert.InDelta(t, float64(time.Now().Unix()), filter.Time[1], 5)
 }
@@ -206,7 +220,7 @@ func TestBuildGrepFilter_UntilOnlyStartsAtEpoch(t *testing.T) {
 
 	require.Len(t, filter.Time, 2)
 	assert.Equal(t, float64(0), filter.Time[0])
-	untilEnd := time.Date(2024, 1, 15, 23, 59, 59, 0, time.UTC)
+	untilEnd := time.Date(2024, 1, 15, 23, 59, 59, 0, time.Local)
 	assert.Equal(t, float64(untilEnd.Unix()), filter.Time[1])
 }
 
