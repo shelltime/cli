@@ -47,7 +47,7 @@ func TestHandlePubSubHeartbeat_SuccessfulSend(t *testing.T) {
 	defer server.Close()
 
 	mockCS := model.NewMockConfigService(t)
-	mockCS.On("ReadConfigFile", mock.Anything).Return(model.ShellTimeConfig{
+	mockCS.On("ReadConfigFile", mock.Anything, mock.Anything).Return(model.ShellTimeConfig{
 		Token:       "tok",
 		APIEndpoint: server.URL,
 	}, nil)
@@ -77,7 +77,7 @@ func TestHandlePubSubHeartbeat_FailureSavesToFile(t *testing.T) {
 	defer server.Close()
 
 	mockCS := model.NewMockConfigService(t)
-	mockCS.On("ReadConfigFile", mock.Anything).Return(model.ShellTimeConfig{
+	mockCS.On("ReadConfigFile", mock.Anything, mock.Anything).Return(model.ShellTimeConfig{
 		Token:       "tok",
 		APIEndpoint: server.URL,
 	}, nil)
@@ -108,7 +108,7 @@ func TestHandlePubSubHeartbeat_FailureAndSaveFails(t *testing.T) {
 	defer server.Close()
 
 	mockCS := model.NewMockConfigService(t)
-	mockCS.On("ReadConfigFile", mock.Anything).Return(model.ShellTimeConfig{
+	mockCS.On("ReadConfigFile", mock.Anything, mock.Anything).Return(model.ShellTimeConfig{
 		Token:       "tok",
 		APIEndpoint: server.URL,
 	}, nil)
@@ -128,16 +128,77 @@ func TestHandlePubSubHeartbeat_FailureAndSaveFails(t *testing.T) {
 }
 
 func TestHandlePubSubHeartbeat_ConfigReadError(t *testing.T) {
+	// Neither the file nor a cached copy can be read: the batch is kept for resync.
 	mockCS := model.NewMockConfigService(t)
+	mockCS.On("ReadConfigFile", mock.Anything, mock.Anything).Return(model.ShellTimeConfig{}, errors.New("cfg fail"))
 	mockCS.On("ReadConfigFile", mock.Anything).Return(model.ShellTimeConfig{}, errors.New("cfg fail"))
 	withStConfig(t, mockCS)
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	require.NoError(t, os.MkdirAll(filepath.Join(home, ".shelltime"), 0o755))
 
 	payload := model.HeartbeatPayload{Heartbeats: []model.HeartbeatData{
 		{HeartbeatID: "hb", Entity: "f.go", Time: 4},
 	}}
-	err := handlePubSubHeartbeat(context.Background(), payload)
-	require.Error(t, err)
-	assert.Contains(t, err.Error(), "cfg fail")
+	require.NoError(t, handlePubSubHeartbeat(context.Background(), payload))
+
+	content, err := os.ReadFile(filepath.Join(home, ".shelltime", "coding-heartbeat.data.log"))
+	require.NoError(t, err)
+	assert.Contains(t, string(content), `"hb"`)
+}
+
+func TestHandlePubSubHeartbeat_FallsBackToLastGoodConfig(t *testing.T) {
+	var hits atomic.Int32
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		hits.Add(1)
+		w.WriteHeader(http.StatusOK)
+		_ = json.NewEncoder(w).Encode(model.HeartbeatResponse{Success: true, Processed: 1})
+	}))
+	defer server.Close()
+
+	// The file is mid-rewrite; the cached config still works
+	mockCS := model.NewMockConfigService(t)
+	// mock.Anything also matches a missing argument, so the read from disk is told apart by its options
+	mockCS.On("ReadConfigFile", mock.Anything, mock.AnythingOfType("[]model.ReadConfigOption")).Return(model.ShellTimeConfig{}, errors.New("yaml: line 3"))
+	mockCS.On("ReadConfigFile", mock.Anything).Return(model.ShellTimeConfig{Token: "tok", APIEndpoint: server.URL}, nil)
+	withStConfig(t, mockCS)
+
+	payload := model.HeartbeatPayload{Heartbeats: []model.HeartbeatData{{HeartbeatID: "hb", Entity: "f.go", Time: 4}}}
+	require.NoError(t, handlePubSubHeartbeat(context.Background(), payload))
+	assert.Equal(t, int32(1), hits.Load())
+}
+
+func TestHandlePubSubHeartbeat_OldServerFailureIsKept(t *testing.T) {
+	// A server before chunked inserts answers 200 with every row as an error
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		_ = json.NewEncoder(w).Encode(model.HeartbeatResponse{Success: false, Processed: 0, Errors: 2})
+	}))
+	defer server.Close()
+
+	mockCS := model.NewMockConfigService(t)
+	mockCS.On("ReadConfigFile", mock.Anything, mock.Anything).Return(model.ShellTimeConfig{Token: "tok", APIEndpoint: server.URL}, nil)
+	withStConfig(t, mockCS)
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	require.NoError(t, os.MkdirAll(filepath.Join(home, ".shelltime"), 0o755))
+
+	payload := model.HeartbeatPayload{Heartbeats: []model.HeartbeatData{
+		{HeartbeatID: "a", Entity: "a.go", Time: 1},
+		{HeartbeatID: "b", Entity: "b.go", Time: 2},
+	}}
+	require.NoError(t, handlePubSubHeartbeat(context.Background(), payload))
+
+	content, err := os.ReadFile(filepath.Join(home, ".shelltime", "coding-heartbeat.data.log"))
+	require.NoError(t, err)
+	assert.Contains(t, string(content), `"a"`)
+
+	// Rows the server can't take (no id) are dropped, not resent forever
+	require.NoError(t, os.Remove(filepath.Join(home, ".shelltime", "coding-heartbeat.data.log")))
+	bad := model.HeartbeatPayload{Heartbeats: []model.HeartbeatData{{Entity: "a.go", Time: 1}, {Entity: "b.go", Time: 2}}}
+	require.NoError(t, handlePubSubHeartbeat(context.Background(), bad))
+	_, err = os.Stat(filepath.Join(home, ".shelltime", "coding-heartbeat.data.log"))
+	assert.True(t, os.IsNotExist(err))
 }
 
 func TestHandlePubSubHeartbeat_UnmarshalError(t *testing.T) {

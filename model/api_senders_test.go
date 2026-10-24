@@ -34,7 +34,7 @@ func TestSendHeartbeatsToServer(t *testing.T) {
 		cfg := ShellTimeConfig{Token: "tok123", APIEndpoint: server.URL}
 		payload := HeartbeatPayload{Heartbeats: []HeartbeatData{{HeartbeatID: "hb-1", Entity: "/a/b.go", Time: 100}}}
 
-		err := SendHeartbeatsToServer(context.Background(), cfg, payload)
+		_, err := SendHeartbeatsToServer(context.Background(), cfg, payload)
 		require.NoError(t, err)
 		assert.Equal(t, "/api/v1/heartbeats", gotPath)
 		assert.Equal(t, http.MethodPost, gotMethod)
@@ -60,7 +60,7 @@ func TestSendHeartbeatsToServer(t *testing.T) {
 				Token:       "ctTok",
 			},
 		}
-		err := SendHeartbeatsToServer(context.Background(), cfg, HeartbeatPayload{})
+		_, err := SendHeartbeatsToServer(context.Background(), cfg, HeartbeatPayload{})
 		require.NoError(t, err)
 		assert.Equal(t, "CLI ctTok", gotAuth)
 	})
@@ -73,7 +73,7 @@ func TestSendHeartbeatsToServer(t *testing.T) {
 		defer server.Close()
 
 		cfg := ShellTimeConfig{Token: "tok", APIEndpoint: server.URL}
-		err := SendHeartbeatsToServer(context.Background(), cfg, HeartbeatPayload{})
+		_, err := SendHeartbeatsToServer(context.Background(), cfg, HeartbeatPayload{})
 		require.Error(t, err)
 		assert.Equal(t, "bad heartbeat", err.Error())
 	})

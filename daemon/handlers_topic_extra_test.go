@@ -60,7 +60,7 @@ func TestSocketTopicProcessor_HeartbeatRouted(t *testing.T) {
 	defer server.Close()
 
 	mockCS := model.NewMockConfigService(t)
-	mockCS.On("ReadConfigFile", mock.Anything).Return(model.ShellTimeConfig{Token: "t", APIEndpoint: server.URL}, nil)
+	mockCS.On("ReadConfigFile", mock.Anything, mock.Anything).Return(model.ShellTimeConfig{Token: "t", APIEndpoint: server.URL}, nil)
 	withStConfig(t, mockCS)
 
 	payload := model.HeartbeatPayload{Heartbeats: []model.HeartbeatData{{HeartbeatID: "hb", Entity: "f", Time: 1}}}

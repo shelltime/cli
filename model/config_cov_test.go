@@ -159,3 +159,20 @@ func TestReadConfigFile_TOMLBaseWithLogCleanupPartial(t *testing.T) {
 	assert.True(t, *cfg.LogCleanup.Enabled, "Enabled defaults to true when omitted")
 	assert.EqualValues(t, 100, cfg.LogCleanup.ThresholdMB, "ThresholdMB defaults to 100 when zero")
 }
+
+// A local file that only sets the code tracking token keeps tracking enabled.
+func TestMergeConfig_CodeTrackingFieldByField(t *testing.T) {
+	on, off := true, false
+	base := &ShellTimeConfig{CodeTracking: &CodeTracking{Enabled: &on, APIEndpoint: "https://base"}}
+
+	mergeConfig(base, &ShellTimeConfig{CodeTracking: &CodeTracking{Token: "local-secret"}})
+
+	require.NotNil(t, base.CodeTracking.Enabled)
+	assert.True(t, *base.CodeTracking.Enabled)
+	assert.Equal(t, "https://base", base.CodeTracking.APIEndpoint)
+	assert.Equal(t, "local-secret", base.CodeTracking.Token)
+
+	mergeConfig(base, &ShellTimeConfig{CodeTracking: &CodeTracking{Enabled: &off}})
+	assert.False(t, *base.CodeTracking.Enabled)
+	assert.Equal(t, "local-secret", base.CodeTracking.Token)
+}

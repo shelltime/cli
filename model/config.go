@@ -180,7 +180,22 @@ func mergeConfig(base, local *ShellTimeConfig) {
 		base.SocketPath = local.SocketPath
 	}
 	if local.CodeTracking != nil {
-		base.CodeTracking = local.CodeTracking
+		// Field by field: a local file that only sets the code tracking token must not turn
+		// tracking off by leaving enabled unset
+		if base.CodeTracking == nil {
+			base.CodeTracking = &CodeTracking{}
+		}
+		merged := *base.CodeTracking
+		if local.CodeTracking.Enabled != nil {
+			merged.Enabled = local.CodeTracking.Enabled
+		}
+		if local.CodeTracking.APIEndpoint != "" {
+			merged.APIEndpoint = local.CodeTracking.APIEndpoint
+		}
+		if local.CodeTracking.Token != "" {
+			merged.Token = local.CodeTracking.Token
+		}
+		base.CodeTracking = &merged
 	}
 	if local.AICloudOnly != nil {
 		base.AICloudOnly = local.AICloudOnly

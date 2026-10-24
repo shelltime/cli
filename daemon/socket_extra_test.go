@@ -317,3 +317,30 @@ func TestRequestCCInfo_OverRealHandler(t *testing.T) {
 	require.NotNil(t, resp)
 	assert.Equal(t, "week", resp.TimeRange)
 }
+
+func TestSocketHandler_HeartbeatGateReadsConfigFromDisk(t *testing.T) {
+	// The daemon started with code tracking off; turning it on in the file needs no restart.
+	handler, socketPath := startHandler(t, &model.ShellTimeConfig{})
+	configDir := t.TempDir()
+	configFile := filepath.Join(configDir, "config.yaml")
+	handler.SetConfigService(model.NewConfigService(configDir))
+
+	send := func() string {
+		conn, err := net.Dial("unix", socketPath)
+		require.NoError(t, err)
+		defer conn.Close()
+		require.NoError(t, json.NewEncoder(conn).Encode(SocketMessage{
+			Type:    SocketMessageTypeHeartbeat,
+			Payload: model.HeartbeatPayload{Heartbeats: []model.HeartbeatData{{HeartbeatID: "x"}}},
+		}))
+		var resp map[string]string
+		require.NoError(t, json.NewDecoder(conn).Decode(&resp))
+		return resp["status"]
+	}
+
+	require.NoError(t, os.WriteFile(configFile, []byte("token: t\ncodeTracking:\n  enabled: false\n"), 0o600))
+	assert.Equal(t, "disabled", send())
+
+	require.NoError(t, os.WriteFile(configFile, []byte("token: t\ncodeTracking:\n  enabled: true\n"), 0o600))
+	assert.Equal(t, "ok", send())
+}
