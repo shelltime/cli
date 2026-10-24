@@ -4,6 +4,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"sync"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -158,4 +159,44 @@ func TestReadConfigFile_TOMLBaseWithLogCleanupPartial(t *testing.T) {
 	require.NotNil(t, cfg.LogCleanup.Enabled)
 	assert.True(t, *cfg.LogCleanup.Enabled, "Enabled defaults to true when omitted")
 	assert.EqualValues(t, 100, cfg.LogCleanup.ThresholdMB, "ThresholdMB defaults to 100 when zero")
+}
+
+// A local file that only sets the code tracking token keeps tracking enabled.
+func TestMergeConfig_CodeTrackingFieldByField(t *testing.T) {
+	on, off := true, false
+	base := &ShellTimeConfig{CodeTracking: &CodeTracking{Enabled: &on, APIEndpoint: "https://base"}}
+
+	mergeConfig(base, &ShellTimeConfig{CodeTracking: &CodeTracking{Token: "local-secret"}})
+
+	require.NotNil(t, base.CodeTracking.Enabled)
+	assert.True(t, *base.CodeTracking.Enabled)
+	assert.Equal(t, "https://base", base.CodeTracking.APIEndpoint)
+	assert.Equal(t, "local-secret", base.CodeTracking.Token)
+
+	mergeConfig(base, &ShellTimeConfig{CodeTracking: &CodeTracking{Enabled: &off}})
+	assert.False(t, *base.CodeTracking.Enabled)
+	assert.Equal(t, "local-secret", base.CodeTracking.Token)
+}
+
+// The daemon reads the config with WithSkipCache from several goroutines (each socket
+// connection, the processor, the resync service); run with -race.
+func TestReadConfigFile_ConcurrentSkipCacheReads(t *testing.T) {
+	dir := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "config.yaml"),
+		[]byte("token: tok\ncodeTracking:\n  enabled: true\n"), 0o600))
+	cs := NewConfigService(dir)
+
+	var wg sync.WaitGroup
+	for i := 0; i < 8; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for j := 0; j < 20; j++ {
+				cfg, err := cs.ReadConfigFile(context.Background(), WithSkipCache())
+				assert.NoError(t, err)
+				assert.Equal(t, "tok", cfg.Token)
+			}
+		}()
+	}
+	wg.Wait()
 }

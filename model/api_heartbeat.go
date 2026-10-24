@@ -6,8 +6,8 @@ import (
 	"time"
 )
 
-// SendHeartbeatsToServer sends heartbeat data to the server
-func SendHeartbeatsToServer(ctx context.Context, cfg ShellTimeConfig, payload HeartbeatPayload) error {
+// SendHeartbeatsToServer sends heartbeat data to the server and returns its counts
+func SendHeartbeatsToServer(ctx context.Context, cfg ShellTimeConfig, payload HeartbeatPayload) (HeartbeatResponse, error) {
 	ctx, span := modelTracer.Start(ctx, "api.sendHeartbeats")
 	defer span.End()
 
@@ -40,9 +40,5 @@ func SendHeartbeatsToServer(ctx context.Context, cfg ShellTimeConfig, payload He
 		Timeout:  10 * time.Second,
 	})
 
-	if err != nil {
-		return err
-	}
-
-	return nil
+	return response, err
 }

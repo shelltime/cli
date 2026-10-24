@@ -6,7 +6,6 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
-	"time"
 
 	"github.com/ThreeDotsLabs/watermill/message"
 	"github.com/malamtime/cli/model"
@@ -35,6 +34,18 @@ func (s *handlersTestSuite) SetupSuite() {
 	Init(mockedST, "")
 }
 
+// startTopicProcessor runs SocketTopicProcessor until msgChan is closed. Waiting for the
+// returned channel keeps a handler from running into the next test, which swaps the globals
+// it reads.
+func startTopicProcessor(msgChan <-chan *message.Message) <-chan struct{} {
+	done := make(chan struct{})
+	go func() {
+		SocketTopicProcessor(msgChan)
+		close(done)
+	}()
+	return done
+}
+
 func (s *handlersTestSuite) TestSocketTopicProcessorValidSync() {
 	msgChan := make(chan *message.Message)
 
@@ -54,13 +65,12 @@ func (s *handlersTestSuite) TestSocketTopicProcessorValidSync() {
 
 	msg := message.NewMessage("test-uuid", payload)
 
-	go SocketTopicProcessor(msgChan)
+	done := startTopicProcessor(msgChan)
 
 	msgChan <- msg
 
-	time.Sleep(100 * time.Millisecond)
-
 	close(msgChan)
+	<-done
 }
 
 func (s *handlersTestSuite) TestSocketTopicProcessorInvalidFormat() {
@@ -68,13 +78,12 @@ func (s *handlersTestSuite) TestSocketTopicProcessorInvalidFormat() {
 
 	msg := message.NewMessage("test-uuid", []byte("invalid"))
 
-	go SocketTopicProcessor(msgChan)
+	done := startTopicProcessor(msgChan)
 
 	msgChan <- msg
 
-	time.Sleep(100 * time.Millisecond)
-
 	close(msgChan)
+	<-done
 }
 
 func (s *handlersTestSuite) TestSocketTopicProcessorNonSync() {
@@ -96,13 +105,12 @@ func (s *handlersTestSuite) TestSocketTopicProcessorNonSync() {
 
 	msg := message.NewMessage("test-uuid", payload)
 
-	go SocketTopicProcessor(msgChan)
+	done := startTopicProcessor(msgChan)
 
 	msgChan <- msg
 
-	time.Sleep(100 * time.Millisecond)
-
 	close(msgChan)
+	<-done
 }
 
 func (s *handlersTestSuite) TestSocketTopicProcessorInvalidPayload() {
@@ -117,13 +125,12 @@ func (s *handlersTestSuite) TestSocketTopicProcessorInvalidPayload() {
 
 	msg := message.NewMessage("test-uuid", payload)
 
-	go SocketTopicProcessor(msgChan)
+	done := startTopicProcessor(msgChan)
 
 	msgChan <- msg
 
-	time.Sleep(100 * time.Millisecond)
-
 	close(msgChan)
+	<-done
 }
 
 func (s *handlersTestSuite) TestSocketTopicProcessorMultipleMessages() {
@@ -160,14 +167,13 @@ func (s *handlersTestSuite) TestSocketTopicProcessorMultipleMessages() {
 	msg1 := message.NewMessage("test-uuid-1", payload1)
 	msg2 := message.NewMessage("test-uuid-2", payload2)
 
-	go SocketTopicProcessor(msgChan)
+	done := startTopicProcessor(msgChan)
 
 	msgChan <- msg1
 	msgChan <- msg2
 
-	time.Sleep(100 * time.Millisecond)
-
 	close(msgChan)
+	<-done
 }
 
 func TestHandlersTestSuite(t *testing.T) {

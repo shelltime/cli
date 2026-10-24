@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log/slog"
 	"os"
+	"sync"
 
 	"github.com/malamtime/cli/model"
 )
@@ -29,31 +30,77 @@ func handlePubSubHeartbeat(ctx context.Context, socketMsgPayload interface{}) er
 		return nil
 	}
 
-	cfg, err := stConfig.ReadConfigFile(ctx)
+	// The editor dropped these when the daemon acknowledged them: while the daemon stops they
+	// go to the local file, and a send it cuts short fails and is saved below.
+	if isShuttingDown() {
+		return saveHeartbeatsForResync(heartbeatPayload)
+	}
+	ctx, cancel := withShutdown(ctx)
+	defer cancel()
+
+	// Read from disk, so a token from a new `shelltime auth` is used without a daemon restart.
+	// While the file can't be read (a typo, or `shelltime auth` rewriting it), the last good
+	// config still has the token.
+	cfg, err := stConfig.ReadConfigFile(ctx, model.WithSkipCache())
 	if err != nil {
-		slog.Error("Failed to read config file", slog.Any("err", err))
-		return err
+		cfg, err = stConfig.ReadConfigFile(ctx)
+	}
+	if err != nil {
+		slog.Error("Failed to read config file, saving heartbeats to local file", slog.Any("err", err))
+		return saveHeartbeatsForResync(heartbeatPayload)
 	}
 
 	// Try to send to server
-	err = model.SendHeartbeatsToServer(ctx, cfg, heartbeatPayload)
+	response, err := model.SendHeartbeatsToServer(ctx, cfg, heartbeatPayload)
 	if err != nil {
 		slog.Warn("Failed to send heartbeats to server, saving to local file", slog.Any("err", err))
-		// On failure, save to local file
-		if saveErr := saveHeartbeatToFile(heartbeatPayload); saveErr != nil {
-			slog.Error("Failed to save heartbeat to local file", slog.Any("err", saveErr))
-			return saveErr
-		}
-		// Return nil because we saved the data locally - don't nack the message
-		return nil
+		return saveHeartbeatsForResync(heartbeatPayload)
 	}
 
+	if invalid := countInvalidHeartbeats(heartbeatPayload); response.Errors > invalid {
+		// Servers before chunked inserts answer 200 when storing the batch failed
+		slog.Warn("Server did not store valid heartbeats, saving to local file",
+			slog.Int("count", len(heartbeatPayload.Heartbeats)), slog.Int("errors", response.Errors))
+		return saveHeartbeatsForResync(heartbeatPayload)
+	} else if response.Errors > 0 {
+		// Rows without an id or entity: a plugin bug, not worth retrying
+		slog.Warn("Server rejected some heartbeats", slog.Int("count", len(heartbeatPayload.Heartbeats)), slog.Int("rejected", response.Errors))
+		return nil
+	}
 	slog.Info("Successfully sent heartbeats to server", slog.Int("count", len(heartbeatPayload.Heartbeats)))
 	return nil
 }
 
+// saveHeartbeatsForResync keeps a batch the server didn't take for the resync service.
+// It returns nil once saved, so the message isn't nacked and retried.
+func saveHeartbeatsForResync(payload model.HeartbeatPayload) error {
+	if err := saveHeartbeatToFile(payload); err != nil {
+		slog.Error("Failed to save heartbeat to local file", slog.Any("err", err))
+		return err
+	}
+	return nil
+}
+
+// countInvalidHeartbeats counts the rows the server rejects without trying to store them
+func countInvalidHeartbeats(payload model.HeartbeatPayload) int {
+	invalid := 0
+	for _, h := range payload.Heartbeats {
+		if h.HeartbeatID == "" || h.Entity == "" {
+			invalid++
+		}
+	}
+	return invalid
+}
+
+// heartbeatLogMu guards the heartbeat log file: failed sends append to it while the
+// resync service reads and rewrites it.
+var heartbeatLogMu sync.Mutex
+
 // saveHeartbeatToFile appends a heartbeat payload as a single JSON line to the log file
 func saveHeartbeatToFile(payload model.HeartbeatPayload) error {
+	heartbeatLogMu.Lock()
+	defer heartbeatLogMu.Unlock()
+
 	logFilePath := os.ExpandEnv(fmt.Sprintf("%s/%s", "$HOME", model.HEARTBEAT_LOG_FILE))
 
 	// Open file for appending, create if not exists

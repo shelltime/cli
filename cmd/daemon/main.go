@@ -154,9 +154,11 @@ func main() {
 		}
 	}
 
-	// Start heartbeat resync service if codeTracking is enabled
-	if !aiCloudOnly && cfg.CodeTracking != nil && cfg.CodeTracking.Enabled != nil && *cfg.CodeTracking.Enabled {
+	// Start the heartbeat resync service; each pass checks that code tracking is on, so
+	// turning it on later needs no restart. Editors also leave heartbeats there for it.
+	if !aiCloudOnly {
 		heartbeatResyncService := daemon.NewHeartbeatResyncService(cfg)
+		heartbeatResyncService.SetConfigService(daemonConfigService)
 		if err := heartbeatResyncService.Start(ctx); err != nil {
 			slog.Error("Failed to start heartbeat resync service", slog.Any("err", err))
 		} else {
@@ -186,6 +188,7 @@ func main() {
 
 	// Create processor instance
 	processor := daemon.NewSocketHandler(&cfg, pubsub)
+	processor.SetConfigService(daemonConfigService)
 
 	// Start processor
 	if err := processor.Start(); err != nil {
@@ -201,9 +204,9 @@ func main() {
 	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
 	<-sigChan
 
-	// Cleanup
+	// Cleanup: finish what the socket already acknowledged before closing the channel
+	processor.Shutdown(daemon.ShutdownDrainTimeout)
 	pubsub.Close()
-	processor.Stop()
 }
 
 func printVersionInfo() {

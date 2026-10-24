@@ -252,7 +252,8 @@ func TestHeartbeatResyncService_ResyncInvalidJSON(t *testing.T) {
 		t.Fatalf("Failed to create log file: %v", err)
 	}
 
-	config := model.ShellTimeConfig{}
+	enabled := true
+	config := model.ShellTimeConfig{CodeTracking: &model.CodeTracking{Enabled: &enabled}}
 	service := NewHeartbeatResyncService(config)
 
 	// This should not panic with invalid JSON (lines are discarded)
