@@ -10,6 +10,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -68,6 +69,33 @@ func TestGoChannel_DrainWaitsForHandledMessages(t *testing.T) {
 	close(release)
 	assert.True(t, ch.Drain(2*time.Second))
 	assert.Equal(t, int32(3), handled.Load())
+}
+
+func TestGoChannel_PendingPayloadsUntilHandled(t *testing.T) {
+	ch := NewGoChannel(PubSubConfig{}, nil)
+	defer ch.Close()
+
+	require.NoError(t, ch.Publish(PubSubTopic, message.NewMessage(watermill.NewUUID(), []byte("no subscriber"))))
+	assert.Empty(t, ch.PendingPayloads(), "a message nobody subscribed to is gone")
+
+	msgs, err := ch.Subscribe(context.Background(), PubSubTopic)
+	require.NoError(t, err)
+	release := make(chan struct{})
+	go func() {
+		for msg := range msgs {
+			<-release
+			msg.Ack()
+		}
+	}()
+
+	for _, payload := range []string{"first", "second", "third"} {
+		require.NoError(t, ch.Publish(PubSubTopic, message.NewMessage(watermill.NewUUID(), []byte(payload))))
+	}
+	assert.Equal(t, []message.Payload{[]byte("first"), []byte("second"), []byte("third")}, ch.PendingPayloads())
+
+	close(release)
+	require.True(t, ch.Drain(2*time.Second))
+	assert.Empty(t, ch.PendingPayloads())
 }
 
 func TestHandlePubSubHeartbeat_SavesWhileShuttingDown(t *testing.T) {
@@ -182,4 +210,84 @@ func TestSocketHandler_ShutdownKeepsAcknowledgedHeartbeats(t *testing.T) {
 	assert.Equal(t, int32(1), requests.Load(), "queued batches are saved, not sent")
 	_, err = net.Dial("unix", socketPath)
 	assert.Error(t, err, "a stopped daemon takes no more messages")
+}
+
+func TestSocketHandler_ShutdownSavesHeartbeatsBehindSlowSync(t *testing.T) {
+	// The sync hangs on the server, so the processor is still in it when the drain times out
+	var trackRequests, heartbeatRequests atomic.Int32
+	release := make(chan struct{})
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = io.Copy(io.Discard, r.Body)
+		if r.URL.Path != "/api/v1/track" {
+			heartbeatRequests.Add(1)
+			_ = json.NewEncoder(w).Encode(model.HeartbeatResponse{Success: true})
+			return
+		}
+		trackRequests.Add(1)
+		select {
+		case <-r.Context().Done():
+		case <-release:
+		}
+	}))
+	defer server.Close()
+	unblock := sync.OnceFunc(func() { close(release) })
+	defer unblock()
+	enabled := true
+	cfg := model.ShellTimeConfig{Token: "tok", APIEndpoint: server.URL, CodeTracking: &model.CodeTracking{Enabled: &enabled}}
+	mockCS := model.NewMockConfigService(t)
+	mockCS.On("ReadConfigFile", mock.Anything).Return(cfg, nil).Maybe()
+	mockCS.On("ReadConfigFile", mock.Anything, mock.Anything).Return(cfg, nil).Maybe()
+	withStConfig(t, mockCS)
+	withCircuitBreaker(t, nil)
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	require.NoError(t, os.MkdirAll(filepath.Join(home, ".shelltime"), 0o755))
+	t.Cleanup(resetShutdown)
+
+	// The channel cmd/daemon/main.go uses: no buffer, so the heartbeat waits in the channel
+	cfg.SocketPath = filepath.Join(t.TempDir(), "test.sock")
+	handler := NewSocketHandler(&cfg, NewGoChannel(PubSubConfig{}, nil))
+	require.NoError(t, handler.Start())
+	t.Cleanup(handler.Stop)
+	msgs, err := handler.channel.Subscribe(context.Background(), PubSubTopic)
+	require.NoError(t, err)
+	processorDone := make(chan struct{})
+	go func() {
+		SocketTopicProcessor(msgs)
+		close(processorDone)
+	}()
+
+	send := func(msg SocketMessage) net.Conn {
+		conn, err := net.Dial("unix", cfg.SocketPath)
+		require.NoError(t, err)
+		require.NoError(t, json.NewEncoder(conn).Encode(msg))
+		return conn
+	}
+	send(SocketMessage{
+		Type:    SocketMessageTypeSync,
+		Payload: model.PostTrackArgs{CursorID: 1, Data: []model.TrackingData{{Command: "ls"}}},
+	}).Close()
+	require.Eventually(t, func() bool { return trackRequests.Load() == 1 }, 2*time.Second, 5*time.Millisecond)
+
+	conn := send(SocketMessage{
+		Type:    SocketMessageTypeHeartbeat,
+		Payload: model.HeartbeatPayload{Heartbeats: []model.HeartbeatData{{HeartbeatID: "behind-sync", Entity: "f.go", Time: 1}}},
+	})
+	var resp map[string]string
+	require.NoError(t, json.NewDecoder(conn).Decode(&resp))
+	conn.Close()
+	require.Equal(t, "ok", resp["status"], "the editor drops the batch now")
+
+	handler.Shutdown(200 * time.Millisecond)
+
+	assert.Equal(t, []string{"behind-sync"}, savedHeartbeatIDs(t, home))
+	assert.Equal(t, int32(0), heartbeatRequests.Load())
+
+	unblock()
+	select {
+	case <-processorDone:
+	case <-time.After(15 * time.Second):
+		t.Fatal("the processor didn't stop after the sync returned")
+	}
+	assert.Equal(t, []string{"behind-sync"}, savedHeartbeatIDs(t, home), "the closed channel never handed it over")
 }

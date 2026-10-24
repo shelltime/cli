@@ -191,9 +191,37 @@ func (p *SocketHandler) Shutdown(timeout time.Duration) {
 	p.stopAccepting()
 	beginShutdown()
 	if !p.channel.Drain(timeout) {
-		slog.Warn("Daemon stopped before handling every acknowledged message", slog.Duration("timeout", timeout))
+		// A long handler (a sync to a slow server) holds the heartbeats queued behind it,
+		// and closing the channel would drop them
+		slog.Warn("Daemon stopped before handling every acknowledged message",
+			slog.Duration("timeout", timeout), slog.Int("savedHeartbeatBatches", p.saveQueuedHeartbeats()))
 	}
 	p.Stop()
+}
+
+// saveQueuedHeartbeats saves the heartbeat messages the channel hasn't handled yet for the
+// resync service and returns how many it saved. The one being handled may be sent or saved
+// by its handler too; the server ignores heartbeat ids it already has.
+func (p *SocketHandler) saveQueuedHeartbeats() int {
+	saved := 0
+	for _, payload := range p.channel.PendingPayloads() {
+		var msg struct {
+			Type    SocketMessageType `json:"type"`
+			Payload json.RawMessage   `json:"payload"`
+		}
+		if err := json.Unmarshal(payload, &msg); err != nil || msg.Type != SocketMessageTypeHeartbeat {
+			continue
+		}
+		var heartbeats model.HeartbeatPayload
+		if err := json.Unmarshal(msg.Payload, &heartbeats); err != nil {
+			slog.Error("Failed to parse queued heartbeat payload", slog.Any("err", err))
+			continue
+		}
+		if len(heartbeats.Heartbeats) > 0 && saveHeartbeatsForResync(heartbeats) == nil {
+			saved++
+		}
+	}
+	return saved
 }
 
 func (p *SocketHandler) stopAccepting() {

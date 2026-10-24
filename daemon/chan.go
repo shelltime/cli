@@ -3,6 +3,7 @@ package daemon
 import (
 	"context"
 	"fmt"
+	"slices"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -54,8 +55,12 @@ type GoChannel struct {
 	persistedMessages     map[string][]*message.Message
 	persistedMessagesLock sync.RWMutex
 
-	// pending counts published messages not yet handled by every subscriber
-	pending atomic.Int64
+	// pending counts published messages not yet handled by every subscriber, and
+	// pendingPayloads keeps their payloads until then
+	pending         atomic.Int64
+	pendingLock     sync.Mutex
+	pendingPayloads map[uint64]message.Payload
+	pendingSeq      uint64
 }
 
 // NewGoChannel creates new GoChannel Pub/Sub.
@@ -76,6 +81,7 @@ func NewGoChannel(config PubSubConfig, logger watermill.LoggerAdapter) *GoChanne
 		}),
 		closing:           make(chan struct{}),
 		persistedMessages: map[string][]*message.Message{},
+		pendingPayloads:   map[uint64]message.Payload{},
 	}
 }
 
@@ -112,8 +118,8 @@ func (g *GoChannel) Publish(topic string, messages ...*message.Message) error {
 	for i := range messagesToPublish {
 		msg := messagesToPublish[i]
 
-		g.pending.Add(1)
-		ackedBySubscribers, err := g.sendMessage(topic, msg)
+		handled := g.addPending(msg)
+		ackedBySubscribers, err := g.sendMessage(topic, msg, handled)
 		if err != nil {
 			return err
 		}
@@ -138,7 +144,7 @@ func (g *GoChannel) waitForAckFromSubscribers(msg *message.Message, ackedByConsu
 	}
 }
 
-func (g *GoChannel) sendMessage(topic string, message *message.Message) (<-chan struct{}, error) {
+func (g *GoChannel) sendMessage(topic string, message *message.Message, handled func()) (<-chan struct{}, error) {
 	subscribers := g.topicSubscribers(topic)
 	ackedBySubscribers := make(chan struct{})
 
@@ -146,13 +152,13 @@ func (g *GoChannel) sendMessage(topic string, message *message.Message) (<-chan 
 
 	if len(subscribers) == 0 {
 		close(ackedBySubscribers)
-		g.pending.Add(-1)
+		handled()
 		g.logger.Info("No subscribers to send message", logFields)
 		return ackedBySubscribers, nil
 	}
 
 	go func(subscribers []*subscriber) {
-		defer g.pending.Add(-1)
+		defer handled()
 		wg := &sync.WaitGroup{}
 
 		for i := range subscribers {
@@ -170,6 +176,43 @@ func (g *GoChannel) sendMessage(topic string, message *message.Message) (<-chan 
 	}(subscribers)
 
 	return ackedBySubscribers, nil
+}
+
+// addPending counts msg as pending and keeps its payload until the returned func is called,
+// once every subscriber has handled it.
+func (g *GoChannel) addPending(msg *message.Message) func() {
+	g.pendingLock.Lock()
+	g.pendingSeq++
+	id := g.pendingSeq
+	g.pendingPayloads[id] = msg.Payload
+	g.pendingLock.Unlock()
+	g.pending.Add(1)
+
+	return func() {
+		g.pendingLock.Lock()
+		delete(g.pendingPayloads, id)
+		g.pendingLock.Unlock()
+		g.pending.Add(-1)
+	}
+}
+
+// PendingPayloads returns the payloads of the published messages not yet handled by every
+// subscriber, oldest first.
+func (g *GoChannel) PendingPayloads() []message.Payload {
+	g.pendingLock.Lock()
+	defer g.pendingLock.Unlock()
+
+	ids := make([]uint64, 0, len(g.pendingPayloads))
+	for id := range g.pendingPayloads {
+		ids = append(ids, id)
+	}
+	slices.Sort(ids)
+
+	payloads := make([]message.Payload, 0, len(ids))
+	for _, id := range ids {
+		payloads = append(payloads, g.pendingPayloads[id])
+	}
+	return payloads
 }
 
 // Drain waits until every published message has been handled by its subscribers, or until
