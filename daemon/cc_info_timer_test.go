@@ -614,6 +614,8 @@ func (s *CCInfoTimerTestSuite) TestStopTimer_ClearsGitCache() {
 		APIEndpoint: s.server.URL,
 	}
 	service := NewCCInfoTimerService(config)
+	// stopTimer leaves the loop running; end it before TearDownTest resets the intervals it reads
+	defer service.Stop()
 
 	// Add git cache entries
 	service.mu.Lock()
