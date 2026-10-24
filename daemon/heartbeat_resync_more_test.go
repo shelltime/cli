@@ -8,6 +8,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"sync"
 	"sync/atomic"
 	"testing"
 
@@ -172,7 +173,7 @@ func TestResync_LineLargerThanScannerBuffer(t *testing.T) {
 	svc := NewHeartbeatResyncService(d2trackingConfig(server.URL))
 	svc.resync(context.Background())
 
-	assert.Equal(t, int32(2), hits.Load(), "both saved batches should be sent")
+	assert.Equal(t, int32(3), hits.Load(), "both saved batches should be sent, the large one in two chunks")
 	_, err := os.Stat(logFile)
 	assert.True(t, os.IsNotExist(err), "log file should be removed after full success")
 }
@@ -278,4 +279,83 @@ func TestResync_KeepsHeartbeatsWhenFileWasReplaced(t *testing.T) {
 	require.NoError(t, err)
 	assert.Contains(t, string(content), `"after-cleanup"`)
 	assert.NotContains(t, string(content), `"old-1"`)
+}
+
+// A server before chunked inserts answers 200 with every row as an error when storing the
+// batch failed; resync must keep the line, as the handler did.
+func TestResync_KeepsBatchServerDidNotStore(t *testing.T) {
+	var hits atomic.Int32
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		hits.Add(1)
+		var payload model.HeartbeatPayload
+		assert.NoError(t, json.NewDecoder(r.Body).Decode(&payload))
+		_ = json.NewEncoder(w).Encode(model.HeartbeatResponse{Errors: len(payload.Heartbeats)})
+	}))
+	defer server.Close()
+
+	line := `{"heartbeats":[{"heartbeatId":"unstored-1","entity":"/a.go","time":1}]}`
+	logFile := d2writeHeartbeatLog(t, []string{line})
+
+	svc := NewHeartbeatResyncService(d2trackingConfig(server.URL))
+	svc.resync(context.Background())
+
+	assert.Equal(t, int32(1), hits.Load())
+	content, err := os.ReadFile(logFile)
+	require.NoError(t, err, "the server stored nothing, so the line is kept")
+	assert.Equal(t, line+"\n", string(content))
+}
+
+// Rows without an id or entity are rejected for good: a 200 rejecting only those is stored.
+func TestResync_InvalidRowsAloneCountAsStored(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewEncoder(w).Encode(model.HeartbeatResponse{Success: true, Processed: 1, Errors: 1})
+	}))
+	defer server.Close()
+
+	logFile := d2writeHeartbeatLog(t, []string{
+		`{"heartbeats":[{"heartbeatId":"ok-1","entity":"/a.go","time":1},{"heartbeatId":"","entity":"/b.go","time":2}]}`,
+	})
+
+	svc := NewHeartbeatResyncService(d2trackingConfig(server.URL))
+	svc.resync(context.Background())
+
+	_, err := os.Stat(logFile)
+	assert.True(t, os.IsNotExist(err), "log file should be removed")
+}
+
+// A large saved batch is resent in chunks, and only the chunks the server didn't store
+// stay in the file, each as its own line.
+func TestResync_SendsLargeLineInChunks(t *testing.T) {
+	var mu sync.Mutex
+	var sizes []int
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var payload model.HeartbeatPayload
+		assert.NoError(t, json.NewDecoder(r.Body).Decode(&payload))
+		mu.Lock()
+		sizes = append(sizes, len(payload.Heartbeats))
+		request := len(sizes)
+		mu.Unlock()
+		if request == 2 {
+			w.WriteHeader(http.StatusInternalServerError)
+			_, _ = w.Write([]byte(`{"error":"insert failed"}`))
+			return
+		}
+		_ = json.NewEncoder(w).Encode(model.HeartbeatResponse{Success: true, Processed: len(payload.Heartbeats)})
+	}))
+	defer server.Close()
+
+	logFile := d2writeHeartbeatLog(t, []string{d2largeHeartbeatLine(t, "big", 1200)})
+
+	svc := NewHeartbeatResyncService(d2trackingConfig(server.URL))
+	svc.resync(context.Background())
+
+	assert.Equal(t, []int{500, 500, 200}, sizes)
+	lines, err := readHeartbeatLogLines(logFile)
+	require.NoError(t, err)
+	require.Len(t, lines, 1, "only the failed chunk is kept")
+	var kept model.HeartbeatPayload
+	require.NoError(t, json.Unmarshal([]byte(lines[0]), &kept))
+	require.Len(t, kept.Heartbeats, 500)
+	assert.Equal(t, "big-500", kept.Heartbeats[0].HeartbeatID)
+	assert.Equal(t, "big-999", kept.Heartbeats[499].HeartbeatID)
 }

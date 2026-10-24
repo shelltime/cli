@@ -8,6 +8,7 @@ import (
 	"io"
 	"log/slog"
 	"os"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -18,6 +19,11 @@ import (
 const (
 	// HeartbeatResyncInterval is the interval for retrying failed heartbeats
 	HeartbeatResyncInterval = 30 * time.Minute
+
+	// heartbeatResyncChunkSize caps the heartbeats per resend. Servers before chunked
+	// inserts store a request in one insert, which fails past Postgres' 65535 parameters,
+	// so a large saved batch would fail on every pass.
+	heartbeatResyncChunkSize = 500
 )
 
 // HeartbeatResyncService handles periodic resync of failed heartbeats
@@ -131,11 +137,17 @@ func (s *HeartbeatResyncService) resync(ctx context.Context) {
 			continue
 		}
 
-		// Try to send to server
-		if _, err := model.SendHeartbeatsToServer(ctx, cfg, payload); err != nil {
-			slog.Warn("Failed to resync heartbeat, keeping for next retry", slog.Any("err", err))
-			failedLines = append(failedLines, line)
-		} else {
+		// Each chunk the server didn't store is kept as its own line
+		for _, chunk := range chunkHeartbeatPayload(payload, heartbeatResyncChunkSize) {
+			if !resendHeartbeats(ctx, cfg, chunk) {
+				kept, err := json.Marshal(chunk)
+				if err != nil {
+					slog.Error("Failed to encode heartbeats to keep, keeping the whole line", slog.Any("err", err))
+					kept = []byte(line)
+				}
+				failedLines = append(failedLines, string(kept))
+				continue
+			}
 			successCount++
 		}
 	}
@@ -165,6 +177,32 @@ func (s *HeartbeatResyncService) resync(ctx context.Context) {
 	slog.Info("Heartbeat resync completed",
 		slog.Int("success", successCount),
 		slog.Int("remaining", len(failedLines)))
+}
+
+// resendHeartbeats sends a saved batch and reports whether the server stored it, by the same
+// rule as handlePubSubHeartbeat: servers before chunked inserts answer 200 with every row as
+// an error when storing failed.
+func resendHeartbeats(ctx context.Context, cfg model.ShellTimeConfig, payload model.HeartbeatPayload) bool {
+	response, err := model.SendHeartbeatsToServer(ctx, cfg, payload)
+	if err != nil {
+		slog.Warn("Failed to resync heartbeats, keeping for next retry", slog.Any("err", err))
+		return false
+	}
+	if response.Errors > countInvalidHeartbeats(payload) {
+		slog.Warn("Server did not store resynced heartbeats, keeping for next retry",
+			slog.Int("count", len(payload.Heartbeats)), slog.Int("errors", response.Errors))
+		return false
+	}
+	return true
+}
+
+// chunkHeartbeatPayload splits a saved batch into batches of at most size heartbeats
+func chunkHeartbeatPayload(payload model.HeartbeatPayload, size int) []model.HeartbeatPayload {
+	var chunks []model.HeartbeatPayload
+	for heartbeats := range slices.Chunk(payload.Heartbeats, size) {
+		chunks = append(chunks, model.HeartbeatPayload{Heartbeats: heartbeats})
+	}
+	return chunks
 }
 
 func hasPrefixLines(lines, prefix []string) bool {
