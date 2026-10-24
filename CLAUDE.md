@@ -92,6 +92,14 @@ Injection happens in `cmd/*/main.go` via `commands.InjectVar()` and `commands.In
 2. **GoChannel**: Watermill pub/sub for decoupled message processing
 3. **SocketTopicProcessor**: Consumes messages and routes to appropriate handlers
 
+Editor heartbeats (the VS Code, JetBrains and Neovim plugins) arrive as `heartbeat` messages. The socket answers
+`{"status":"disabled"}` while code tracking is off in the config on disk (read per message, so turning it on needs no
+restart) and `ok` once the message is queued; the plugins keep a batch until it is acknowledged, then drop it.
+`handlePubSubHeartbeat` posts it to `/api/v1/heartbeats` and on any failure (also a 200 whose `errors` exceed the rows
+without an id or entity) appends it to `~/.shelltime/coding-heartbeat.data.log`, which `HeartbeatResyncService` resends.
+On SIGTERM `SocketHandler.Shutdown` stops accepting, saves heartbeats still queued to that file instead of sending them
+(a send in flight is cut short and saved too) and drains the channel for up to `ShutdownDrainTimeout`.
+
 Optional daemon services (feature-gated via config):
 - **CCInfoTimerService**: Lazy-fetch background timer for Claude Code statusline data (cost, quota, git info), plus an always-on Anthropic usage sync (10-min interval, only while a `claude` process is running) that pushes quota to `/api/v1/anthropic-usage` without needing statusline activity
 - **CodexUsageSyncService**: Syncs Codex usage to `/api/v1/codex-usage` every 10 min, only while a `codex`/`chatgpt` process is running (both intervals share the `usageSyncInterval` const in `daemon/usage_sync.go`)
