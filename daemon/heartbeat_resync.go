@@ -128,7 +128,8 @@ func (s *HeartbeatResyncService) resync(ctx context.Context) {
 
 	// Process each line
 	var failedLines []string
-	successCount := 0
+	// Heartbeats, not lines: a line is resent in chunks and only failed chunks are kept
+	sent, kept := 0, 0
 
 	for _, line := range lines {
 		var payload model.HeartbeatPayload
@@ -140,15 +141,16 @@ func (s *HeartbeatResyncService) resync(ctx context.Context) {
 		// Each chunk the server didn't store is kept as its own line
 		for _, chunk := range chunkHeartbeatPayload(payload, heartbeatResyncChunkSize) {
 			if !resendHeartbeats(ctx, cfg, chunk) {
-				kept, err := json.Marshal(chunk)
+				keptLine, err := json.Marshal(chunk)
 				if err != nil {
 					slog.Error("Failed to encode heartbeats to keep, keeping the whole line", slog.Any("err", err))
-					kept = []byte(line)
+					keptLine = []byte(line)
 				}
-				failedLines = append(failedLines, string(kept))
+				failedLines = append(failedLines, string(keptLine))
+				kept += len(chunk.Heartbeats)
 				continue
 			}
-			successCount++
+			sent += len(chunk.Heartbeats)
 		}
 	}
 
@@ -175,8 +177,9 @@ func (s *HeartbeatResyncService) resync(ctx context.Context) {
 	}
 
 	slog.Info("Heartbeat resync completed",
-		slog.Int("success", successCount),
-		slog.Int("remaining", len(failedLines)))
+		slog.Int("sent", sent),
+		slog.Int("kept", kept),
+		slog.Int("remainingLines", len(failedLines)))
 }
 
 // resendHeartbeats sends a saved batch and reports whether the server stored it, by the same
