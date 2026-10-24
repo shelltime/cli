@@ -8,6 +8,7 @@ import (
 	"net"
 	"os"
 	"runtime"
+	"sync"
 	"time"
 
 	"github.com/ThreeDotsLabs/watermill"
@@ -107,9 +108,13 @@ type SocketHandler struct {
 
 	channel     *GoChannel
 	stopChan    chan struct{}
+	stopOnce    sync.Once
 	ccInfoTimer *CCInfoTimerService
 	// aiCloudOnly drops the commands and heartbeats sent to the socket (model.IsAICloudOnly).
 	aiCloudOnly bool
+	// configService, when set, is read again for each heartbeat message, so turning code
+	// tracking on takes effect without restarting the daemon.
+	configService model.ConfigService
 }
 
 func NewSocketHandler(config *model.ShellTimeConfig, ch *GoChannel) *SocketHandler {
@@ -120,6 +125,24 @@ func NewSocketHandler(config *model.ShellTimeConfig, ch *GoChannel) *SocketHandl
 		ccInfoTimer: NewCCInfoTimerService(config),
 		aiCloudOnly: model.IsAICloudOnly(*config, os.Getenv),
 	}
+}
+
+// SetConfigService makes heartbeat messages check the config on disk instead of the one
+// the daemon started with.
+func (p *SocketHandler) SetConfigService(cs model.ConfigService) {
+	p.configService = cs
+}
+
+// codeTrackingEnabled reports whether editor heartbeats are accepted, from the config on
+// disk when a config service is set.
+func (p *SocketHandler) codeTrackingEnabled() bool {
+	cfg := *p.config
+	if p.configService != nil {
+		if fresh, err := p.configService.ReadConfigFile(context.Background(), model.WithSkipCache()); err == nil {
+			cfg = fresh
+		}
+	}
+	return cfg.CodeTracking != nil && cfg.CodeTracking.Enabled != nil && *cfg.CodeTracking.Enabled
 }
 
 func (p *SocketHandler) Start() error {
@@ -152,16 +175,34 @@ func (p *SocketHandler) StartAnthropicUsageSync() {
 }
 
 func (p *SocketHandler) Stop() {
+	p.stopAccepting()
 	p.channel.Close()
-	close(p.stopChan)
 	if p.ccInfoTimer != nil {
 		p.ccInfoTimer.Stop()
 	}
-	if p.listener != nil {
-		p.listener.Close()
-	}
 	os.RemoveAll(p.config.SocketPath)
 	slog.Info("Daemon stopped")
+}
+
+// Shutdown stops taking messages, waits up to timeout for the ones already acknowledged to
+// be handled, then stops. Heartbeats still queued are saved for the resync service: the
+// editors that sent them no longer have them.
+func (p *SocketHandler) Shutdown(timeout time.Duration) {
+	p.stopAccepting()
+	beginShutdown()
+	if !p.channel.Drain(timeout) {
+		slog.Warn("Daemon stopped before handling every acknowledged message", slog.Duration("timeout", timeout))
+	}
+	p.Stop()
+}
+
+func (p *SocketHandler) stopAccepting() {
+	p.stopOnce.Do(func() {
+		close(p.stopChan)
+		if p.listener != nil {
+			p.listener.Close()
+		}
+	})
 }
 
 func (p *SocketHandler) acceptConnections() {
@@ -209,7 +250,7 @@ func (p *SocketHandler) handleConnection(conn net.Conn) {
 		}
 	case SocketMessageTypeHeartbeat:
 		// Only process heartbeat if codeTracking is enabled
-		if p.aiCloudOnly || p.config.CodeTracking == nil || p.config.CodeTracking.Enabled == nil || !*p.config.CodeTracking.Enabled {
+		if p.aiCloudOnly || !p.codeTrackingEnabled() {
 			slog.Debug("Heartbeat message received but codeTracking is disabled, ignoring", slog.Bool("aiCloudOnly", p.aiCloudOnly))
 			encoder := json.NewEncoder(conn)
 			encoder.Encode(map[string]string{"status": "disabled"})
@@ -223,7 +264,9 @@ func (p *SocketHandler) handleConnection(conn net.Conn) {
 
 		chMsg := message.NewMessage(watermill.NewUUID(), buf)
 		if err := p.channel.Publish(PubSubTopic, chMsg); err != nil {
+			// No acknowledgment: the editor keeps the heartbeats and sends them again
 			slog.Error("Error publishing heartbeat topic", slog.Any("err", err))
+			return
 		}
 
 		// Send acknowledgment to client

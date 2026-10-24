@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/lithammer/shortuuid/v3"
@@ -52,6 +53,9 @@ type GoChannel struct {
 
 	persistedMessages     map[string][]*message.Message
 	persistedMessagesLock sync.RWMutex
+
+	// pending counts published messages not yet handled by every subscriber
+	pending atomic.Int64
 }
 
 // NewGoChannel creates new GoChannel Pub/Sub.
@@ -108,6 +112,7 @@ func (g *GoChannel) Publish(topic string, messages ...*message.Message) error {
 	for i := range messagesToPublish {
 		msg := messagesToPublish[i]
 
+		g.pending.Add(1)
 		ackedBySubscribers, err := g.sendMessage(topic, msg)
 		if err != nil {
 			return err
@@ -141,11 +146,13 @@ func (g *GoChannel) sendMessage(topic string, message *message.Message) (<-chan 
 
 	if len(subscribers) == 0 {
 		close(ackedBySubscribers)
+		g.pending.Add(-1)
 		g.logger.Info("No subscribers to send message", logFields)
 		return ackedBySubscribers, nil
 	}
 
 	go func(subscribers []*subscriber) {
+		defer g.pending.Add(-1)
 		wg := &sync.WaitGroup{}
 
 		for i := range subscribers {
@@ -163,6 +170,19 @@ func (g *GoChannel) sendMessage(topic string, message *message.Message) (<-chan 
 	}(subscribers)
 
 	return ackedBySubscribers, nil
+}
+
+// Drain waits until every published message has been handled by its subscribers, or until
+// timeout. It reports whether none is left.
+func (g *GoChannel) Drain(timeout time.Duration) bool {
+	deadline := time.Now().Add(timeout)
+	for g.pending.Load() > 0 {
+		if time.Now().After(deadline) {
+			return false
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	return true
 }
 
 // Subscribe returns channel to which all published messages are sent.
