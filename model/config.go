@@ -323,11 +323,11 @@ func (cs *configService) ReadConfigFile(ctx context.Context, opts ...ReadConfigO
 		}
 	}
 
-	// Save to cache
+	// Save to cache. The global is set under the same lock: the daemon reads with
+	// WithSkipCache from several goroutines.
 	cs.mu.Lock()
 	cs.cachedConfig = &config
-	cs.mu.Unlock()
-
 	UserShellTimeConfig = config
+	cs.mu.Unlock()
 	return
 }
