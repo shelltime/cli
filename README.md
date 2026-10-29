@@ -272,4 +272,4 @@ Contributor and agent guidance lives in [AGENTS.md](AGENTS.md); `perf/README.md`
 
 ## License
 
-Copyright (c) 2026 ShellTime Team. All rights reserved.
+[MIT](LICENSE). Copyright (c) 2026 ShellTime Team.
