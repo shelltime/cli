@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.97](https://github.com/shelltime/cli/compare/v0.1.96...v0.1.97) (2026-10-29)
+
+
+### Documentation
+
+* license the CLI under MIT ([#337](https://github.com/shelltime/cli/issues/337)) ([90b8028](https://github.com/shelltime/cli/commit/90b802860ee0bc050b204d08ca764a6458f5eb29))
+
 ## [0.1.96](https://github.com/shelltime/cli/compare/v0.1.95...v0.1.96) (2026-10-24)
 
 
