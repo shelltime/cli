@@ -111,7 +111,7 @@ shelltime codex install
 | `shelltime hooks uninstall` | Remove shell hooks |
 | `shelltime daemon install` | Install the ShellTime daemon service |
 | `shelltime daemon status` | Check daemon status |
-| `shelltime daemon reinstall` | Reinstall the daemon service |
+| `shelltime daemon reinstall` | Reinstall and restart the daemon service (alias: `shelltime daemon restart`) |
 | `shelltime daemon uninstall` | Remove the daemon service |
 | `shelltime alias import` | Import aliases from `~/.zshrc` and `~/.config/fish/config.fish` (`--full` re-imports everything) |
 | `shelltime config view` | Show the merged current configuration (`--format json`) |
