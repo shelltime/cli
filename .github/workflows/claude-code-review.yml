@@ -61,6 +61,12 @@ jobs:
           # 2.1.x the built-in takes a PR number, an effort level and --comment,
           # and verifies its findings before posting them.
           prompt: '/code-review high ${{ github.event.pull_request.number }} --comment'
+          # Load MCP tools up front. With tool search on (the default) the
+          # inline comment tool is only listed by name until the agent loads
+          # it with ToolSearch, and when it doesn't, /code-review --comment
+          # decides the tool is unavailable and prints its findings instead of
+          # posting them. Most reviews found issues and left no comment.
+          settings: '{"env": {"ENABLE_TOOL_SEARCH": "false"}}'
           # See https://github.com/anthropics/claude-code-action/blob/main/docs/usage.md
           # or https://code.claude.com/docs/en/cli-reference for available options
           additional_permissions: |
@@ -77,9 +83,12 @@ jobs:
       # legitimately report num_turns 0 while spending several dollars. Only a run
       # that is zero on BOTH counts truly did nothing.
       #
-      # A run that did work but never delegated is the quieter failure: one
-      # agent skimming the diff and calling it clean. That only warns, because a
-      # tiny diff may not need subagents.
+      # A run that found problems but posted none is the quieter failure: the
+      # PR looks reviewed and clean while the findings sit in the job log.
+      # Count the comments it posted (the inline comment tool, or a gh
+      # fallback) and fail when there are findings and no comment. Subagent
+      # launches are not counted: /code-review high reviews the diff from
+      # several angles inline, so a good review launches none.
       - name: Assert the review actually ran
         if: always() && steps.claude-review.conclusion == 'success'
         run: |
@@ -91,12 +100,14 @@ jobs:
           result=$(jq -r '[.. | objects | select(.type == "result")] | last' "$file")
           turns=$(jq -r '.num_turns // 0' <<<"$result")
           cost=$(jq -r '.total_cost_usd // 0' <<<"$result")
-          delegations=$(jq -r '[.. | objects | select(.type == "tool_use" and (.name == "Agent" or .name == "Task" or .name == "Workflow"))] | length' "$file")
-          echo "Claude turns: $turns, cost: \$$cost, subagent launches: $delegations"
+          findings=$(jq -r '[(.result // "") | scan("([0-9]+) findings?\\b") | .[0] | tonumber] | max // 0' <<<"$result")
+          posted=$(jq -r '[.. | objects | select(.type == "tool_use") | select(.name == "mcp__github_inline_comment__create_inline_comment" or ((.input.command? // "") as $c | ($c | test("gh pr (comment|review)")) or (($c | test("pulls/[0-9]+/(comments|reviews)")) and ($c | test("-X *POST|--method *POST| -[fF] |--(raw-)?field|--input")))))] | length' "$file")
+          echo "Claude turns: $turns, cost: \$$cost, findings: $findings, comments posted: $posted"
           if [ "$turns" -eq 0 ] && [ "$(jq -rn --argjson c "$cost" '$c > 0')" = "false" ]; then
             echo "::error::Claude did no work — 0 turns and \$0 spent. The review was a no-op (bad prompt or unresolved slash command)."
             exit 1
           fi
-          if [ "$delegations" -eq 0 ]; then
-            echo "::warning::The review launched no subagents. On anything but a tiny diff that means one agent skimmed it, so treat a clean result with suspicion."
+          if [ "$findings" -gt 0 ] && [ "$posted" -eq 0 ]; then
+            echo "::error::Claude reported $findings findings but posted no comment on the PR. They are in the log of the Run Claude Code Review step."
+            exit 1
           fi
