@@ -83,6 +83,9 @@ type doctorEnv struct {
 	latestVersion *doctorCall[string]
 	profile       *doctorCall[model.UserProfileResponse]
 	publicKey     *doctorCall[*model.OpenTokenPublicKey]
+	// stopPrefetch cancels the prefetched checks; runDoctorChecks calls it when the sections
+	// are done, so a check no section took doesn't run on until its timeout.
+	stopPrefetch context.CancelFunc
 }
 
 // doctorCall is a network check running in the background.
@@ -119,20 +122,25 @@ func doctorFetch[T any](ctx context.Context, started **doctorCall[T], timeout ti
 // prefetchNetworkChecks starts the round trips of the System, Account and Privacy sections at
 // once, under the same conditions those sections make them. None needs another's answer, and
 // one after another they add up to seconds.
+//
+// The conditions mirror the sections'. A section that finds no prefetched call makes the call
+// itself, so a section whose condition drifts from these only loses the overlap.
 func (env *doctorEnv) prefetchNetworkChecks() {
+	ctx, cancel := context.WithCancel(env.ctx)
+	env.stopPrefetch = cancel
 	if env.offline {
 		return
 	}
 	if doctorVersion() != "dev" {
-		env.latestVersion = startDoctorCall(env.ctx, doctorUpdateTimeout, doctorFetchLatestVersion)
+		env.latestVersion = startDoctorCall(ctx, doctorUpdateTimeout, doctorFetchLatestVersion)
 	}
 	cfg := env.cfg
 	if env.cfgErr != nil || strings.TrimSpace(cfg.Token) == "" || cfg.APIEndpoint == "" {
 		return
 	}
-	env.profile = startDoctorCall(env.ctx, doctorNetworkTimeout, doctorProfileFetch(cfg))
+	env.profile = startDoctorCall(ctx, doctorNetworkTimeout, doctorProfileFetch(cfg))
 	if cfg.Encrypted != nil && *cfg.Encrypted {
-		env.publicKey = startDoctorCall(env.ctx, doctorNetworkTimeout, doctorPublicKeyFetch(cfg))
+		env.publicKey = startDoctorCall(ctx, doctorNetworkTimeout, doctorPublicKeyFetch(cfg))
 	}
 }
 
@@ -172,6 +180,7 @@ func doctorSections() []doctorSection {
 func runDoctorChecks(ctx context.Context, opts doctorOptions) []doctorResult {
 	env := newDoctorEnv(ctx, opts)
 	env.prefetchNetworkChecks()
+	defer env.stopPrefetch()
 	// Show paths under the home directory as ~/... to keep lines short and reports shareable.
 	home, _ := os.UserHomeDir()
 	tilde := func(s string) string {

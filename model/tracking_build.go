@@ -2,6 +2,7 @@ package model
 
 import (
 	"context"
+	"sync/atomic"
 	"time"
 )
 
@@ -129,12 +130,24 @@ func BuildTrackingData(ctx context.Context, store CommandStore, config ShellTime
 	return res, nil
 }
 
+// osInfo is the first OS lookup that worked. The daemon sends a batch on every
+// flush, and the OS and its version don't change while it runs, so the
+// program is executed once. A failed lookup isn't kept, so the next send
+// tries again.
+var osInfo atomic.Pointer[SysInfo]
+
 // WithOSInfo returns m with the OS and its version filled in, "unknown" when
 // they can't be read. BuildTrackingData leaves them to the caller that sends.
 func (m TrackingMetaData) WithOSInfo() TrackingMetaData {
-	sysInfo, err := GetOSAndVersion()
-	if err != nil {
-		sysInfo = &SysInfo{Os: "unknown", Version: "unknown"}
+	sysInfo := osInfo.Load()
+	if sysInfo == nil {
+		info, err := GetOSAndVersion()
+		if err != nil {
+			info = &SysInfo{Os: "unknown", Version: "unknown"}
+		} else {
+			osInfo.Store(info)
+		}
+		sysInfo = info
 	}
 	m.OS = sysInfo.Os
 	m.OSVersion = sysInfo.Version

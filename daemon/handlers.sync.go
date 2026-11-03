@@ -54,7 +54,7 @@ func sendTrackArgsToServer(ctx context.Context, syncMsg model.PostTrackArgs) err
 
 	cfg, err := stConfig.ReadConfigFile(ctx)
 	if err != nil {
-		applyTerminal()
+		// The batch isn't sent, so the terminal isn't needed: the walk finishes on its own.
 		slog.Error("Failed to unmarshal sync message", slog.Any("err", err))
 		return err
 	}
@@ -159,6 +159,8 @@ func sendTrackArgsToServer(ctx context.Context, syncMsg model.PostTrackArgs) err
 // resolveTerminalAsync starts resolving the terminal of the batch's first command from its
 // PPID and returns a function that waits for the result and stores it in syncMsg.Meta. Only
 // the returned function touches syncMsg, and it does the work once however often it's called.
+// A caller that won't send the batch can return without calling it; the walk only writes its
+// own variables and finishes on its own.
 func resolveTerminalAsync(syncMsg *model.PostTrackArgs) func() {
 	if len(syncMsg.Data) == 0 || syncMsg.Data[0].PPID <= 0 {
 		return func() {}

@@ -8,9 +8,11 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/malamtime/cli/model"
 	"github.com/stretchr/testify/assert"
@@ -358,4 +360,59 @@ func TestResync_SendsLargeLineInChunks(t *testing.T) {
 	require.Len(t, kept.Heartbeats, 500)
 	assert.Equal(t, "big-500", kept.Heartbeats[0].HeartbeatID)
 	assert.Equal(t, "big-999", kept.Heartbeats[499].HeartbeatID)
+}
+
+// Saved lines are resent a few at a time. Whatever order the sends finish in, the lines the
+// server didn't store are written back in file order, and at most
+// heartbeatResyncConcurrency are in flight at once.
+func TestResync_ConcurrentSendsKeepFailedLinesInOrder(t *testing.T) {
+	const total = 10
+	var inFlight, peak atomic.Int32
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		n := inFlight.Add(1)
+		defer inFlight.Add(-1)
+		for {
+			p := peak.Load()
+			if n <= p || peak.CompareAndSwap(p, n) {
+				break
+			}
+		}
+		var payload model.HeartbeatPayload
+		assert.NoError(t, json.NewDecoder(r.Body).Decode(&payload))
+		if !assert.Len(t, payload.Heartbeats, 1) {
+			w.WriteHeader(http.StatusBadRequest)
+			return
+		}
+		var i int
+		_, err := fmt.Sscanf(payload.Heartbeats[0].HeartbeatID, "hb-%d", &i)
+		assert.NoError(t, err)
+		// Earlier lines answer later, so the sends finish out of file order
+		time.Sleep(time.Duration(total-i) * 5 * time.Millisecond)
+		if i%3 == 0 {
+			w.WriteHeader(http.StatusInternalServerError)
+			return
+		}
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte("{}"))
+	}))
+	defer server.Close()
+
+	var lines, wantKept []string
+	for i := 0; i < total; i++ {
+		line := fmt.Sprintf(`{"heartbeats":[{"heartbeatId":"hb-%d","entity":"/a.go","time":%d}]}`, i, i+1)
+		lines = append(lines, line)
+		if i%3 == 0 {
+			wantKept = append(wantKept, line)
+		}
+	}
+	logFile := d2writeHeartbeatLog(t, lines)
+
+	svc := NewHeartbeatResyncService(d2trackingConfig(server.URL))
+	svc.resync(context.Background())
+
+	content, err := os.ReadFile(logFile)
+	require.NoError(t, err)
+	assert.Equal(t, strings.Join(wantKept, "\n")+"\n", string(content), "failed lines stay, in file order")
+	assert.Greater(t, peak.Load(), int32(1), "lines are resent at once")
+	assert.LessOrEqual(t, peak.Load(), int32(heartbeatResyncConcurrency))
 }
