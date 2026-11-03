@@ -22,6 +22,10 @@ type TrackingBuildResult struct {
 //
 // It performs no network IO and does not advance the cursor; callers decide
 // whether to flush (FlushCount), send, then SetCursor + Prune.
+//
+// Meta.OS and Meta.OSVersion are left empty: reading them execs a program
+// (lsb_release, sw_vers), and most calls stop below FlushCount without sending.
+// Callers fill them with TrackingMetaData.WithOSInfo right before sending.
 func BuildTrackingData(ctx context.Context, store CommandStore, config ShellTimeConfig) (TrackingBuildResult, error) {
 	ctx, span := modelTracer.Start(ctx, "buildTrackingData")
 	defer span.End()
@@ -48,14 +52,7 @@ func BuildTrackingData(ctx context.Context, store CommandStore, config ShellTime
 		return res, err
 	}
 
-	sysInfo, err := GetOSAndVersion()
-	if err != nil {
-		sysInfo = &SysInfo{Os: "unknown", Version: "unknown"}
-	}
-
 	meta := TrackingMetaData{
-		OS:        sysInfo.Os,
-		OSVersion: sysInfo.Version,
 		CliEngine: store.Engine(),
 	}
 
@@ -130,4 +127,16 @@ func BuildTrackingData(ctx context.Context, store CommandStore, config ShellTime
 	res.Meta = meta
 	res.LatestRecordingTime = latest
 	return res, nil
+}
+
+// WithOSInfo returns m with the OS and its version filled in, "unknown" when
+// they can't be read. BuildTrackingData leaves them to the caller that sends.
+func (m TrackingMetaData) WithOSInfo() TrackingMetaData {
+	sysInfo, err := GetOSAndVersion()
+	if err != nil {
+		sysInfo = &SysInfo{Os: "unknown", Version: "unknown"}
+	}
+	m.OS = sysInfo.Os
+	m.OSVersion = sysInfo.Version
+	return m
 }

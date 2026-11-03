@@ -227,7 +227,7 @@ func trySyncLocalToServer(
 		}
 	}
 
-	err = DoSyncData(ctx, config, result.LatestRecordingTime, result.Data, result.Meta)
+	err = DoSyncData(ctx, config, result.LatestRecordingTime, result.Data, result.Meta.WithOSInfo())
 	if err != nil {
 		slog.Error("Failed to send data to server", slog.Any("err", err))
 		return err

@@ -77,6 +77,75 @@ type doctorEnv struct {
 	login      string
 	claudeOtel bool
 	codexOtel  bool
+
+	// Network checks started by prefetchNetworkChecks. A section takes its result (or makes
+	// the call itself when none was started) through doctorFetch.
+	latestVersion *doctorCall[string]
+	profile       *doctorCall[model.UserProfileResponse]
+	publicKey     *doctorCall[*model.OpenTokenPublicKey]
+}
+
+// doctorCall is a network check running in the background.
+type doctorCall[T any] struct {
+	done chan struct{}
+	val  T
+	err  error
+}
+
+func startDoctorCall[T any](ctx context.Context, timeout time.Duration, fetch func(context.Context) (T, error)) *doctorCall[T] {
+	call := &doctorCall[T]{done: make(chan struct{})}
+	go func() {
+		defer close(call.done)
+		ctx, cancel := context.WithTimeout(ctx, timeout)
+		defer cancel()
+		call.val, call.err = fetch(ctx)
+	}()
+	return call
+}
+
+// doctorFetch returns the result of the check started in *started and clears it, so it is
+// used once. Without one it makes the call now.
+func doctorFetch[T any](ctx context.Context, started **doctorCall[T], timeout time.Duration, fetch func(context.Context) (T, error)) (T, error) {
+	if call := *started; call != nil {
+		*started = nil
+		<-call.done
+		return call.val, call.err
+	}
+	ctx, cancel := context.WithTimeout(ctx, timeout)
+	defer cancel()
+	return fetch(ctx)
+}
+
+// prefetchNetworkChecks starts the round trips of the System, Account and Privacy sections at
+// once, under the same conditions those sections make them. None needs another's answer, and
+// one after another they add up to seconds.
+func (env *doctorEnv) prefetchNetworkChecks() {
+	if env.offline {
+		return
+	}
+	if doctorVersion() != "dev" {
+		env.latestVersion = startDoctorCall(env.ctx, doctorUpdateTimeout, doctorFetchLatestVersion)
+	}
+	cfg := env.cfg
+	if env.cfgErr != nil || strings.TrimSpace(cfg.Token) == "" || cfg.APIEndpoint == "" {
+		return
+	}
+	env.profile = startDoctorCall(env.ctx, doctorNetworkTimeout, doctorProfileFetch(cfg))
+	if cfg.Encrypted != nil && *cfg.Encrypted {
+		env.publicKey = startDoctorCall(env.ctx, doctorNetworkTimeout, doctorPublicKeyFetch(cfg))
+	}
+}
+
+func doctorProfileFetch(cfg model.ShellTimeConfig) func(context.Context) (model.UserProfileResponse, error) {
+	return func(ctx context.Context) (model.UserProfileResponse, error) {
+		return model.FetchCurrentUserProfile(ctx, cfg)
+	}
+}
+
+func doctorPublicKeyFetch(cfg model.ShellTimeConfig) func(context.Context) (*model.OpenTokenPublicKey, error) {
+	return func(ctx context.Context) (*model.OpenTokenPublicKey, error) {
+		return model.GetOpenTokenPublicKey(ctx, model.Endpoint{Token: cfg.Token, APIEndpoint: cfg.APIEndpoint}, 0)
+	}
 }
 
 type doctorSection struct {
@@ -102,6 +171,7 @@ func doctorSections() []doctorSection {
 
 func runDoctorChecks(ctx context.Context, opts doctorOptions) []doctorResult {
 	env := newDoctorEnv(ctx, opts)
+	env.prefetchNetworkChecks()
 	// Show paths under the home directory as ~/... to keep lines short and reports shareable.
 	home, _ := os.UserHomeDir()
 	tilde := func(s string) string {
@@ -209,9 +279,7 @@ func doctorCheckSystem(env *doctorEnv) []doctorResult {
 	case version == "dev":
 		update.Status, update.Message = doctorSkip, "Development build; skipped the update check."
 	default:
-		ctx, cancel := context.WithTimeout(env.ctx, doctorUpdateTimeout)
-		latest, err := doctorFetchLatestVersion(ctx)
-		cancel()
+		latest, err := doctorFetch(env.ctx, &env.latestVersion, doctorUpdateTimeout, doctorFetchLatestVersion)
 		cmp := compareToLatest(version, latest)
 		switch {
 		case err != nil:
@@ -478,9 +546,7 @@ func doctorCheckAccount(env *doctorEnv) []doctorResult {
 		return append(results, doctorResult{ID: "auth.server", Status: doctorSkip, Message: "Skipped checking the token: apiEndpoint isn't set."})
 	}
 
-	ctx, cancel := context.WithTimeout(env.ctx, doctorNetworkTimeout)
-	defer cancel()
-	profile, err := model.FetchCurrentUserProfile(ctx, cfg)
+	profile, err := doctorFetch(env.ctx, &env.profile, doctorNetworkTimeout, doctorProfileFetch(cfg))
 
 	result := doctorResult{ID: "auth.server"}
 	var statusErr *model.HTTPStatusError
@@ -571,9 +637,7 @@ func doctorCheckPrivacy(env *doctorEnv) []doctorResult {
 		return results
 	}
 
-	ctx, cancel := context.WithTimeout(env.ctx, doctorNetworkTimeout)
-	defer cancel()
-	key, err := model.GetOpenTokenPublicKey(ctx, model.Endpoint{Token: cfg.Token, APIEndpoint: cfg.APIEndpoint}, 0)
+	key, err := doctorFetch(env.ctx, &env.publicKey, doctorNetworkTimeout, doctorPublicKeyFetch(cfg))
 	switch {
 	case err != nil:
 		results = append(results, doctorResult{ID: "privacy.encryption_key", Status: doctorSkip, Message: fmt.Sprintf("Couldn't check your token's encryption key: %v", err)})

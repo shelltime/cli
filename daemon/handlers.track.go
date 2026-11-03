@@ -110,7 +110,7 @@ func handlePubSubTrackPost(ctx context.Context, payload interface{}) error {
 	args := model.PostTrackArgs{
 		CursorID: result.LatestRecordingTime.UnixNano(),
 		Data:     result.Data,
-		Meta:     result.Meta,
+		Meta:     result.Meta.WithOSInfo(),
 	}
 
 	if err := sendTrackArgsToServer(ctx, args); err != nil {

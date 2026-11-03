@@ -19,6 +19,9 @@ var (
 	CCInfoInactivityTimeout = 3 * time.Minute
 )
 
+// gitInfoFetchConcurrency bounds how many working directories fetchGitInfo refreshes at once.
+const gitInfoFetchConcurrency = 4
+
 // CCInfoCache holds the cached cost data for a time range
 type CCInfoCache struct {
 	TotalCostUSD        float64
@@ -170,8 +173,7 @@ func (s *CCInfoTimerService) timerLoop() {
 	defer s.wg.Done()
 
 	// Fetch immediately on start
-	s.fetchActiveRanges(context.Background())
-	s.fetchGitInfo()
+	s.fetchCostAndGitInfo(context.Background())
 	go s.refreshRateLimit()
 	go s.fetchUserProfile(context.Background())
 
@@ -185,14 +187,23 @@ func (s *CCInfoTimerService) timerLoop() {
 				s.timerMu.Unlock()
 				return
 			}
-			s.fetchActiveRanges(context.Background())
-			s.fetchGitInfo()
+			s.fetchCostAndGitInfo(context.Background())
 			go s.refreshRateLimit()
 
 		case <-s.stopChan:
 			return
 		}
 	}
+}
+
+// fetchCostAndGitInfo refreshes the cost of the active ranges (API calls) and the git info of
+// the active directories (git commands) at the same time and returns when both are done. They
+// update separate caches, so git info no longer waits for the network.
+func (s *CCInfoTimerService) fetchCostAndGitInfo(ctx context.Context) {
+	var wg sync.WaitGroup
+	wg.Go(s.fetchGitInfo)
+	s.fetchActiveRanges(ctx)
+	wg.Wait()
 }
 
 // checkInactivity returns true if the service has been inactive for too long
@@ -350,22 +361,31 @@ func (s *CCInfoTimerService) fetchGitInfo() {
 	}
 	s.mu.RUnlock()
 
-	// Fetch git info for each directory (outside lock to avoid blocking)
+	// Fetch git info for each directory (outside lock to avoid blocking). Each directory runs
+	// its own git commands, so a few run at once: sessions open in several large repositories
+	// would otherwise take longer than a tick.
+	sem := make(chan struct{}, gitInfoFetchConcurrency)
+	var wg sync.WaitGroup
 	for _, dir := range dirsToFetch {
-		info := GetGitInfo(dir)
+		sem <- struct{}{}
+		wg.Go(func() {
+			defer func() { <-sem }()
+			info := GetGitInfo(dir)
 
-		s.mu.Lock()
-		if entry, exists := s.gitCache[dir]; exists {
-			entry.Info = info
-			entry.LastFetched = time.Now()
-		}
-		s.mu.Unlock()
+			s.mu.Lock()
+			if entry, exists := s.gitCache[dir]; exists {
+				entry.Info = info
+				entry.LastFetched = time.Now()
+			}
+			s.mu.Unlock()
 
-		slog.Debug("Git info updated",
-			slog.String("workingDir", dir),
-			slog.String("branch", info.Branch),
-			slog.Bool("dirty", info.Dirty))
+			slog.Debug("Git info updated",
+				slog.String("workingDir", dir),
+				slog.String("branch", info.Branch),
+				slog.Bool("dirty", info.Dirty))
+		})
 	}
+	wg.Wait()
 
 	// Cleanup stale entries
 	s.cleanupStaleGitCache()

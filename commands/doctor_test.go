@@ -13,6 +13,8 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -859,4 +861,63 @@ func TestCommandDoctor_FixDeclined(t *testing.T) {
 	zshrc, err := os.ReadFile(filepath.Join(home, ".zshrc"))
 	require.NoError(t, err)
 	assert.Empty(t, zshrc, "nothing is changed when the prompt is declined")
+}
+
+// Online, the update, token and encryption key checks are in flight together: each answers
+// only once all three have started, and the sections still report their results.
+func TestRunDoctorChecks_NetworkChecksRunTogether(t *testing.T) {
+	home, mc := setupDoctorTest(t)
+	writeDoctorConfigFile(t, home)
+
+	var started sync.WaitGroup
+	started.Add(3)
+	allStarted := make(chan struct{})
+	go func() {
+		started.Wait()
+		close(allStarted)
+	}()
+	arrive := func() bool {
+		started.Done()
+		select {
+		case <-allStarted:
+			return true
+		case <-time.After(5 * time.Second):
+			return false
+		}
+	}
+
+	var latestOverlapped, profileOverlapped, keyOverlapped atomic.Bool
+	doctorFetchLatestVersion = func(context.Context) (string, error) {
+		latestOverlapped.Store(arrive())
+		return "v0.1.91", nil
+	}
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/api/v2/graphql":
+			profileOverlapped.Store(arrive())
+			_, _ = w.Write([]byte(`{"data":{"fetchUser":{"id":1,"login":"annatar"}}}`))
+		case "/api/v1/opentoken/publickey":
+			keyOverlapped.Store(arrive())
+			_ = json.NewEncoder(w).Encode(map[string]any{"data": map[string]any{"id": 1, "publicKey": "-----BEGIN PUBLIC KEY-----"}})
+		default:
+			w.WriteHeader(http.StatusNotFound)
+		}
+	}))
+	defer srv.Close()
+
+	cfg := doctorTestConfig(t)
+	cfg.APIEndpoint = srv.URL
+	cfg.Encrypted = new(true)
+	mc.On("ReadConfigFile", mock.Anything).Return(cfg, nil)
+
+	results := runDoctorChecks(context.Background(), doctorOptions{})
+
+	assert.Equal(t, doctorOK, findDoctorResult(t, results, "system.update").Status)
+	server := findDoctorResult(t, results, "auth.server")
+	assert.Equal(t, doctorOK, server.Status)
+	assert.Contains(t, server.Message, "@annatar")
+	assert.Equal(t, doctorOK, findDoctorResult(t, results, "privacy.encryption_key").Status)
+	assert.True(t, latestOverlapped.Load(), "the update check waited for the others to start")
+	assert.True(t, profileOverlapped.Load(), "the token check waited for the others to start")
+	assert.True(t, keyOverlapped.Load(), "the encryption key check waited for the others to start")
 }
