@@ -24,6 +24,9 @@ const (
 	// inserts store a request in one insert, which fails past Postgres' 65535 parameters,
 	// so a large saved batch would fail on every pass.
 	heartbeatResyncChunkSize = 500
+
+	// heartbeatResyncConcurrency bounds how many saved lines are resent at once.
+	heartbeatResyncConcurrency = 4
 )
 
 // HeartbeatResyncService handles periodic resync of failed heartbeats
@@ -126,32 +129,28 @@ func (s *HeartbeatResyncService) resync(ctx context.Context) {
 
 	slog.Info("Starting heartbeat resync", slog.Int("pendingCount", len(lines)))
 
-	// Process each line
+	// Each line is resent on its own, a few at once: a backlog from an outage can hold
+	// hundreds of them, each a round trip. Results are collected per line, so what is kept
+	// stays in file order.
+	results := make([]heartbeatResyncLineResult, len(lines))
+	sem := make(chan struct{}, heartbeatResyncConcurrency)
+	var wg sync.WaitGroup
+	for i, line := range lines {
+		sem <- struct{}{}
+		wg.Go(func() {
+			defer func() { <-sem }()
+			results[i] = resyncHeartbeatLine(ctx, cfg, line)
+		})
+	}
+	wg.Wait()
+
 	var failedLines []string
 	// Heartbeats, not lines: a line is resent in chunks and only failed chunks are kept
 	sent, kept := 0, 0
-
-	for _, line := range lines {
-		var payload model.HeartbeatPayload
-		if err := json.Unmarshal([]byte(line), &payload); err != nil {
-			slog.Error("Failed to parse heartbeat line, discarding", slog.Any("err", err), slog.String("line", line))
-			continue
-		}
-
-		// Each chunk the server didn't store is kept as its own line
-		for _, chunk := range chunkHeartbeatPayload(payload, heartbeatResyncChunkSize) {
-			if !resendHeartbeats(ctx, cfg, chunk) {
-				keptLine, err := json.Marshal(chunk)
-				if err != nil {
-					slog.Error("Failed to encode heartbeats to keep, keeping the whole line", slog.Any("err", err))
-					keptLine = []byte(line)
-				}
-				failedLines = append(failedLines, string(keptLine))
-				kept += len(chunk.Heartbeats)
-				continue
-			}
-			sent += len(chunk.Heartbeats)
-		}
+	for _, r := range results {
+		failedLines = append(failedLines, r.keptLines...)
+		sent += r.sent
+		kept += r.kept
 	}
 
 	heartbeatLogMu.Lock()
@@ -180,6 +179,41 @@ func (s *HeartbeatResyncService) resync(ctx context.Context) {
 		slog.Int("sent", sent),
 		slog.Int("kept", kept),
 		slog.Int("remainingLines", len(failedLines)))
+}
+
+// heartbeatResyncLineResult is what resending one saved line did.
+type heartbeatResyncLineResult struct {
+	// keptLines are the chunks the server didn't store, each to be kept as its own line
+	keptLines []string
+	// sent and kept count heartbeats
+	sent, kept int
+}
+
+// resyncHeartbeatLine resends one saved line, chunk by chunk in order. A line that can't be
+// parsed is discarded.
+func resyncHeartbeatLine(ctx context.Context, cfg model.ShellTimeConfig, line string) heartbeatResyncLineResult {
+	var r heartbeatResyncLineResult
+	var payload model.HeartbeatPayload
+	if err := json.Unmarshal([]byte(line), &payload); err != nil {
+		slog.Error("Failed to parse heartbeat line, discarding", slog.Any("err", err), slog.String("line", line))
+		return r
+	}
+
+	// Each chunk the server didn't store is kept as its own line
+	for _, chunk := range chunkHeartbeatPayload(payload, heartbeatResyncChunkSize) {
+		if !resendHeartbeats(ctx, cfg, chunk) {
+			keptLine, err := json.Marshal(chunk)
+			if err != nil {
+				slog.Error("Failed to encode heartbeats to keep, keeping the whole line", slog.Any("err", err))
+				keptLine = []byte(line)
+			}
+			r.keptLines = append(r.keptLines, string(keptLine))
+			r.kept += len(chunk.Heartbeats)
+			continue
+		}
+		r.sent += len(chunk.Heartbeats)
+	}
+	return r
 }
 
 // resendHeartbeats sends a saved batch and reports whether the server stored it, by the same

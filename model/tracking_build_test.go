@@ -33,6 +33,19 @@ func TestBuildTrackingData(t *testing.T) {
 	require.Equal(t, "h", res.Meta.Hostname)
 	require.Equal(t, "bash", res.Meta.Shell)
 	require.Equal(t, StorageEngineBolt, res.Meta.CliEngine)
+
+	// The OS lookup execs a program, so it waits until a batch is sent
+	require.Empty(t, res.Meta.OS)
+	require.Empty(t, res.Meta.OSVersion)
+	want, err := GetOSAndVersion()
+	if err != nil {
+		want = &SysInfo{Os: "unknown", Version: "unknown"}
+	}
+	withOS := res.Meta.WithOSInfo()
+	require.Equal(t, want.Os, withOS.OS)
+	require.Equal(t, want.Version, withOS.OSVersion)
+	require.Equal(t, "h", withOS.Hostname)
+	require.Equal(t, StorageEngineBolt, withOS.CliEngine)
 }
 
 func TestBuildTrackingDataViaSSH(t *testing.T) {
