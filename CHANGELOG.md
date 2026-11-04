@@ -1,5 +1,27 @@
 # Changelog
 
+## [0.1.97](https://github.com/shelltime/cli/compare/v0.1.96...v0.1.97) (2026-11-04)
+
+
+### Features
+
+* **daemon:** add `daemon restart` as an alias of `daemon reinstall` ([#339](https://github.com/shelltime/cli/issues/339)) ([8567985](https://github.com/shelltime/cli/commit/85679857eb8fa7f714d958c9af6251f2c60f16d3))
+
+
+### Bug Fixes
+
+* **ci:** load the inline comment tool up front so Claude reviews post their findings ([#340](https://github.com/shelltime/cli/issues/340)) ([5fa5855](https://github.com/shelltime/cli/commit/5fa585547998649c0f62fce56dbbf5638469af60))
+
+
+### Performance Improvements
+
+* **daemon:** overlap independent I/O on the track, sync and statusline paths ([#341](https://github.com/shelltime/cli/issues/341)) ([145b5ad](https://github.com/shelltime/cli/commit/145b5addb298055d82838e140d8bbd99b12db8df))
+
+
+### Documentation
+
+* license the CLI under MIT ([#337](https://github.com/shelltime/cli/issues/337)) ([90b8028](https://github.com/shelltime/cli/commit/90b802860ee0bc050b204d08ca764a6458f5eb29))
+
 ## [0.1.96](https://github.com/shelltime/cli/compare/v0.1.95...v0.1.96) (2026-10-24)
 
 
