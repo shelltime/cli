@@ -96,6 +96,17 @@ func BuildTrackingData(ctx context.Context, store CommandStore, config ShellTime
 		key := postCommand.GetUniqueKey()
 		preCommands, ok := preTree[key]
 		if !ok {
+			// A post with no pre under its key is left out, and has to be. Hook scripts
+			// from before repeated posts were fixed stay on disk until `shelltime hooks
+			// install` runs again. The zsh one sends a post for the last history entry
+			// at every prompt, also the first prompt of a new shell and every empty
+			// enter; the bash one repeats the last command on an empty enter. Once the
+			// real command is synced and pruned (or from the start, in a new shell)
+			// those posts have no pre, and this is all that keeps them from being
+			// uploaded as commands.
+			//
+			// It is also why a compaction never expires a pre command by age: the post
+			// of a command that outlived its pre would be dropped here.
 			continue
 		}
 

@@ -17,10 +17,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// storeTestBase is when the commands of these tests ran: recently, because a compaction
-// drops a pre command that has had no post for orphanPreMaxAge, and several of the tests
-// count on unfinished commands staying.
-var storeTestBase = time.Now().Add(-2 * time.Hour).Truncate(time.Second)
+var storeTestBase = time.Date(2024, 6, 1, 12, 0, 0, 0, time.UTC)
 
 func storeTestCommand(name string, at time.Time) Command {
 	return Command{Shell: "zsh", SessionID: 20240601120000, Command: name, Username: "u", Hostname: "h", Time: at}
