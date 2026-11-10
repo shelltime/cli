@@ -235,13 +235,7 @@ func (s *fileStore) compact(ctx context.Context, opts compactOptions) error {
 
 	// The latest post of each command, synced or not: a pre with a post at or after its
 	// start is not an orphan, whatever its age.
-	latestPost := make(map[string]time.Time, len(postCommands))
-	for _, post := range postCommands {
-		key := post.GetUniqueKey()
-		if latest, ok := latestPost[key]; !ok || post.Time.After(latest) {
-			latestPost[key] = post.Time
-		}
-	}
+	latestPost := latestPostTimes(postCommands, nil)
 	orphanBefore := time.Now().Add(-orphanPreMaxAge)
 	isAgedOrphan := func(pre *Command) bool {
 		if !pre.Time.Before(orphanBefore) || !pre.RecordingTime.Before(orphanBefore) {
@@ -289,6 +283,12 @@ func (s *fileStore) compact(ctx context.Context, opts compactOptions) error {
 		}
 	}
 
+	// The latest synced post of each command. A pre is finished and synced when a synced
+	// post of its key ran at or after its start, which is preHasSyncedPost's question,
+	// answered here with one lookup per pre: it compares the pre with every post, and gc
+	// asks it for every pre of the store at each shell start.
+	latestSyncedPost := latestPostTimes(postCommands, &cursor)
+
 	newPre := make([]*Command, 0)
 	agedOrphans := 0
 	for _, row := range preCommands {
@@ -301,7 +301,7 @@ func (s *fileStore) compact(ctx context.Context, opts compactOptions) error {
 			continue
 		}
 		// keep pre commands that no synced post completes (unfinished)
-		if !preHasSyncedPost(row, postCommands, cursor) {
+		if synced, ok := latestSyncedPost[row.GetUniqueKey()]; !ok || synced.Before(row.Time) {
 			newPre = append(newPre, row)
 		}
 	}
@@ -383,6 +383,22 @@ func (r storeFileRewrite) appendedSince() (appended []byte, unchanged bool, err 
 		return nil, false, nil
 	}
 	return current[len(r.snapshot):], true, nil
+}
+
+// latestPostTimes returns, per command key, the time of the latest of posts. With a
+// cursor it only looks at the synced ones: those recorded at or before it.
+func latestPostTimes(posts []*Command, syncedUpTo *time.Time) map[string]time.Time {
+	latest := make(map[string]time.Time, len(posts))
+	for _, post := range posts {
+		if syncedUpTo != nil && post.RecordingTime.After(*syncedUpTo) {
+			continue
+		}
+		key := post.GetUniqueKey()
+		if at, ok := latest[key]; !ok || post.Time.After(at) {
+			latest[key] = post.Time
+		}
+	}
+	return latest
 }
 
 // readStoreFile returns the content of one of the store's files, none for a missing one.
