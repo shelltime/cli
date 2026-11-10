@@ -172,7 +172,8 @@ func (s *fileStore) SetCursor(ctx context.Context, cursor time.Time) error {
 }
 
 // Prune compacts the txt files, dropping synced records and keeping unfinished
-// pre commands.
+// pre commands. cursor is the time the caller's sync reached; if the store's own cursor
+// is already later, that one counts and stays.
 func (s *fileStore) Prune(ctx context.Context, cursor time.Time) error {
 	return s.compact(ctx, compactOptions{cursor: &cursor})
 }
@@ -190,8 +191,10 @@ func CompactCommandFiles(ctx context.Context) error {
 }
 
 type compactOptions struct {
-	// cursor is the time up to which commands are synced. Nil reads it from cursor.txt,
-	// and then a store without a cursor keeps none: nothing was synced yet.
+	// cursor is the time up to which the caller knows commands to be synced; the
+	// compaction goes by the later of it and the cursor in cursor.txt. Nil means only
+	// the one in cursor.txt, and then a store without a cursor keeps none: nothing was
+	// synced yet.
 	cursor *time.Time
 	// backup keeps the previous content of each rewritten file as <file>.bak
 	backup bool
@@ -244,13 +247,25 @@ func (s *fileStore) compact(ctx context.Context, opts compactOptions) error {
 		return err
 	}
 
+	// The cursor never moves backwards. A caller that names one (the prune after a sync)
+	// may know less than the store: another process can have synced further in the
+	// meantime. The later of the two is what is synced, so that is what the compaction
+	// goes by and what it writes back.
+	stored, storedFound, storedErr := parseLastCursor(cursorSnapshot)
 	var cursor time.Time
 	writeCursor := true
-	if opts.cursor != nil {
+	switch {
+	case opts.cursor != nil:
 		cursor = *opts.cursor
-	} else if cursor, writeCursor, err = parseLastCursor(cursorSnapshot); err != nil {
-		slog.Error("Failed to parse cursor value", slog.Any("err", err))
-		return err
+		// A cursor.txt that doesn't parse is replaced by the caller's cursor, as before
+		if storedErr == nil && storedFound && stored.After(cursor) {
+			cursor = stored
+		}
+	case storedErr != nil:
+		slog.Error("Failed to parse cursor value", slog.Any("err", storedErr))
+		return storedErr
+	default:
+		cursor, writeCursor = stored, storedFound
 	}
 
 	newPost := make([]*Command, 0)
@@ -260,14 +275,23 @@ func (s *fileStore) compact(ctx context.Context, opts compactOptions) error {
 		}
 	}
 
+	// The latest synced post of each command. A pre is finished and synced when a synced
+	// post of its key ran at or after its start, which is preHasSyncedPost's question,
+	// answered here with one lookup per pre: it compares the pre with every post, and gc
+	// asks it for every pre of the store at each shell start.
+	latestSyncedPost := latestPostTimes(postCommands, &cursor)
+
 	newPre := make([]*Command, 0)
 	for _, row := range preCommands {
 		if row.RecordingTime.After(cursor) {
 			newPre = append(newPre, row)
 			continue
 		}
-		// keep pre commands that no synced post completes (unfinished)
-		if !preHasSyncedPost(row, postCommands, cursor) {
+		// keep pre commands that no synced post completes (unfinished), however old:
+		// a pre is the only thing that lets its post be uploaded (see the skip in
+		// BuildTrackingData), so one that is dropped while its command still runs
+		// takes the command with it.
+		if synced, ok := latestSyncedPost[row.GetUniqueKey()]; !ok || synced.Before(row.Time) {
 			newPre = append(newPre, row)
 		}
 	}
@@ -352,6 +376,22 @@ func (r storeFileRewrite) appendedSince() (appended []byte, err error) {
 		return nil, fmt.Errorf("%w: %s", ErrCommandStoreChanged, r.path)
 	}
 	return current[len(r.snapshot):], nil
+}
+
+// latestPostTimes returns, per command key, the time of the latest of posts. With a
+// cursor it only looks at the synced ones: those recorded at or before it.
+func latestPostTimes(posts []*Command, syncedUpTo *time.Time) map[string]time.Time {
+	latest := make(map[string]time.Time, len(posts))
+	for _, post := range posts {
+		if syncedUpTo != nil && post.RecordingTime.After(*syncedUpTo) {
+			continue
+		}
+		key := post.GetUniqueKey()
+		if at, ok := latest[key]; !ok || post.Time.After(at) {
+			latest[key] = post.Time
+		}
+	}
+	return latest
 }
 
 // readStoreFile returns the content of one of the store's files, none for a missing one.

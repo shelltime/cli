@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"math"
 	"os"
 	"strconv"
 	"time"
@@ -158,26 +159,36 @@ func GetLastCursor(ctx context.Context) (cursorTime time.Time, noCursorExist boo
 	return
 }
 
-// parseLastCursor returns the cursor in the content of cursor.txt: its last non-empty
-// line, a unix time in nanoseconds. found is false when no line holds anything.
+// parseLastCursor returns the cursor in the content of cursor.txt, where every sync
+// appends the recording time (unix nanoseconds) it reached. found is false when no line
+// holds anything.
+//
+// The cursor is the latest of those times, not simply the last line. Two processes can
+// each sync and append (the daemon after a batch, `shelltime sync` from a shell), and the
+// one that covered less may write last. Read as the last line, that moved the cursor
+// backwards, and the commands between the two were sent again. Only the last line has to
+// parse, as before; an older line that doesn't is passed over.
 func parseLastCursor(fileContent []byte) (cursorTime time.Time, found bool, err error) {
 	var lastLine string
+	latest := int64(math.MinInt64)
 	for _, row := range bytes.Split(fileContent, []byte("\n")) {
 		line := string(row)
 		if line == "" {
 			continue
 		}
 		lastLine = line
+		if cursor, err := strconv.ParseInt(line, 10, 64); err == nil && cursor > latest {
+			latest = cursor
+		}
 	}
 	if lastLine == "" {
 		return time.Time{}, false, nil
 	}
 
-	cursor, err := strconv.Atoi(lastLine)
-	if err != nil {
+	if _, err := strconv.Atoi(lastLine); err != nil {
 		return time.Time{}, false, err
 	}
-	return time.Unix(0, int64(cursor)), true, nil
+	return time.Unix(0, latest), true, nil
 }
 
 func GetPostCommands(ctx context.Context) ([][]byte, int, error) {
