@@ -2,6 +2,7 @@ package commands
 
 import (
 	"context"
+	"errors"
 	"log/slog"
 	"os"
 
@@ -37,7 +38,14 @@ func cleanCommandFiles(ctx context.Context) error {
 	if _, err := os.Stat(commandsFolder); os.IsNotExist(err) {
 		return nil
 	}
-	return model.CompactCommandFiles(ctx)
+	err := model.CompactCommandFiles(ctx)
+	if errors.Is(err, model.ErrCommandStoreBusy) {
+		// Another gc, or the daemon, is compacting right now. This one runs at every
+		// shell start and must not hold the shell up.
+		slog.Debug("command store is busy, skipping compaction")
+		return nil
+	}
+	return err
 }
 
 func commandGC(c *cli.Context) error {

@@ -119,6 +119,11 @@ Services initialize in `cmd/daemon/main.go`: check enabled flag → create → s
 3. Daemon's pub/sub routes to sync handler
 4. Batch sync to shelltime.xyz API with optional encryption
 
+### Txt command store
+`~/.shelltime/commands/{pre,post,cursor}.txt` is the file store (`model/store_file.go`), shared by processes that don't know of each other: a `track` per command (when no daemon takes it), a `gc` per new shell, `sync`, and the daemon unless it uses bolt. Lines are only appended, except by a compaction, which drops synced post commands and the pre commands they complete: the daemon's `Prune` after a sync and `gc` (`model.CompactCommandFiles`, with `.bak` copies) are one implementation, `fileStore.compact`.
+
+`commands/store.lock` is an advisory `flock` (`model/store_lock*.go`): every append holds it shared, a compaction holds it exclusively from reading the files to replacing them. Readers don't take it; a compaction replaces each file with a rename, so they see the old file or the new one. Nothing waits for the lock longer than `commandStoreLockWait` (200 ms): an append then goes ahead unlocked, a compaction returns `ErrCommandStoreBusy` and changes nothing. Where there is no lock (Windows, a filesystem without `flock`) and for appends by binaries from before it, a compaction still re-reads each file right before replacing it and keeps what was appended since its first read, which leaves only the moment between that read and the rename. Append to these files through the store or `DoSavePre`/`DoUpdate`, and rewrite them only through `compact`, never directly.
+
 ### Configuration
 - Main config: `$HOME/.shelltime/config.yaml` (YAML preferred; `config.yml` and `config.toml` are also accepted)
 - Local overrides: `$HOME/.shelltime/config.local.yaml` (merged over the base, gitignored)

@@ -95,6 +95,8 @@ func (c Command) DoSavePre() error {
 		return err
 	}
 
+	defer lockStoreForAppend()()
+
 	preFile := GetPreCommandFilePath()
 	f, err := openPrivateAppend(preFile)
 	if err != nil {
@@ -122,6 +124,8 @@ func (c Command) DoUpdate(result int) error {
 	if err != nil {
 		return err
 	}
+
+	defer lockStoreForAppend()()
 
 	postFile := GetPostCommandFilePath()
 	f, err := openPrivateAppend(postFile)

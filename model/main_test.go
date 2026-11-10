@@ -12,6 +12,11 @@ import (
 // directory, and a ShellTime daemon running on the machine (yours, or a Claude
 // Code cloud session's) resends what it finds in ~/.shelltime to its account.
 func TestMain(m *testing.M) {
+	// A child of TestStoreLock_AppendsFromOtherProcessesSurviveCompactions: it works in
+	// the HOME its parent gave it and runs no tests.
+	if spec := os.Getenv(storeAppenderEnv); spec != "" {
+		os.Exit(runStoreAppenderProcess(spec))
+	}
 	os.Exit(runInTempHome(m))
 }
 

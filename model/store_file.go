@@ -26,6 +26,8 @@ func (s *fileStore) appendLine(path string, cmd Command, recordingTime time.Time
 	if err != nil {
 		return err
 	}
+	defer lockStoreForAppend()()
+
 	f, err := openPrivateAppend(path)
 	if err != nil {
 		return fmt.Errorf("failed to open command storage file %s: %w", path, err)
@@ -96,6 +98,8 @@ func (s *fileStore) SetCursor(ctx context.Context, cursor time.Time) error {
 	if err := ensureStorageFolder(); err != nil {
 		return err
 	}
+	defer lockStoreForAppend()()
+
 	cursorFile, err := openPrivateAppend(GetCursorFilePath())
 	if err != nil {
 		return err
@@ -108,56 +112,92 @@ func (s *fileStore) SetCursor(ctx context.Context, cursor time.Time) error {
 // Prune compacts the txt files, dropping synced records and keeping unfinished
 // pre commands.
 func (s *fileStore) Prune(ctx context.Context, cursor time.Time) error {
-	return s.compact(ctx, cursor, compactOptions{writeCursor: true})
+	return s.compact(ctx, compactOptions{cursor: &cursor})
 }
 
 // CompactCommandFiles is `shelltime gc`'s compaction of the txt store: the same pruning
 // the daemon does after each sync, up to the store's own cursor, keeping the previous
 // content of each file as <file>.bak. gc runs it at every shell start, which is the only
 // compaction a setup without a daemon gets.
+//
+// It returns ErrCommandStoreBusy, having changed nothing, when another process holds the
+// store's lock for longer than commandStoreLockWait.
 func CompactCommandFiles(ctx context.Context) error {
-	cursor, noCursorExist, err := GetLastCursor(ctx)
-	if err != nil {
-		return err
-	}
-	// Without a cursor nothing was synced yet: there is none to write back.
-	return newFileStore().compact(ctx, cursor, compactOptions{backup: true, writeCursor: !noCursorExist})
+	return newFileStore().compact(ctx, compactOptions{backup: true})
 }
 
 type compactOptions struct {
+	// cursor is the time up to which commands are synced. Nil reads it from cursor.txt,
+	// and then a store without a cursor keeps none: nothing was synced yet.
+	cursor *time.Time
 	// backup keeps the previous content of each rewritten file as <file>.bak
 	backup bool
-	// writeCursor rewrites cursor.txt to hold just the cursor
-	writeCursor bool
 }
 
-// compact rewrites the txt files without the post commands at or before cursor and the
-// pre commands those complete.
-func (s *fileStore) compact(ctx context.Context, cursor time.Time, opts compactOptions) error {
-	postCommands, err := s.GetPostCommands(ctx)
+// compactAfterSnapshot, when set, runs between reading the files and replacing them.
+// Tests use it to append at exactly the moment a rewrite used to lose a line.
+var compactAfterSnapshot func()
+
+// storeFileRewrite is one file of the store on its way through a compaction.
+type storeFileRewrite struct {
+	path string
+	// snapshot is the content the compaction decided on
+	snapshot []byte
+	// kept is what stays of the snapshot
+	kept []byte
+}
+
+// compact rewrites the txt files without the post commands at or before the cursor and
+// the pre commands those complete.
+//
+// It holds the store's lock exclusively from reading the files to replacing them, so no
+// append that takes the lock can fall in between. An append that doesn't take it (an older
+// shelltime binary still running, or one that gave up waiting) is still carried over: the
+// files are read again right before they are replaced, and whatever follows the content
+// that was read first is kept as it is.
+func (s *fileStore) compact(ctx context.Context, opts compactOptions) error {
+	unlock, state := lockCommandStore(true)
+	if state == storeLockBusy {
+		return ErrCommandStoreBusy
+	}
+	defer unlock()
+
+	postSnapshot, err := readStoreFile(GetPostCommandFilePath())
 	if err != nil {
 		return err
 	}
+	postCommands := parseCommandLines(postSnapshot)
 	if len(postCommands) == 0 {
 		return nil
 	}
-	preCommands, err := s.GetPreCommands(ctx)
+	preSnapshot, err := readStoreFile(GetPreCommandFilePath())
 	if err != nil {
+		return err
+	}
+	preCommands := parseCommandLines(preSnapshot)
+	cursorSnapshot, err := readStoreFile(GetCursorFilePath())
+	if err != nil {
+		return err
+	}
+
+	var cursor time.Time
+	writeCursor := true
+	if opts.cursor != nil {
+		cursor = *opts.cursor
+	} else if cursor, writeCursor, err = parseLastCursor(cursorSnapshot); err != nil {
+		slog.Error("Failed to parse cursor value", slog.Any("err", err))
 		return err
 	}
 
 	newPost := make([]*Command, 0)
 	for _, cmd := range postCommands {
-		if cmd != nil && cmd.RecordingTime.After(cursor) {
+		if cmd.RecordingTime.After(cursor) {
 			newPost = append(newPost, cmd)
 		}
 	}
 
 	newPre := make([]*Command, 0)
 	for _, row := range preCommands {
-		if row == nil {
-			continue
-		}
 		if row.RecordingTime.After(cursor) {
 			newPre = append(newPre, row)
 			continue
@@ -188,39 +228,135 @@ func (s *fileStore) compact(ctx context.Context, cursor time.Time, opts compactO
 		postBuf.Write(line)
 	}
 
-	write := WritePrivateFile
-	if opts.backup {
-		write = backupAndWriteFile
+	rewrites := []storeFileRewrite{
+		{path: GetPreCommandFilePath(), snapshot: preSnapshot, kept: preBuf.Bytes()},
+		{path: GetPostCommandFilePath(), snapshot: postSnapshot, kept: postBuf.Bytes()},
 	}
-	if err := write(GetPreCommandFilePath(), preBuf.Bytes()); err != nil {
-		return err
+	if writeCursor {
+		rewrites = append(rewrites, storeFileRewrite{
+			path: GetCursorFilePath(), snapshot: cursorSnapshot, kept: []byte(fmt.Sprintf("%d", cursor.UnixNano())),
+		})
 	}
-	if err := write(GetPostCommandFilePath(), postBuf.Bytes()); err != nil {
-		return err
-	}
-	if !opts.writeCursor {
-		return nil
-	}
-	return write(GetCursorFilePath(), []byte(fmt.Sprintf("%d", cursor.UnixNano())))
-}
 
-// backupAndWriteFile backs up the existing file as <file>.bak and writes new content.
-func backupAndWriteFile(filePath string, content []byte) error {
-	backupFile := filePath + ".bak"
+	if compactAfterSnapshot != nil {
+		compactAfterSnapshot()
+	}
 
-	if _, err := os.Stat(filePath); err == nil {
-		if err := os.Rename(filePath, backupFile); err != nil {
-			slog.Warn("failed to backup file", slog.String("file", filePath), slog.Any("err", err))
-			return fmt.Errorf("failed to backup file %s: %w", filePath, err)
+	// Before anything is replaced, check that every file still starts with what was read.
+	// One that doesn't was rewritten by someone who doesn't take the lock (an older gc or
+	// daemon), and what was decided above no longer describes the files.
+	for _, rewrite := range rewrites {
+		if _, unchanged, err := rewrite.appendedSince(); err != nil || !unchanged {
+			return err
 		}
 	}
 
-	if err := WritePrivateFile(filePath, content); err != nil {
+	write := writeFileAtomic
+	if opts.backup {
+		write = backupAndWriteFile
+	}
+	for _, rewrite := range rewrites {
+		// Read again as late as possible: for an append made without the lock, the time
+		// between this read and the rename is all that is left of the old race.
+		appended, unchanged, err := rewrite.appendedSince()
+		if err != nil || !unchanged {
+			return err
+		}
+		if err := write(rewrite.path, joinStoreContent(rewrite.kept, appended)); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// appendedSince returns what was appended to the file after its snapshot was read.
+// unchanged is false, with a warning logged, when the file no longer starts with the
+// snapshot.
+func (r storeFileRewrite) appendedSince() (appended []byte, unchanged bool, err error) {
+	current, err := readStoreFile(r.path)
+	if err != nil {
+		return nil, false, err
+	}
+	if !bytes.HasPrefix(current, r.snapshot) {
+		slog.Warn("command store changed while it was being compacted, leaving it as it is", slog.String("file", r.path))
+		return nil, false, nil
+	}
+	return current[len(r.snapshot):], true, nil
+}
+
+// readStoreFile returns the content of one of the store's files, none for a missing one.
+func readStoreFile(path string) ([]byte, error) {
+	content, err := os.ReadFile(path)
+	if errors.Is(err, fs.ErrNotExist) {
+		return nil, nil
+	}
+	return content, err
+}
+
+// parseCommandLines decodes the commands of a pre.txt or post.txt, skipping the lines
+// that don't parse, as the readers do.
+func parseCommandLines(content []byte) []*Command {
+	commands := make([]*Command, 0)
+	for _, line := range bytes.Split(content, []byte("\n")) {
+		if len(line) == 0 {
+			continue
+		}
+		cmd := new(Command)
+		if _, err := cmd.FromLineBytes(line); err != nil {
+			slog.Warn("failed to parse command line", slog.Any("err", err))
+			continue
+		}
+		commands = append(commands, cmd)
+	}
+	return commands
+}
+
+// joinStoreContent puts what was appended to a file after its snapshot behind what a
+// compaction kept of the snapshot, each on lines of its own.
+func joinStoreContent(kept, appended []byte) []byte {
+	if len(appended) == 0 {
+		return kept
+	}
+	content := make([]byte, 0, len(kept)+1+len(appended))
+	content = append(content, kept...)
+	if len(kept) > 0 && kept[len(kept)-1] != '\n' && appended[0] != '\n' {
+		content = append(content, '\n')
+	}
+	return append(content, appended...)
+}
+
+// writeFileAtomic replaces a file's content in one step: the new content is written next
+// to it and renamed over it, so a reader gets the old file or the new one, never part of
+// one, and a crash leaves one of the two.
+func writeFileAtomic(filePath string, content []byte) error {
+	tempFile := filePath + ".tmp"
+	if err := WritePrivateFile(tempFile, content); err != nil {
+		os.Remove(tempFile)
 		slog.Warn("failed to write file", slog.String("file", filePath), slog.Any("err", err))
 		return fmt.Errorf("failed to write file %s: %w", filePath, err)
 	}
-
+	if err := os.Rename(tempFile, filePath); err != nil {
+		os.Remove(tempFile)
+		slog.Warn("failed to replace file", slog.String("file", filePath), slog.Any("err", err))
+		return fmt.Errorf("failed to write file %s: %w", filePath, err)
+	}
 	return nil
+}
+
+// backupAndWriteFile keeps the existing file's content as <file>.bak and replaces the file
+// with new content. The backup is a copy: the file itself is never missing in between.
+func backupAndWriteFile(filePath string, content []byte) error {
+	previous, err := os.ReadFile(filePath)
+	if err == nil {
+		if err := WritePrivateFile(filePath+".bak", previous); err != nil {
+			slog.Warn("failed to backup file", slog.String("file", filePath), slog.Any("err", err))
+			return fmt.Errorf("failed to backup file %s: %w", filePath, err)
+		}
+	} else if !errors.Is(err, fs.ErrNotExist) {
+		slog.Warn("failed to backup file", slog.String("file", filePath), slog.Any("err", err))
+		return fmt.Errorf("failed to backup file %s: %w", filePath, err)
+	}
+	return writeFileAtomic(filePath, content)
 }
 
 func (s *fileStore) Engine() string { return StorageEngineFile }
