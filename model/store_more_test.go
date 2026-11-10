@@ -200,7 +200,7 @@ func TestDB_GetPreCommands_FileNotExists(t *testing.T) {
 	assert.Error(t, err)
 }
 
-// TestDB_GetLastCursor_BlankLinesOnly covers the "lastLine == ''" path: the file
+// TestDB_GetLastCursor_BlankLinesOnly covers the "lastLine == ”" path: the file
 // holds only blank lines, so the zero cursor is returned with no error.
 func TestDB_GetLastCursor_BlankLinesOnly(t *testing.T) {
 	m2setupHome(t)
