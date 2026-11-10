@@ -31,6 +31,13 @@ var commandStoreLockWait = 200 * time.Millisecond
 // time. Nothing was changed; the next compaction does the work.
 var ErrCommandStoreBusy = errors.New("the command store is locked by another process")
 
+// ErrCommandStoreChanged is returned by a compaction that found one of the store's files
+// rewritten while it was working: by a gc or daemon that doesn't take the lock (a version
+// from before it, or one that can't use it). What the compaction had decided no longer
+// describes that file, so it stops there. Nothing is lost, and the next compaction does
+// the work; until then the store is only less compact than it could be.
+var ErrCommandStoreChanged = errors.New("the command store was rewritten by another process during the compaction")
+
 type storeLockState int
 
 const (

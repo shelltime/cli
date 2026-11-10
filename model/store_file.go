@@ -163,7 +163,8 @@ func (s *fileStore) Prune(ctx context.Context, cursor time.Time) error {
 // compaction a setup without a daemon gets.
 //
 // It returns ErrCommandStoreBusy, having changed nothing, when another process holds the
-// store's lock for longer than commandStoreLockWait.
+// store's lock for longer than commandStoreLockWait, and ErrCommandStoreChanged when it
+// found a file rewritten under it.
 func CompactCommandFiles(ctx context.Context) error {
 	return newFileStore().compact(ctx, compactOptions{backup: true})
 }
@@ -196,7 +197,8 @@ type storeFileRewrite struct {
 // append that takes the lock can fall in between. An append that doesn't take it (an older
 // shelltime binary still running, or one that gave up waiting) is still carried over: the
 // files are read again right before they are replaced, and whatever follows the content
-// that was read first is kept as it is.
+// that was read first is kept as it is. A file that no longer starts with that content
+// was rewritten by such a process, and the compaction stops with ErrCommandStoreChanged.
 func (s *fileStore) compact(ctx context.Context, opts compactOptions) error {
 	unlock, state := lockCommandStore(true)
 	if state == storeLockBusy {
@@ -288,11 +290,19 @@ func (s *fileStore) compact(ctx context.Context, opts compactOptions) error {
 	// One that doesn't was rewritten by someone who doesn't take the lock (an older gc or
 	// daemon), and what was decided above no longer describes the files.
 	for _, rewrite := range rewrites {
-		if _, unchanged, err := rewrite.appendedSince(); err != nil || !unchanged {
+		if _, err := rewrite.appendedSince(); err != nil {
 			return err
 		}
 	}
 
+	// The files are replaced one after the other, not together. A crash between two of
+	// them, or a file found changed at the second look below, leaves the earlier ones
+	// compacted and the later ones as they were: pre.txt without the pre commands of
+	// posts that post.txt still holds, or both compacted next to the old cursor.txt.
+	// Neither loses anything. Those posts are at or before the cursor, so no build looks
+	// at them or needs their pre commands, the cursor a compaction writes is the one the
+	// store already had or one a sync appended before calling it, and the next
+	// compaction drops what this one left.
 	write := writeFileAtomic
 	if opts.backup {
 		write = backupAndWriteFile
@@ -300,8 +310,8 @@ func (s *fileStore) compact(ctx context.Context, opts compactOptions) error {
 	for _, rewrite := range rewrites {
 		// Read again as late as possible: for an append made without the lock, the time
 		// between this read and the rename is all that is left of the old race.
-		appended, unchanged, err := rewrite.appendedSince()
-		if err != nil || !unchanged {
+		appended, err := rewrite.appendedSince()
+		if err != nil {
 			return err
 		}
 		if err := write(rewrite.path, joinStoreContent(rewrite.kept, appended)); err != nil {
@@ -311,19 +321,17 @@ func (s *fileStore) compact(ctx context.Context, opts compactOptions) error {
 	return nil
 }
 
-// appendedSince returns what was appended to the file after its snapshot was read.
-// unchanged is false, with a warning logged, when the file no longer starts with the
-// snapshot.
-func (r storeFileRewrite) appendedSince() (appended []byte, unchanged bool, err error) {
+// appendedSince returns what was appended to the file after its snapshot was read, or
+// ErrCommandStoreChanged when the file no longer starts with the snapshot.
+func (r storeFileRewrite) appendedSince() (appended []byte, err error) {
 	current, err := readStoreFile(r.path)
 	if err != nil {
-		return nil, false, err
+		return nil, err
 	}
 	if !bytes.HasPrefix(current, r.snapshot) {
-		slog.Warn("command store changed while it was being compacted, leaving it as it is", slog.String("file", r.path))
-		return nil, false, nil
+		return nil, fmt.Errorf("%w: %s", ErrCommandStoreChanged, r.path)
 	}
-	return current[len(r.snapshot):], true, nil
+	return current[len(r.snapshot):], nil
 }
 
 // readStoreFile returns the content of one of the store's files, none for a missing one.
