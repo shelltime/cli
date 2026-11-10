@@ -1,5 +1,32 @@
 # Changelog
 
+## [0.1.97](https://github.com/shelltime/cli/compare/v0.1.96...v0.1.97) (2026-11-10)
+
+
+### Features
+
+* **daemon:** add `daemon restart` as an alias of `daemon reinstall` ([#339](https://github.com/shelltime/cli/issues/339)) ([8567985](https://github.com/shelltime/cli/commit/85679857eb8fa7f714d958c9af6251f2c60f16d3))
+
+
+### Bug Fixes
+
+* **ci:** load the inline comment tool up front so Claude reviews post their findings ([#340](https://github.com/shelltime/cli/issues/340)) ([5fa5855](https://github.com/shelltime/cli/commit/5fa585547998649c0f62fce56dbbf5638469af60))
+* **cli:** quieter init, hooks only for the user's shells, and a setup hint ([#345](https://github.com/shelltime/cli/issues/345)) ([4412ff7](https://github.com/shelltime/cli/commit/4412ff7f6156e00371fd488051b2aef3792893c7))
+* **daemon:** stop losing sync batches, plus start-time, log cleanup and regex fixes ([#342](https://github.com/shelltime/cli/issues/342)) ([b70d6a8](https://github.com/shelltime/cli/commit/b70d6a860455a61f99b050d5439089f46f3a2eca))
+* **hooks:** register the bash hook functions only once ([#346](https://github.com/shelltime/cli/issues/346)) ([b612ee7](https://github.com/shelltime/cli/commit/b612ee7ed6029388526a31c241bcada9280a4b7b))
+* **model:** keep the txt store's cursor from moving backwards, and speed up compaction ([#344](https://github.com/shelltime/cli/issues/344)) ([bc0e094](https://github.com/shelltime/cli/commit/bc0e094cb8e69a6423dd7eafe70805942a269872))
+* **model:** stop gc and prune losing appended commands, plus exact socket timestamps ([#343](https://github.com/shelltime/cli/issues/343)) ([6cb6a89](https://github.com/shelltime/cli/commit/6cb6a897393bc59908c8eb2cb25df9541ca017c2))
+
+
+### Performance Improvements
+
+* **daemon:** overlap independent I/O on the track, sync and statusline paths ([#341](https://github.com/shelltime/cli/issues/341)) ([145b5ad](https://github.com/shelltime/cli/commit/145b5addb298055d82838e140d8bbd99b12db8df))
+
+
+### Documentation
+
+* license the CLI under MIT ([#337](https://github.com/shelltime/cli/issues/337)) ([90b8028](https://github.com/shelltime/cli/commit/90b802860ee0bc050b204d08ca764a6458f5eb29))
+
 ## [0.1.96](https://github.com/shelltime/cli/compare/v0.1.95...v0.1.96) (2026-10-24)
 
 
