@@ -127,6 +127,8 @@ func TestCommandHooksInstall_AICloudOnly(t *testing.T) {
 			SKIP_LOGGER_SETTINGS = true
 			home := t.TempDir()
 			t.Setenv("HOME", home)
+			// bash is the login shell, so its missing .bashrc is created when hooks are installed
+			t.Setenv("SHELL", "/bin/bash")
 			if tt.remote != "" {
 				t.Setenv("CLAUDE_CODE_REMOTE", tt.remote)
 			}

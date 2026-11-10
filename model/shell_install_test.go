@@ -86,15 +86,11 @@ func TestZshHookService_Install_Lifecycle(t *testing.T) {
 
 	svc := NewZshHookService()
 
-	// zsh Install requires the rc file to already exist.
-	err := svc.Install()
-	require.Error(t, err)
-	assert.Contains(t, err.Error(), "not found")
+	// No .zshrc yet -> Install creates it: it is only asked for shells the user has.
+	require.NoError(t, svc.Install())
 
 	rc := filepath.Join(home, ".zshrc")
-	require.NoError(t, os.WriteFile(rc, []byte("# my zsh\n"), 0644))
-
-	require.NoError(t, svc.Install())
+	assert.FileExists(t, rc)
 	assert.NoError(t, svc.Check())
 	assert.Equal(t, 1, shCount(t, rc, "# Added by shelltime CLI"))
 	assert.FileExists(t, filepath.Join(shHooksDir(t), "zsh.zsh"))
@@ -113,16 +109,11 @@ func TestFishHookService_Install_Lifecycle(t *testing.T) {
 
 	svc := NewFishHookService()
 
-	// fish Install requires the config file to already exist.
-	err := svc.Install()
-	require.Error(t, err)
-	assert.Contains(t, err.Error(), "not found")
+	// No config.fish (nor its directory) yet -> Install creates both.
+	require.NoError(t, svc.Install())
 
 	rc := filepath.Join(home, ".config", "fish", "config.fish")
-	require.NoError(t, os.MkdirAll(filepath.Dir(rc), 0755))
-	require.NoError(t, os.WriteFile(rc, []byte("# my fish\n"), 0644))
-
-	require.NoError(t, svc.Install())
+	assert.FileExists(t, rc)
 	assert.NoError(t, svc.Check())
 	assert.Equal(t, 1, shCount(t, rc, "# Added by shelltime CLI"))
 	assert.FileExists(t, filepath.Join(shHooksDir(t), "fish.fish"))

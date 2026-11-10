@@ -43,6 +43,17 @@ func legacyAICodeOtelEnvServices() []model.AICodeOtelEnvService {
 }
 
 func commandCCInstall(c *cli.Context) error {
+	settingsPath, err := installCCOtelConfig()
+	if err != nil {
+		return err
+	}
+	printCCPrivacyNote(settingsPath)
+	return nil
+}
+
+// installCCOtelConfig is `cc install` without the privacy note, which init leaves out. It
+// returns the settings file it wrote.
+func installCCOtelConfig() (string, error) {
 	color.Yellow.Println("Installing Claude Code OTEL configuration...")
 
 	// settings.json env reaches every Claude Code session (terminal, desktop app, IDE),
@@ -50,7 +61,7 @@ func commandCCInstall(c *cli.Context) error {
 	settingsService := model.NewClaudeSettingsAICodeOtelEnvService()
 	if err := settingsService.Install(); err != nil {
 		color.Red.Printf("Failed to install into %s: %v\n", settingsService.SettingsPath(), err)
-		return err
+		return "", err
 	}
 
 	// Migrate: drop the shell rc blocks written by older versions. Only touch files that have one.
@@ -67,9 +78,7 @@ func commandCCInstall(c *cli.Context) error {
 
 	color.Green.Println("Claude Code OTEL configuration has been installed!")
 	color.Yellow.Println("Please restart your Claude Code sessions (terminal, desktop app, IDE) to apply changes.")
-	printCCPrivacyNote(settingsService.SettingsPath())
-
-	return nil
+	return settingsService.SettingsPath(), nil
 }
 
 // printCCPrivacyNote says what the installed config sends beyond token and cost counts.

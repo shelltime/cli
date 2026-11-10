@@ -15,6 +15,7 @@ func TestReadConfigFile_NoFileReturnsError(t *testing.T) {
 	_, err := cs.ReadConfigFile(context.Background())
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "no config file found")
+	assert.ErrorIs(t, err, ErrConfigNotFound)
 }
 
 func TestReadConfigFile_CacheAndSkipCache(t *testing.T) {

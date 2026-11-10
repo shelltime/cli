@@ -31,6 +31,15 @@ var CodexUninstallCommand = &cli.Command{
 }
 
 func commandCodexInstall(c *cli.Context) error {
+	if err := installCodexOtelConfig(); err != nil {
+		return err
+	}
+	printCodexPrivacyNote()
+	return nil
+}
+
+// installCodexOtelConfig is `codex install` without the privacy note, which init leaves out.
+func installCodexOtelConfig() error {
 	color.Yellow.Println("Installing Codex OTEL configuration...")
 
 	service := model.NewCodexOtelConfigService()
@@ -42,8 +51,6 @@ func commandCodexInstall(c *cli.Context) error {
 
 	color.Green.Println("Codex OTEL configuration has been installed to ~/.codex/config.toml")
 	color.Yellow.Println("The Codex CLI will now send telemetry to ShellTime daemon.")
-	printCodexPrivacyNote()
-
 	return nil
 }
 

@@ -14,10 +14,75 @@ import (
 
 type ShellHookService interface {
 	Match(shellName string) bool
+	// Install sources the hook from the shell's config file, creating that file when
+	// it is missing. It changes nothing when the hook is already there.
 	Install() error
 	Check() error
 	Uninstall() error
 	ShellName() string
+	// ConfigPath is the config file the hook is sourced from.
+	ConfigPath() string
+}
+
+// ShellHookServices returns the hook service of every supported shell.
+func ShellHookServices() []ShellHookService {
+	return []ShellHookService{NewZshHookService(), NewFishHookService(), NewBashHookService()}
+}
+
+// HookInstallStatus says what InstallShellHooks did for one shell.
+type HookInstallStatus int
+
+const (
+	// HookSkipped means the shell isn't used here: it has no config file and isn't the
+	// login shell.
+	HookSkipped HookInstallStatus = iota
+	HookInstalled
+	HookAlreadyInstalled
+	HookFailed
+)
+
+// HookInstallResult is what InstallShellHooks did for one shell.
+type HookInstallResult struct {
+	Shell      string
+	ConfigPath string
+	Status     HookInstallStatus
+	Err        error
+}
+
+// InstallShellHooks installs the hook of every shell the user has: one whose config file
+// exists, or the login shell (loginShell is $SHELL), whose config file is created when
+// missing. The others are skipped, not failed: a machine with only bash has no ~/.zshrc,
+// and that is nothing to report.
+func InstallShellHooks(services []ShellHookService, loginShell string) []HookInstallResult {
+	results := make([]HookInstallResult, 0, len(services))
+	for _, svc := range services {
+		r := HookInstallResult{Shell: svc.ShellName(), ConfigPath: svc.ConfigPath()}
+		if _, err := os.Stat(r.ConfigPath); os.IsNotExist(err) && !isLoginShell(svc, loginShell) {
+			r.Status = HookSkipped
+			results = append(results, r)
+			continue
+		}
+
+		alreadyInstalled := svc.Check() == nil
+		switch err := svc.Install(); {
+		case err != nil:
+			r.Status, r.Err = HookFailed, err
+		case alreadyInstalled:
+			r.Status = HookAlreadyInstalled
+		default:
+			r.Status = HookInstalled
+		}
+		results = append(results, r)
+	}
+	return results
+}
+
+// isLoginShell reports whether loginShell, a path like $SHELL, is svc's shell.
+func isLoginShell(svc ShellHookService, loginShell string) bool {
+	if loginShell == "" {
+		return false
+	}
+	return svc.Match(filepath.Base(loginShell))
 }
 
 // ensureHookFile writes the embedded hook script to disk.
@@ -44,6 +109,25 @@ func ensureHookFile(hookFilePath string, embeddedContent []byte) error {
 
 // Common utilities for hook services
 type BaseHookService struct{}
+
+// ensureConfigFile creates an empty shell config file, and its directory, when there is
+// none. Hooks are only installed for shells the user has (see InstallShellHooks), so a
+// missing file is one their shell would read once it exists.
+func (b *BaseHookService) ensureConfigFile(path string) error {
+	if _, err := os.Stat(path); err == nil {
+		return nil
+	} else if !os.IsNotExist(err) {
+		return fmt.Errorf("failed to check %s: %w", path, err)
+	}
+	if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
+		return fmt.Errorf("failed to create the directory of %s: %w", path, err)
+	}
+	f, err := os.OpenFile(path, os.O_CREATE|os.O_WRONLY, 0644)
+	if err != nil {
+		return fmt.Errorf("failed to create %s: %w", path, err)
+	}
+	return f.Close()
+}
 
 func (b *BaseHookService) backupFile(path string) error {
 	if _, err := os.Stat(path); os.IsNotExist(err) {

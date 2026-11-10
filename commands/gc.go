@@ -3,12 +3,25 @@ package commands
 import (
 	"context"
 	"errors"
+	"fmt"
+	"io"
 	"log/slog"
 	"os"
 
+	"github.com/gookit/color"
 	"github.com/malamtime/cli/model"
 	"github.com/urfave/cli/v2"
 	"go.opentelemetry.io/otel/trace"
+	"golang.org/x/term"
+)
+
+// setupHint is what gc prints at shell start while there is no config yet.
+const setupHint = "ShellTime isn't set up yet. Run `shelltime init` to finish."
+
+// Where gc prints the setup hint, and whether that is a terminal. Replaced in tests.
+var (
+	gcStderr           io.Writer = os.Stderr
+	gcStderrIsTerminal           = func() bool { return term.IsTerminal(int(os.Stderr.Fd())) }
 )
 
 var GCCommand *cli.Command = &cli.Command{
@@ -59,27 +72,39 @@ func commandGC(c *cli.Context) error {
 	}
 
 	// Get config for threshold
-	cfg, err := configService.ReadConfigFile(ctx)
-	if err != nil {
-		slog.Warn("failed to read config, using default threshold", slog.Any("err", err))
+	cfg, cfgErr := configService.ReadConfigFile(ctx)
+	if cfgErr != nil {
 		cfg.LogCleanup = &model.LogCleanup{ThresholdMB: 100}
+	}
+	notSetUp := errors.Is(cfgErr, model.ErrConfigNotFound)
+	if notSetUp && gcStderrIsTerminal() {
+		// Installed, but `init` hasn't run. The shell hooks run gc at every shell start,
+		// so this is where the user hears what's left to do. Scripts (fish reads
+		// config.fish for those too) get nothing.
+		fmt.Fprintln(gcStderr, color.Yellow.Sprint(setupHint))
 	}
 	thresholdBytes := cfg.LogCleanup.ThresholdMB * 1024 * 1024
 
 	// Clean log files: force clean if --withLog, otherwise only clean large files
 	forceCleanLogs := c.Bool("withLog")
-	freedBytes, err := model.CleanLargeLogFiles(thresholdBytes, forceCleanLogs)
-	if err != nil {
-		slog.Warn("error during log cleanup", slog.Any("err", err))
-	}
-	if freedBytes > 0 {
-		slog.Info("freed space from log files", slog.Int64("bytes", freedBytes))
-	}
+	freedBytes, cleanupErr := model.CleanLargeLogFiles(thresholdBytes, forceCleanLogs)
 
 	if !c.Bool("skipLogCreation") {
 		// only can setup logger after the log file clean
 		SetupLogger(storageFolder)
 		defer CloseLogger()
+	}
+
+	// Logged only now, so they go to the log file: gc runs at shell start, where
+	// nothing but the setup hint belongs on the terminal.
+	if cfgErr != nil && !notSetUp {
+		slog.Warn("failed to read config, using default threshold", slog.Any("err", cfgErr))
+	}
+	if cleanupErr != nil {
+		slog.Warn("error during log cleanup", slog.Any("err", cleanupErr))
+	}
+	if freedBytes > 0 {
+		slog.Info("freed space from log files", slog.Int64("bytes", freedBytes))
 	}
 
 	// Clean command files. In bolt mode the daemon prunes synced commands from

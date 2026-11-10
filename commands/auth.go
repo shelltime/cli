@@ -56,6 +56,13 @@ var (
 )
 
 func commandAuth(c *cli.Context) error {
+	return authenticate(c, true)
+}
+
+// authenticate signs in and saves the token in the config file. Quiet (init without
+// --verbose), it prints only what the sign-in needs (the link to open, the app's code and
+// errors), and the caller reports the result.
+func authenticate(c *cli.Context, verbose bool) error {
 	newToken := c.String("token")
 	email := c.String("email")
 	if newToken != "" && email != "" {
@@ -115,12 +122,18 @@ func commandAuth(c *cli.Context) error {
 			return err
 		}
 		newToken = nt
+		if verbose {
+			color.Green.Println(" ✅ You are ready to go!")
+		}
 	} else if newToken == "" {
 		nt, err := ApplyTokenByHandshake(ctx, config)
 		if err != nil {
 			return err
 		}
 		newToken = nt
+		if verbose {
+			color.Green.Println(" ✅ You are ready to go!")
+		}
 	}
 
 	config.Token = newToken
@@ -133,7 +146,9 @@ func commandAuth(c *cli.Context) error {
 		return fmt.Errorf("failed to write config file: %w", err)
 	}
 
-	color.Green.Println(" ✅ config file created")
+	if verbose {
+		color.Green.Println(" ✅ config file created")
+	}
 	return nil
 }
 
@@ -178,7 +193,6 @@ func ApplyTokenByHandshake(_ctx context.Context, config model.ShellTimeConfig) (
 		}
 		if token != "" {
 			l.Stop()
-			color.Green.Println(" ✅ You are ready to go!")
 			return token, nil
 		}
 
@@ -226,8 +240,6 @@ func ApplyTokenByAppApproval(_ctx context.Context, config model.ShellTimeConfig,
 		color.Red.Println(" ❌ " + err.Error())
 		return "", err
 	}
-
-	color.Green.Println(" ✅ You are ready to go!")
 	return token, nil
 }
 

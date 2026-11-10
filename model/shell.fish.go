@@ -5,8 +5,6 @@ import (
 	"fmt"
 	"os"
 	"strings"
-
-	"github.com/gookit/color"
 )
 
 type FishHookService struct {
@@ -41,18 +39,19 @@ func (s *FishHookService) ShellName() string {
 	return s.shellName
 }
 
+func (s *FishHookService) ConfigPath() string {
+	return s.configPath
+}
+
 func (s *FishHookService) Install() error {
 	hookFilePath := os.ExpandEnv(fmt.Sprintf("$HOME/%s/hooks/fish.fish", COMMAND_BASE_STORAGE_FOLDER))
 	if err := ensureHookFile(hookFilePath, EmbeddedFishHook); err != nil {
 		return fmt.Errorf("failed to ensure fish hook file: %w", err)
 	}
-
-	if _, err := os.Stat(s.configPath); os.IsNotExist(err) {
-		return fmt.Errorf("fish config file not found at %s. Please run 'shelltime hooks install'", s.configPath)
+	if err := s.ensureConfigFile(s.configPath); err != nil {
+		return err
 	}
-
 	if err := s.Check(); err == nil {
-		color.Green.Println("Fish hook is already installed.")
 		return nil
 	}
 

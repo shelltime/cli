@@ -72,6 +72,10 @@ func (s *BashHookService) ShellName() string {
 	return s.shellName
 }
 
+func (s *BashHookService) ConfigPath() string {
+	return s.configPath
+}
+
 func (s *BashHookService) Install() error {
 	hookFilePath := os.ExpandEnv(fmt.Sprintf("$HOME/%s/hooks/bash.bash", COMMAND_BASE_STORAGE_FOLDER))
 	if err := ensureHookFile(hookFilePath, EmbeddedBashHook); err != nil {
@@ -80,26 +84,16 @@ func (s *BashHookService) Install() error {
 	if err := ensureBashPreexec(filepath.Dir(hookFilePath)); err != nil {
 		color.Yellow.Printf("Warning: failed to set up bash-preexec: %v\n", err)
 	}
-
-	if _, err := os.Stat(s.configPath); os.IsNotExist(err) {
-		// Attempt to create .bashrc if it doesn't exist, as it's common for it not to be present by default on some systems
-		file, createErr := os.Create(s.configPath)
-		if createErr != nil {
-			return fmt.Errorf("bash config file not found at %s and could not be created: %w. Please run 'shelltime hooks install' after creating it", s.configPath, createErr)
-		}
-		file.Close() // Close the newly created file
-		color.Yellow.Printf("Bash config file not found at %s, created an empty one.\n", s.configPath)
-	} else if err != nil {
-		return fmt.Errorf("error checking bash config file %s: %w", s.configPath, err)
+	if err := s.ensureConfigFile(s.configPath); err != nil {
+		return err
+	}
+	if err := s.Check(); err == nil {
+		return nil
 	}
 
 	// Backup the file
 	if err := s.backupFile(s.configPath); err != nil {
 		return err
-	}
-	if err := s.Check(); err == nil {
-		color.Green.Println("Bash hook is already installed.")
-		return nil
 	}
 
 	// Add hook lines
