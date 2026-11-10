@@ -4,8 +4,11 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
+	"net/http"
+	"net/url"
 	"strings"
 	"sync"
 	"time"
@@ -37,7 +40,35 @@ func handlePubSubSync(ctx context.Context, socketMsgPayload interface{}) error {
 		return err
 	}
 
-	return sendTrackArgsToServer(ctx, syncMsg)
+	err = sendTrackArgsToServer(ctx, syncMsg)
+	if err == nil || syncCircuitBreaker == nil || !isRetryableSyncError(err) {
+		return err
+	}
+
+	// The CLI moved its cursor past this batch when it handed it over, so this message is
+	// the only copy left. A nacked message is redelivered three times within a second and
+	// then dropped, which loses the batch whenever the server is away for longer than that.
+	// Keep it for the hourly retry instead, like the batches that arrive while the circuit
+	// is open.
+	if saveErr := syncCircuitBreaker.SaveForRetry(ctx, socketMsgPayload); saveErr != nil {
+		slog.Error("Failed to save unsent sync data for retry", slog.Any("err", saveErr))
+		return err
+	}
+	return nil
+}
+
+// isRetryableSyncError reports whether sending the same batch again later can work: the
+// request never got an answer (network error, timeout), or the server said it is failing
+// or busy. A batch the server refused (4xx) would be refused again.
+func isRetryableSyncError(err error) bool {
+	var statusErr *model.HTTPStatusError
+	if errors.As(err, &statusErr) {
+		return statusErr.StatusCode >= http.StatusInternalServerError ||
+			statusErr.StatusCode == http.StatusTooManyRequests ||
+			statusErr.StatusCode == http.StatusRequestTimeout
+	}
+	var urlErr *url.Error
+	return errors.As(err, &urlErr)
 }
 
 // sendTrackArgsToServer enriches a tracking payload (terminal resolution, daemon
