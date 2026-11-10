@@ -397,7 +397,11 @@ func joinStoreContent(kept, appended []byte) []byte {
 
 // writeFileAtomic replaces a file's content in one step: the new content is written next
 // to it and renamed over it, so a reader gets the old file or the new one, never part of
-// one, and a crash leaves one of the two.
+// one, and a crash of the process leaves one of the two.
+//
+// The content is not synced to disk before the rename, like every other write of the
+// store, so a power loss is not covered: the rename can survive it without the content.
+// A sync here would run for three files at every shell start, where gc compacts.
 func writeFileAtomic(filePath string, content []byte) error {
 	tempFile := filePath + ".tmp"
 	if err := WritePrivateFile(tempFile, content); err != nil {
