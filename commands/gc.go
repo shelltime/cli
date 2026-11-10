@@ -1,12 +1,9 @@
 package commands
 
 import (
-	"bytes"
 	"context"
-	"fmt"
 	"log/slog"
 	"os"
-	"sort"
 
 	"github.com/malamtime/cli/model"
 	"github.com/urfave/cli/v2"
@@ -32,146 +29,15 @@ var GCCommand *cli.Command = &cli.Command{
 	Action: commandGC,
 }
 
-// backupAndWriteFile backs up the existing file and writes new content.
-func backupAndWriteFile(filePath string, content []byte) error {
-	backupFile := filePath + ".bak"
-
-	if _, err := os.Stat(filePath); err == nil {
-		if err := os.Rename(filePath, backupFile); err != nil {
-			slog.Warn("failed to backup file", slog.String("file", filePath), slog.Any("err", err))
-			return fmt.Errorf("failed to backup file %s: %w", filePath, err)
-		}
-	}
-
-	if err := model.WritePrivateFile(filePath, content); err != nil {
-		slog.Warn("failed to write file", slog.String("file", filePath), slog.Any("err", err))
-		return fmt.Errorf("failed to write file %s: %w", filePath, err)
-	}
-
-	return nil
-}
-
-// cleanCommandFiles cleans up the command storage files based on the cursor position.
+// cleanCommandFiles compacts the txt command store: synced post commands and the pre
+// commands they complete are dropped, and each file's previous content is kept as
+// <file>.bak.
 func cleanCommandFiles(ctx context.Context) error {
 	commandsFolder := model.GetCommandsStoragePath()
 	if _, err := os.Stat(commandsFolder); os.IsNotExist(err) {
 		return nil
 	}
-
-	lastCursor, _, err := model.GetLastCursor(ctx)
-	if err != nil {
-		return err
-	}
-
-	postCommandsRaw, postCount, err := model.GetPostCommands(ctx)
-	if err != nil {
-		return err
-	}
-
-	postCommands := make([]*model.Command, len(postCommandsRaw))
-	for i, raw := range postCommandsRaw {
-		cmd := new(model.Command)
-		_, err := cmd.FromLineBytes(raw)
-		if err != nil {
-			slog.Warn("failed to parse command from line", slog.Any("err", err))
-			continue
-		}
-		postCommands[i] = cmd
-	}
-
-	if postCount == 0 {
-		slog.Debug("no post commands need to be clean")
-		return nil
-	}
-
-	preCommands, err := model.GetPreCommands(ctx)
-	if err != nil {
-		return err
-	}
-
-	newPreCommandList := make([]*model.Command, 0)
-	newPostCommandList := make([]*model.Command, 0)
-
-	// save all the data that before cursor
-	for _, cmd := range postCommands {
-		if cmd == nil {
-			continue
-		}
-		if cmd.RecordingTime.After(lastCursor) {
-			newPostCommandList = append(newPostCommandList, cmd)
-		}
-	}
-
-	// If there is no end, it should be kept. For example, if one tab opened a webpack dev server and the user opened another tab, we should keep the previous pre
-	for _, row := range preCommands {
-		recordingTime := row.RecordingTime
-		// If it's data after the cursor, save it without thinking
-		if recordingTime.After(lastCursor) {
-			newPreCommandList = append(newPreCommandList, row)
-			continue
-		}
-
-		// if the closest node not found, prohaps the pre command not finished yet. save the pre command anyway
-		closestNode := row.FindClosestCommand(postCommands, true)
-		if closestNode == nil || closestNode.IsNil() {
-			newPreCommandList = append(newPreCommandList, row)
-		}
-	}
-
-	sort.Slice(newPreCommandList, func(i, j int) bool {
-		return newPreCommandList[i].
-			RecordingTime.
-			Before(
-				newPreCommandList[j].RecordingTime,
-			)
-	})
-
-	sort.Slice(newPostCommandList, func(i, j int) bool {
-		return newPostCommandList[i].
-			RecordingTime.
-			Before(
-				newPostCommandList[j].RecordingTime,
-			)
-	})
-
-	// Build pre file content
-	preFileContent := bytes.Buffer{}
-	for _, cmd := range newPreCommandList {
-		line, err := cmd.ToLine(cmd.RecordingTime)
-		if err != nil {
-			return fmt.Errorf("failed to convert command to line: %w", err)
-		}
-		preFileContent.Write(line)
-	}
-
-	// Build post file content
-	postFileContent := bytes.Buffer{}
-	for _, cmd := range newPostCommandList {
-		line, err := cmd.ToLine(cmd.RecordingTime)
-		if err != nil {
-			return fmt.Errorf("failed to convert command to line: %w", err)
-		}
-		postFileContent.Write(line)
-	}
-
-	// Build cursor file content
-	lastCursorNano := lastCursor.UnixNano()
-	cursorContent := []byte(fmt.Sprintf("%d", lastCursorNano))
-
-	// Backup and write all files
-	if err := backupAndWriteFile(model.GetPreCommandFilePath(), preFileContent.Bytes()); err != nil {
-		return err
-	}
-
-	if err := backupAndWriteFile(model.GetPostCommandFilePath(), postFileContent.Bytes()); err != nil {
-		return err
-	}
-
-	if err := backupAndWriteFile(model.GetCursorFilePath(), cursorContent); err != nil {
-		return err
-	}
-
-	return nil
+	return model.CompactCommandFiles(ctx)
 }
 
 func commandGC(c *cli.Context) error {

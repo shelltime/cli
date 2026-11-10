@@ -37,40 +37,6 @@ func setupGCTest(t *testing.T) (baseDir string, cmdDir string, mc *model.MockCon
 	return baseDir, cmdDir, mc
 }
 
-// --- backupAndWriteFile (pure) ------------------------------------------------
-
-func TestBackupAndWriteFile_NoExistingFile(t *testing.T) {
-	dir := t.TempDir()
-	p := filepath.Join(dir, "data.txt")
-	require.NoError(t, backupAndWriteFile(p, []byte("hello")))
-
-	data, err := os.ReadFile(p)
-	require.NoError(t, err)
-	assert.Equal(t, "hello", string(data))
-
-	// No backup created when the original did not exist.
-	_, err = os.Stat(p + ".bak")
-	assert.True(t, os.IsNotExist(err))
-}
-
-func TestBackupAndWriteFile_BacksUpExisting(t *testing.T) {
-	dir := t.TempDir()
-	p := filepath.Join(dir, "data.txt")
-	require.NoError(t, os.WriteFile(p, []byte("old"), 0644))
-
-	require.NoError(t, backupAndWriteFile(p, []byte("new")))
-
-	// New content written.
-	data, err := os.ReadFile(p)
-	require.NoError(t, err)
-	assert.Equal(t, "new", string(data))
-
-	// Old content preserved in .bak.
-	bak, err := os.ReadFile(p + ".bak")
-	require.NoError(t, err)
-	assert.Equal(t, "old", string(bak))
-}
-
 // --- cleanCommandFiles --------------------------------------------------------
 
 func TestCleanCommandFiles_NoCommandsFolder(t *testing.T) {
@@ -114,6 +80,76 @@ func TestCleanCommandFiles_CompactsSyncedCommands(t *testing.T) {
 		_, err := os.Stat(filepath.Join(cmdDir, name))
 		assert.NoError(t, err, "expected backup %s", name)
 	}
+}
+
+// gc is the only compaction a setup without a daemon gets. It used to match pre commands
+// to posts the wrong way round (a post at or before the pre), so the pre of every finished,
+// synced command stayed in pre.txt for good, and each later `track` read all of them.
+func TestCleanCommandFiles_DropsPreOfSyncedPost(t *testing.T) {
+	_, cmdDir, _ := setupGCTest(t)
+	require.NoError(t, os.MkdirAll(cmdDir, 0755))
+
+	ctx := context.Background()
+	store := model.NewFileStore()
+	base := time.Now().Add(-time.Hour)
+	save := func(command string, startOffset time.Duration, finished bool) {
+		pre := model.Command{Shell: "bash", SessionID: 1, Command: command, Username: "u", Hostname: "h", Time: base.Add(startOffset)}
+		require.NoError(t, store.SavePre(ctx, pre, pre.Time))
+		if finished {
+			post := pre
+			post.Time = pre.Time.Add(time.Second)
+			require.NoError(t, store.SavePost(ctx, post, 0, post.Time))
+		}
+	}
+	save("git status", 0, true)             // finished and synced
+	save("npm run dev", time.Minute, false) // still running when the sync happened
+	save("git status", 2*time.Minute, true) // same command again, finished and synced
+	require.NoError(t, store.SetCursor(ctx, base.Add(10*time.Minute)))
+	save("go test ./...", 20*time.Minute, true) // finished, not synced yet
+
+	require.NoError(t, cleanCommandFiles(ctx))
+
+	pres, err := store.GetPreCommands(ctx)
+	require.NoError(t, err)
+	var kept []string
+	for _, pre := range pres {
+		kept = append(kept, pre.Command)
+	}
+	assert.Equal(t, []string{"npm run dev", "go test ./..."}, kept, "only the unfinished and the unsynced pre stay")
+
+	posts, err := store.GetPostCommands(ctx)
+	require.NoError(t, err)
+	require.Len(t, posts, 1)
+	assert.Equal(t, "go test ./...", posts[0].Command)
+
+	// What is left still builds the one unsynced command, with its own start time
+	res, err := model.BuildTrackingData(ctx, store, model.ShellTimeConfig{})
+	require.NoError(t, err)
+	require.Len(t, res.Data, 1)
+	assert.Equal(t, "go test ./...", res.Data[0].Command)
+	assert.Equal(t, base.Add(20*time.Minute).Unix(), res.Data[0].StartTime)
+}
+
+// A store that never synced has no cursor, and gc must not invent one.
+func TestCleanCommandFiles_NoCursorWritesNone(t *testing.T) {
+	_, cmdDir, _ := setupGCTest(t)
+	require.NoError(t, os.MkdirAll(cmdDir, 0755))
+
+	ctx := context.Background()
+	store := model.NewFileStore()
+	at := time.Now().Add(-time.Minute)
+	cmd := model.Command{Shell: "bash", SessionID: 1, Command: "ls", Username: "u", Hostname: "h", Time: at}
+	require.NoError(t, store.SavePre(ctx, cmd, at))
+	require.NoError(t, store.SavePost(ctx, cmd, 0, at.Add(time.Second)))
+
+	require.NoError(t, cleanCommandFiles(ctx))
+
+	_, noCursor, err := store.GetLastCursor(ctx)
+	require.NoError(t, err)
+	assert.True(t, noCursor, "the first sync is told apart by the missing cursor")
+	posts, err := store.GetPostCommands(ctx)
+	require.NoError(t, err)
+	assert.Len(t, posts, 1, "nothing was synced, so nothing is dropped")
 }
 
 // --- commandGC action ---------------------------------------------------------

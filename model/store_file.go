@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io/fs"
 	"log/slog"
+	"os"
 	"sort"
 	"time"
 )
@@ -105,8 +106,34 @@ func (s *fileStore) SetCursor(ctx context.Context, cursor time.Time) error {
 }
 
 // Prune compacts the txt files, dropping synced records and keeping unfinished
-// pre commands. Mirrors the historical gc cleanCommandFiles behavior.
+// pre commands.
 func (s *fileStore) Prune(ctx context.Context, cursor time.Time) error {
+	return s.compact(ctx, cursor, compactOptions{writeCursor: true})
+}
+
+// CompactCommandFiles is `shelltime gc`'s compaction of the txt store: the same pruning
+// the daemon does after each sync, up to the store's own cursor, keeping the previous
+// content of each file as <file>.bak. gc runs it at every shell start, which is the only
+// compaction a setup without a daemon gets.
+func CompactCommandFiles(ctx context.Context) error {
+	cursor, noCursorExist, err := GetLastCursor(ctx)
+	if err != nil {
+		return err
+	}
+	// Without a cursor nothing was synced yet: there is none to write back.
+	return newFileStore().compact(ctx, cursor, compactOptions{backup: true, writeCursor: !noCursorExist})
+}
+
+type compactOptions struct {
+	// backup keeps the previous content of each rewritten file as <file>.bak
+	backup bool
+	// writeCursor rewrites cursor.txt to hold just the cursor
+	writeCursor bool
+}
+
+// compact rewrites the txt files without the post commands at or before cursor and the
+// pre commands those complete.
+func (s *fileStore) compact(ctx context.Context, cursor time.Time, opts compactOptions) error {
 	postCommands, err := s.GetPostCommands(ctx)
 	if err != nil {
 		return err
@@ -161,13 +188,39 @@ func (s *fileStore) Prune(ctx context.Context, cursor time.Time) error {
 		postBuf.Write(line)
 	}
 
-	if err := WritePrivateFile(GetPreCommandFilePath(), preBuf.Bytes()); err != nil {
+	write := WritePrivateFile
+	if opts.backup {
+		write = backupAndWriteFile
+	}
+	if err := write(GetPreCommandFilePath(), preBuf.Bytes()); err != nil {
 		return err
 	}
-	if err := WritePrivateFile(GetPostCommandFilePath(), postBuf.Bytes()); err != nil {
+	if err := write(GetPostCommandFilePath(), postBuf.Bytes()); err != nil {
 		return err
 	}
-	return WritePrivateFile(GetCursorFilePath(), []byte(fmt.Sprintf("%d", cursor.UnixNano())))
+	if !opts.writeCursor {
+		return nil
+	}
+	return write(GetCursorFilePath(), []byte(fmt.Sprintf("%d", cursor.UnixNano())))
+}
+
+// backupAndWriteFile backs up the existing file as <file>.bak and writes new content.
+func backupAndWriteFile(filePath string, content []byte) error {
+	backupFile := filePath + ".bak"
+
+	if _, err := os.Stat(filePath); err == nil {
+		if err := os.Rename(filePath, backupFile); err != nil {
+			slog.Warn("failed to backup file", slog.String("file", filePath), slog.Any("err", err))
+			return fmt.Errorf("failed to backup file %s: %w", filePath, err)
+		}
+	}
+
+	if err := WritePrivateFile(filePath, content); err != nil {
+		slog.Warn("failed to write file", slog.String("file", filePath), slog.Any("err", err))
+		return fmt.Errorf("failed to write file %s: %w", filePath, err)
+	}
+
+	return nil
 }
 
 func (s *fileStore) Engine() string { return StorageEngineFile }
