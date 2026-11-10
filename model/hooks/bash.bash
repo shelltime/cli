@@ -69,6 +69,25 @@ precmd_invoke_cmd() {
     shelltime track -s=bash -id=$SESSION_ID -cmd="$CMD" -p=post -r=$LAST_RESULT --ppid=$PPID &> /dev/null
 }
 
-# Set the functions for bash-preexec
-preexec_functions+=(preexec_invoke_cmd)
-precmd_functions+=(precmd_invoke_cmd)
+# Succeeds when the function name in $1 is one of the other arguments.
+_shelltime_has_hook() {
+    local fn="$1" hook
+    shift
+    for hook in "$@"; do
+        if [ "$hook" == "$fn" ]; then
+            return 0
+        fi
+    done
+    return 1
+}
+
+# Set the functions for bash-preexec, once. Sourcing this file again (as
+# `source ~/.bashrc` does) would otherwise register them twice and every
+# command would be tracked twice.
+if ! _shelltime_has_hook preexec_invoke_cmd "${preexec_functions[@]:-}"; then
+    preexec_functions+=(preexec_invoke_cmd)
+fi
+if ! _shelltime_has_hook precmd_invoke_cmd "${precmd_functions[@]:-}"; then
+    precmd_functions+=(precmd_invoke_cmd)
+fi
+unset -f _shelltime_has_hook
