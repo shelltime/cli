@@ -9,6 +9,7 @@ import (
 	"log/slog"
 	"os"
 	"sort"
+	"strconv"
 	"time"
 )
 
@@ -88,6 +89,47 @@ func (s *fileStore) GetPostCommands(ctx context.Context) ([]*Command, error) {
 		result = append(result, cmd)
 	}
 	return result, nil
+}
+
+// getPostCommandsAfter returns the post commands recorded after cursor, in file order,
+// as GetPostCommands followed by that filter would, without decoding the others. A line
+// ends in its recording time, so the commands a sync already covered, which is most of
+// the file between two compactions, are told apart by that number alone. BuildTrackingData
+// runs for every post command and needs nothing else of them.
+func (s *fileStore) getPostCommandsAfter(ctx context.Context, cursor time.Time) ([]*Command, error) {
+	raw, _, err := GetPostCommands(ctx)
+	if err != nil {
+		return nil, err
+	}
+	result := make([]*Command, 0)
+	for _, line := range raw {
+		if recordingTime, ok := lineRecordingTime(line); ok && !recordingTime.After(cursor) {
+			continue
+		}
+		// Everything else is decoded in full, also a line whose recording time can't be
+		// read: it is refused there, with the same warning as before.
+		cmd := new(Command)
+		if _, err := cmd.FromLineBytes(line); err != nil {
+			slog.Warn("failed to parse post command line", slog.Any("err", err))
+			continue
+		}
+		result = append(result, cmd)
+	}
+	return result, nil
+}
+
+// lineRecordingTime reads the recording time at the end of a store line, after its last
+// tab, the way FromLineBytes does once it has decoded the command in front of it.
+func lineRecordingTime(line []byte) (time.Time, bool) {
+	tab := bytes.LastIndexByte(line, SEPARATOR)
+	if tab < 0 {
+		return time.Time{}, false
+	}
+	unixNano, err := strconv.ParseInt(string(line[tab+1:]), 10, 64)
+	if err != nil {
+		return time.Time{}, false
+	}
+	return time.Unix(0, unixNano), true
 }
 
 func (s *fileStore) GetLastCursor(ctx context.Context) (time.Time, bool, error) {
