@@ -143,14 +143,22 @@ func TestCompact_LeavesFilesAloneWhenTheyWereRewrittenMeanwhile(t *testing.T) {
 	require.NoError(t, store.SetCursor(ctx, cursor))
 	savePair(t, store, "go build ./...", time.Minute)
 
-	rewritten := []byte("rewritten by someone else\n")
+	// Different content every time, so it never starts with what a compaction just read
+	var rewritten []byte
+	rewrites := 0
 	setCompactAfterSnapshot(t, func() {
+		rewrites++
+		rewritten = []byte(fmt.Sprintf("rewrite %d by someone else\n", rewrites))
 		require.NoError(t, os.WriteFile(GetPreCommandFilePath(), rewritten, 0o600))
 	})
 	postBefore, err := os.ReadFile(GetPostCommandFilePath())
 	require.NoError(t, err)
 
-	require.NoError(t, store.Prune(ctx, cursor))
+	// The caller is told: a compaction that didn't happen is not a success
+	err = store.Prune(ctx, cursor)
+	require.ErrorIs(t, err, ErrCommandStoreChanged)
+	assert.Contains(t, err.Error(), GetPreCommandFilePath())
+	assert.ErrorIs(t, CompactCommandFiles(ctx), ErrCommandStoreChanged)
 
 	pre, err := os.ReadFile(GetPreCommandFilePath())
 	require.NoError(t, err)

@@ -39,10 +39,11 @@ func cleanCommandFiles(ctx context.Context) error {
 		return nil
 	}
 	err := model.CompactCommandFiles(ctx)
-	if errors.Is(err, model.ErrCommandStoreBusy) {
-		// Another gc, or the daemon, is compacting right now. This one runs at every
-		// shell start and must not hold the shell up.
-		slog.Debug("command store is busy, skipping compaction")
+	if errors.Is(err, model.ErrCommandStoreBusy) || errors.Is(err, model.ErrCommandStoreChanged) {
+		// Another gc, or the daemon, is compacting right now, or rewrote a file under
+		// this one. gc runs at every shell start: it must not hold the shell up or fail
+		// it, and the next one compacts.
+		slog.Debug("command store is in use, skipping compaction", slog.Any("reason", err))
 		return nil
 	}
 	return err
