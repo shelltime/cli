@@ -2,6 +2,7 @@ package daemon
 
 import (
 	"os"
+	"path/filepath"
 	"runtime"
 	"testing"
 
@@ -18,6 +19,12 @@ func TestGetProcessName_CurrentProcessLinux(t *testing.T) {
 	}
 	name := getProcessName(os.Getpid())
 	assert.NotEmpty(t, name, "current process should have a readable /proc/<pid>/comm")
+	// The kernel keeps at most 15 bytes of the name, without the newline of the file.
+	want := filepath.Base(os.Args[0])
+	if len(want) > 15 {
+		want = want[:15]
+	}
+	assert.Equal(t, want, name)
 }
 
 // TestGetParentPID_CurrentProcessLinux exercises the positive /proc/<pid>/stat
