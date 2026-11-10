@@ -43,7 +43,9 @@ The fastest way to get set up is a single command:
 shelltime init
 ```
 
-`shelltime init` authenticates the CLI (in the browser, with `--email` to approve on your iPhone in the ShellTime iOS app, or with `--token`), installs the bash, zsh and fish hooks and the daemon, and tries to wire up Claude Code and Codex OTEL integration for you.
+`shelltime init` authenticates the CLI (in the browser, with `--email` to approve on your iPhone in the ShellTime iOS app, or with `--token`), installs the shell hooks and the daemon, and tries to wire up Claude Code and Codex OTEL integration for you. It prints one line per step; `shelltime init --verbose` shows each step's details.
+
+Shell hooks go to the shells you use: zsh, bash or fish when its config file (`~/.zshrc`, `~/.bashrc`, `~/.config/fish/config.fish`) exists, and your login shell (`$SHELL`), whose config file is created if missing. To add a shell later, create its config file and run `shelltime hooks install`.
 
 Prefer to do it step by step?
 
