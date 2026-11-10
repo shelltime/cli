@@ -219,7 +219,9 @@ func (s *CircuitBreakerService) retryPendingData(ctx context.Context) {
 
 	// Payloads saved while this retry was republishing were appended after the lines it
 	// read. If the file no longer starts with them (log cleanup removed it meanwhile),
-	// every line in it is new.
+	// every line in it is new. That the lines read are still at the head relies on this
+	// being the only place the file is rewritten, and on one retry running at a time:
+	// checkAndRetry is only called from the timer goroutine Start launches.
 	current, err := readPendingLines(filePath)
 	if err != nil && !os.IsNotExist(err) {
 		slog.Error("Error re-reading pending sync file, keeping it as is", slog.Any("err", err))
