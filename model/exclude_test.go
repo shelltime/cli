@@ -1,6 +1,9 @@
 package model
 
 import (
+	"fmt"
+	"strings"
+	"sync"
 	"testing"
 )
 
@@ -93,4 +96,43 @@ func TestShouldExcludeCommand(t *testing.T) {
 			}
 		})
 	}
+}
+
+// Patterns are compiled once and kept, including the fact that one doesn't compile.
+// Later calls must give the same answers as the first.
+func TestShouldExcludeCommand_RepeatedCalls(t *testing.T) {
+	patterns := []string{"[invalid", "", "^ssh .*@prod"}
+	for range 3 {
+		if !ShouldExcludeCommand("ssh deploy@prod-1", patterns) {
+			t.Fatal("a pattern after an invalid one must still exclude")
+		}
+		if ShouldExcludeCommand("ssh deploy@staging", patterns) {
+			t.Fatal("a command no pattern matches must not be excluded")
+		}
+		if ShouldExcludeCommand("ls [invalid", []string{"[invalid"}) {
+			t.Fatal("an invalid pattern excludes nothing")
+		}
+	}
+}
+
+// The daemon matches commands from several goroutines (socket handlers build
+// batches while the processor filters events), so the pattern caches must be safe
+// to fill concurrently. Run with -race.
+func TestExcludeAndMaskPatterns_ConcurrentUse(t *testing.T) {
+	const jwt = "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMjM0NTY3ODkwIn0.dozjgNryP4J3jVmNHl0w5N_XgL0n3I9PlFUP0THsR8U"
+	var wg sync.WaitGroup
+	for i := range 16 {
+		wg.Go(func() {
+			pattern := fmt.Sprintf("^concurrent-%d ", i%4)
+			for range 50 {
+				if !ShouldExcludeCommand(fmt.Sprintf("concurrent-%d run", i%4), []string{"[broken", pattern}) {
+					t.Error("command must be excluded")
+				}
+				if got := MaskSensitiveTokens("curl -H 'Authorization: Bearer " + jwt + "' x"); strings.Contains(got, jwt) {
+					t.Error("token must be masked")
+				}
+			}
+		})
+	}
+	wg.Wait()
 }

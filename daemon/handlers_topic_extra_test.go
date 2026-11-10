@@ -109,9 +109,10 @@ func TestSocketTopicProcessor_TrackPreAndPostRouted(t *testing.T) {
 }
 
 func TestSocketTopicProcessor_SyncFailureNacks(t *testing.T) {
-	// A sync whose backend fails -> handler returns error -> message nacked.
+	// A sync the backend refuses -> handler returns error -> message nacked. (A batch the
+	// server couldn't take, a 5xx or no answer, is saved for retry and acked instead.)
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.WriteHeader(http.StatusInternalServerError)
+		w.WriteHeader(http.StatusBadRequest)
 	}))
 	defer server.Close()
 	withCircuitBreaker(t, &fakeDaemonCB{open: false})

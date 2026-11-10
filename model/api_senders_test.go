@@ -3,9 +3,11 @@ package model
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -247,5 +249,68 @@ func TestSendSessionPullRequests(t *testing.T) {
 		err := SendSessionPullRequests(context.Background(), cfg, "s", []string{"nope"})
 		require.Error(t, err)
 		assert.Equal(t, "Invalid request body", err.Error())
+	})
+}
+
+// With several endpoints the caller gets every failure, in the order the endpoints are
+// configured, not whichever request happened to finish first: the daemon decides from it
+// whether the batch is worth keeping.
+func TestSendLocalDataToServer_ReportsEveryEndpointFailureInOrder(t *testing.T) {
+	respond := func(status int, delay time.Duration) *httptest.Server {
+		return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			time.Sleep(delay)
+			w.WriteHeader(status)
+		}))
+	}
+	accepting := respond(http.StatusNoContent, 0)
+	defer accepting.Close()
+	refusingLate := respond(http.StatusBadRequest, 100*time.Millisecond)
+	defer refusingLate.Close()
+	failingFirst := respond(http.StatusBadGateway, 0)
+	defer failingFirst.Close()
+
+	args := PostTrackArgs{CursorID: 1, Data: []TrackingData{{Command: "ls"}}}
+	statuses := func(err error) []int {
+		var all []int
+		errs := []error{err}
+		if joined, ok := err.(interface{ Unwrap() []error }); ok {
+			errs = joined.Unwrap()
+		}
+		for _, e := range errs {
+			var statusErr *HTTPStatusError
+			if errors.As(e, &statusErr) {
+				all = append(all, statusErr.StatusCode)
+			}
+		}
+		return all
+	}
+
+	t.Run("two failures", func(t *testing.T) {
+		err := SendLocalDataToServer(context.Background(), ShellTimeConfig{
+			Token: "main", APIEndpoint: refusingLate.URL,
+			Endpoints: []Endpoint{{Token: "t1", APIEndpoint: accepting.URL}, {Token: "t2", APIEndpoint: failingFirst.URL}},
+		}, args)
+		require.Error(t, err)
+		assert.Equal(t, []int{http.StatusBadRequest, http.StatusBadGateway}, statuses(err),
+			"the main endpoint's failure comes first although it answered last")
+	})
+
+	t.Run("one failure is returned as it is", func(t *testing.T) {
+		err := SendLocalDataToServer(context.Background(), ShellTimeConfig{
+			Token: "main", APIEndpoint: accepting.URL,
+			Endpoints: []Endpoint{{Token: "t1", APIEndpoint: failingFirst.URL}},
+		}, args)
+		var statusErr *HTTPStatusError
+		require.ErrorAs(t, err, &statusErr)
+		assert.Equal(t, http.StatusBadGateway, statusErr.StatusCode)
+		_, joined := err.(interface{ Unwrap() []error })
+		assert.False(t, joined)
+	})
+
+	t.Run("no failure", func(t *testing.T) {
+		require.NoError(t, SendLocalDataToServer(context.Background(), ShellTimeConfig{
+			Token: "main", APIEndpoint: accepting.URL,
+			Endpoints: []Endpoint{{Token: "t1", APIEndpoint: accepting.URL}},
+		}, args))
 	})
 }

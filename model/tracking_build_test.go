@@ -149,6 +149,32 @@ func TestBuildTrackingData_SkipsCommandAtCursor(t *testing.T) {
 	require.Equal(t, "still-pending", res.Data[0].Command)
 }
 
+// A post whose only pre candidates started after it (its own pre was lost, or the
+// clock stepped back between the two hooks) has no start to pair with.
+func TestBuildTrackingData_NoEarlierPreKeepsEndAsStart(t *testing.T) {
+	store, err := newBoltStore(filepath.Join(t.TempDir(), "commands.db"))
+	require.NoError(t, err)
+	defer store.Close()
+
+	ctx := context.Background()
+	base := time.Date(2024, 6, 1, 12, 0, 0, 0, time.UTC)
+	postTime := base.Add(100 * time.Millisecond)
+	preTime := base.Add(500 * time.Millisecond)
+	cmd := Command{Shell: "bash", SessionID: 1, Command: "make", Username: "u", Hostname: "h", Time: preTime}
+	require.NoError(t, store.SavePre(ctx, cmd, preTime))
+	post := cmd
+	post.Time = postTime
+	require.NoError(t, store.SavePost(ctx, post, 0, postTime))
+
+	res, err := BuildTrackingData(ctx, store, ShellTimeConfig{})
+	require.NoError(t, err)
+	require.Len(t, res.Data, 1)
+	require.Equal(t, postTime.Unix(), res.Data[0].EndTime)
+	require.Equal(t, postTime.UnixNano(), res.Data[0].EndTimeNano)
+	require.Equal(t, postTime.Unix(), res.Data[0].StartTime, "the zero time must not be sent as the start")
+	require.Equal(t, postTime.UnixNano(), res.Data[0].StartTimeNano)
+}
+
 func TestBuildTrackingDataEmpty(t *testing.T) {
 	store, err := newBoltStore(filepath.Join(t.TempDir(), "commands.db"))
 	require.NoError(t, err)

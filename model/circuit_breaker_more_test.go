@@ -4,6 +4,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -184,4 +185,80 @@ func TestCB_SaveForRetry_PartialFailureRetained(t *testing.T) {
 	data, err := os.ReadFile(pending)
 	require.NoError(t, err)
 	assert.Equal(t, "bad\n", string(data))
+}
+
+// TestCB_RetryPendingData_LongLine: one saved payload holds a whole backlog of
+// commands, so a line can be far longer than bufio.Scanner's 64 KB token limit.
+// Such a file used to fail to read on every pass and was never retried.
+func TestCB_RetryPendingData_LongLine(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	pending := m2pendingPath(t)
+
+	long := `{"type":"sync","payload":"` + strings.Repeat("x", 200*1024) + `"}`
+	var got []string
+	cb := NewCircuitBreakerService(CircuitBreakerConfig{}, func(data []byte) error {
+		got = append(got, string(data))
+		return nil
+	})
+	require.NoError(t, cb.SaveForRetry(context.Background(), []byte(long)))
+	require.NoError(t, cb.SaveForRetry(context.Background(), []byte(`{"id":2}`)))
+
+	cb.retryPendingData(context.Background())
+
+	require.Len(t, got, 2)
+	// Not Equal: a mismatch would print both 200 KB strings
+	require.True(t, got[0] == long, "the long line must be republished whole")
+	require.Equal(t, `{"id":2}`, got[1])
+	_, err := os.Stat(pending)
+	assert.True(t, os.IsNotExist(err), "republished lines must leave the file")
+}
+
+// TestCB_RetryPendingData_KeepsPayloadSavedDuringRetry: the sync handler saves a
+// payload (the circuit is open again) while the timer goroutine is republishing
+// the lines it read. Rewriting the file with only those lines dropped the new one.
+func TestCB_RetryPendingData_KeepsPayloadSavedDuringRetry(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	pending := m2pendingPath(t)
+
+	var cb *CircuitBreakerService
+	cb = NewCircuitBreakerService(CircuitBreakerConfig{}, func(data []byte) error {
+		if string(data) == `{"id":1}` {
+			require.NoError(t, cb.SaveForRetry(context.Background(), []byte(`{"id":"new"}`)))
+			return nil
+		}
+		return assert.AnError // {"id":2} stays for the next pass
+	})
+	require.NoError(t, cb.SaveForRetry(context.Background(), []byte(`{"id":1}`)))
+	require.NoError(t, cb.SaveForRetry(context.Background(), []byte(`{"id":2}`)))
+
+	cb.retryPendingData(context.Background())
+
+	content, err := os.ReadFile(pending)
+	require.NoError(t, err)
+	assert.Equal(t, "{\"id\":2}\n{\"id\":\"new\"}\n", string(content))
+}
+
+// TestCB_RetryPendingData_FileReplacedDuringRetry: log cleanup removed the file
+// while its lines were being republished, and a new payload was saved after that.
+// The file then holds only new lines, none of which may be dropped.
+func TestCB_RetryPendingData_FileReplacedDuringRetry(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	pending := m2pendingPath(t)
+
+	var cb *CircuitBreakerService
+	cb = NewCircuitBreakerService(CircuitBreakerConfig{}, func(data []byte) error {
+		if string(data) == `{"id":1}` {
+			require.NoError(t, os.Remove(pending))
+			require.NoError(t, cb.SaveForRetry(context.Background(), []byte(`{"id":"new"}`)))
+		}
+		return nil
+	})
+	require.NoError(t, cb.SaveForRetry(context.Background(), []byte(`{"id":1}`)))
+	require.NoError(t, cb.SaveForRetry(context.Background(), []byte(`{"id":2}`)))
+
+	cb.retryPendingData(context.Background())
+
+	content, err := os.ReadFile(pending)
+	require.NoError(t, err)
+	assert.Equal(t, "{\"id\":\"new\"}\n", string(content))
 }

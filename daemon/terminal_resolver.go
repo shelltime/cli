@@ -1,6 +1,7 @@
 package daemon
 
 import (
+	"os"
 	"os/exec"
 	"runtime"
 	"strconv"
@@ -142,8 +143,9 @@ func getProcessName(pid int) string {
 		return name
 
 	case "linux":
-		// Linux: /proc/<pid>/comm
-		out, err := exec.Command("cat", "/proc/"+strconv.Itoa(pid)+"/comm").Output()
+		// Linux: /proc/<pid>/comm, read directly. The walk used to start a `cat` for
+		// every level, two per process.
+		out, err := os.ReadFile("/proc/" + strconv.Itoa(pid) + "/comm")
 		if err != nil {
 			return ""
 		}
@@ -168,7 +170,7 @@ func getParentPID(pid int) int {
 		return ppid
 
 	case "linux":
-		out, err := exec.Command("cat", "/proc/"+strconv.Itoa(pid)+"/stat").Output()
+		out, err := os.ReadFile("/proc/" + strconv.Itoa(pid) + "/stat")
 		if err != nil {
 			return 0
 		}
