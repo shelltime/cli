@@ -3,7 +3,9 @@ package model
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
+	"io/fs"
 	"log/slog"
 	"sort"
 	"time"
@@ -46,12 +48,26 @@ func (s *fileStore) SavePost(ctx context.Context, cmd Command, result int, recor
 	return s.appendLine(GetPostCommandFilePath(), cmd, recordingTime)
 }
 
+// GetPreTree returns the pre commands by unique key. A store without pre.txt has none:
+// the file is only created by the first pre command, and a post can get there first (the
+// hooks were installed, or the daemon started, between a command's pre and its post).
+// Failing on that made every batch build fail until some pre command arrived, and the
+// daemon's track_post handler, nacked each time, appended the same post again on every
+// redelivery.
 func (s *fileStore) GetPreTree(ctx context.Context) (map[string][]*Command, error) {
-	return GetPreCommandsTree(ctx)
+	tree, err := GetPreCommandsTree(ctx)
+	if errors.Is(err, fs.ErrNotExist) {
+		return preCommandTree{}, nil
+	}
+	return tree, err
 }
 
 func (s *fileStore) GetPreCommands(ctx context.Context) ([]*Command, error) {
-	return GetPreCommands(ctx)
+	commands, err := GetPreCommands(ctx)
+	if errors.Is(err, fs.ErrNotExist) {
+		return []*Command{}, nil
+	}
+	return commands, err
 }
 
 func (s *fileStore) GetPostCommands(ctx context.Context) ([]*Command, error) {

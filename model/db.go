@@ -49,7 +49,10 @@ func GetPreCommandsTree(ctx context.Context) (result preCommandTree, err error) 
 	preFilePath := GetPreCommandFilePath()
 	preFileHandler, err := os.Open(preFilePath)
 	if err != nil {
-		slog.Error("Failed to open pre-command file", slog.Any("err", err))
+		// A store without pre.txt holds no pre command yet (see fileStore.GetPreTree)
+		if !os.IsNotExist(err) {
+			slog.Error("Failed to open pre-command file", slog.Any("err", err))
+		}
 		return nil, err
 	}
 	defer preFileHandler.Close()
@@ -88,7 +91,9 @@ func GetPreCommands(ctx context.Context) ([]*Command, error) {
 	preFilePath := GetPreCommandFilePath()
 	preFileHandler, err := os.Open(preFilePath)
 	if err != nil {
-		slog.Error("Failed to open pre-command file", slog.Any("err", err))
+		if !os.IsNotExist(err) {
+			slog.Error("Failed to open pre-command file", slog.Any("err", err))
+		}
 		return nil, err
 	}
 	defer preFileHandler.Close()

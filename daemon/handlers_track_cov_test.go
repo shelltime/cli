@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/ThreeDotsLabs/watermill/message"
 	"github.com/malamtime/cli/model"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
@@ -309,4 +310,35 @@ func TestX3SendCodexUsageToServer_EmptyTokenNoop(t *testing.T) {
 func TestX3SyncCodexUsage_EmptyTokenNoop(t *testing.T) {
 	err := syncCodexUsage(context.Background(), model.ShellTimeConfig{Token: ""})
 	require.NoError(t, err)
+}
+
+// A post that arrives before the store has any pre.txt used to fail the batch build. The
+// handler returned the error, the message was nacked, and every redelivery appended the
+// same post again: four copies of one command.
+func TestTrackPost_FileStoreWithoutPreFileAcksAndSavesOnce(t *testing.T) {
+	x3SwapTrackGlobals(t)
+	t.Setenv("HOME", t.TempDir())
+	commandStore = nil
+	newFallbackStore = model.NewFileStore
+	mc := model.NewMockConfigService(t)
+	mc.On("ReadConfigFile", mock.Anything).Return(model.ShellTimeConfig{FlushCount: 10}, nil)
+	stConfig = mc
+
+	msg := message.NewMessage("post-before-any-pre", socketMsgBytes(t, SocketMessageTypeTrackPost, x3TrackPayload("source ~/.zshrc")))
+	ch := make(chan *message.Message)
+	done := startTopicProcessor(ch)
+	ch <- msg
+	select {
+	case <-msg.Acked():
+	case <-msg.Nacked():
+		t.Error("the message must be acked: a nack redelivers it and saves the post again")
+	case <-time.After(2 * time.Second):
+		t.Fatal("message was neither acked nor nacked in time")
+	}
+	close(ch)
+	<-done
+
+	posts, err := model.NewFileStore().GetPostCommands(context.Background())
+	require.NoError(t, err)
+	require.Len(t, posts, 1)
 }
