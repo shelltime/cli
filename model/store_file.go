@@ -96,14 +96,23 @@ func (s *fileStore) GetPostCommands(ctx context.Context) ([]*Command, error) {
 // ends in its recording time, so the commands a sync already covered, which is most of
 // the file between two compactions, are told apart by that number alone. BuildTrackingData
 // runs for every post command and needs nothing else of them.
-func (s *fileStore) getPostCommandsAfter(ctx context.Context, cursor time.Time) ([]*Command, error) {
+//
+// any reports whether the store holds a post command at all, counting the ones at or
+// before the cursor: with none, a build ends before it reads anything else. When nothing
+// is waiting, that takes decoding synced lines until one of them is a command, usually
+// the first.
+func (s *fileStore) getPostCommandsAfter(ctx context.Context, cursor time.Time) (posts []*Command, any bool, err error) {
 	raw, _, err := GetPostCommands(ctx)
 	if err != nil {
-		return nil, err
+		return nil, false, err
 	}
-	result := make([]*Command, 0)
+	synced := func(line []byte) bool {
+		recordingTime, ok := lineRecordingTime(line)
+		return ok && !recordingTime.After(cursor)
+	}
+	posts = make([]*Command, 0)
 	for _, line := range raw {
-		if recordingTime, ok := lineRecordingTime(line); ok && !recordingTime.After(cursor) {
+		if synced(line) {
 			continue
 		}
 		// Everything else is decoded in full, also a line whose recording time can't be
@@ -113,9 +122,20 @@ func (s *fileStore) getPostCommandsAfter(ctx context.Context, cursor time.Time) 
 			slog.Warn("failed to parse post command line", slog.Any("err", err))
 			continue
 		}
-		result = append(result, cmd)
+		posts = append(posts, cmd)
 	}
-	return result, nil
+	if len(posts) > 0 {
+		return posts, true, nil
+	}
+	for _, line := range raw {
+		if !synced(line) {
+			continue // decoded above, and it was no command
+		}
+		if _, err := new(Command).FromLineBytes(line); err == nil {
+			return posts, true, nil
+		}
+	}
+	return posts, false, nil
 }
 
 // lineRecordingTime reads the recording time at the end of a store line, after its last

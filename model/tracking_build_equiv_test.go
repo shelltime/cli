@@ -153,7 +153,7 @@ func TestBuildTrackingData_FileStoreShortcutMatchesFullDecode(t *testing.T) {
 		if len(want.Data) > 0 {
 			withData++
 		}
-		if _, _, _, used, _ := pendingPostCommands(ctx, store); used {
+		if _, used, _ := pendingPostCommands(ctx, store); used {
 			shortcutUsed++
 		}
 	}
@@ -163,6 +163,7 @@ func TestBuildTrackingData_FileStoreShortcutMatchesFullDecode(t *testing.T) {
 	require.Greater(t, withData, 100)
 	require.Greater(t, withError, 10)
 	require.Less(t, shortcutUsed, 400, "some stores must take the plain way too")
+	require.Greater(t, shortcutUsed, withData, "and some must take the shortcut with nothing waiting")
 }
 
 // The shortcut is taken by the file store itself, and only decodes what is waiting.
@@ -177,12 +178,70 @@ func TestFileStore_GetPostCommandsAfter(t *testing.T) {
 	// A synced line that doesn't decode is passed over like the other synced lines
 	appendWithoutLock(t, GetPostCommandFilePath(), []byte(fmt.Sprintf("{broken\t%d\n", cursor.UnixNano())))
 
-	posts, err := store.getPostCommandsAfter(ctx, cursor)
+	posts, any, err := store.getPostCommandsAfter(ctx, cursor)
 	require.NoError(t, err)
+	require.True(t, any)
 	require.Len(t, posts, 1)
 	require.Equal(t, "make build", posts[0].Command)
 
-	all, err := store.getPostCommandsAfter(ctx, time.Time{})
+	all, any, err := store.getPostCommandsAfter(ctx, time.Time{})
 	require.NoError(t, err)
+	require.True(t, any)
 	require.Len(t, all, 2, "without a cursor every command that decodes is waiting")
+
+	// Nothing waits, but the store is not empty: its synced commands still count
+	none, any, err := store.getPostCommandsAfter(ctx, time.Now())
+	require.NoError(t, err)
+	require.Empty(t, none)
+	require.True(t, any)
+
+	// A store whose only lines are no commands holds none
+	require.NoError(t, os.WriteFile(GetPostCommandFilePath(), []byte(fmt.Sprintf("{broken\t%d\nnot a line\n", cursor.UnixNano())), 0o600))
+	none, any, err = store.getPostCommandsAfter(ctx, time.Now())
+	require.NoError(t, err)
+	require.Empty(t, none)
+	require.False(t, any)
+}
+
+// fullReadCounter is a file store that counts how often all of post.txt is decoded.
+type fullReadCounter struct {
+	*fileStore
+	fullReads int
+}
+
+func (c *fullReadCounter) GetPostCommands(ctx context.Context) ([]*Command, error) {
+	c.fullReads++
+	return c.fileStore.GetPostCommands(ctx)
+}
+
+// When every post is synced, the shortcut found nothing waiting and handed over to the
+// plain way, which read post.txt a second time and decoded all of it: the case with the
+// most synced lines got the least out of the shortcut.
+func TestBuildTrackingData_NothingWaitingReadsPostsOnce(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	ctx := context.Background()
+	store := &fullReadCounter{fileStore: newFileStore()}
+
+	var cursor time.Time
+	for i := range 20 {
+		cursor = savePair(t, store.fileStore, fmt.Sprintf("git commit -m 'change %d'", i), time.Duration(i)*time.Minute)
+	}
+	require.NoError(t, store.SetCursor(ctx, cursor))
+
+	want, err := BuildTrackingData(ctx, plainStore{store.fileStore}, ShellTimeConfig{})
+	require.NoError(t, err)
+	got, err := BuildTrackingData(ctx, store, ShellTimeConfig{})
+	require.NoError(t, err)
+
+	require.Equal(t, want, got)
+	require.Empty(t, got.Data)
+	require.Equal(t, cursor.UnixNano(), got.Cursor.UnixNano())
+	require.Zero(t, store.fullReads, "post.txt must not be decoded in full when the shortcut already read it")
+
+	// A store without any post still ends the build before the cursor is looked at
+	require.NoError(t, os.WriteFile(GetPostCommandFilePath(), nil, 0o600))
+	got, err = BuildTrackingData(ctx, store, ShellTimeConfig{})
+	require.NoError(t, err)
+	require.Equal(t, TrackingBuildResult{}, got)
+	require.Zero(t, store.fullReads)
 }

@@ -33,11 +33,21 @@ func BuildTrackingData(ctx context.Context, store CommandStore, config ShellTime
 
 	var res TrackingBuildResult
 
-	postCommands, cursor, noCursorExist, ok, err := pendingPostCommands(ctx, store)
+	var postCommands []*Command
+	var cursor time.Time
+	var noCursorExist bool
+
+	pending, ok, err := pendingPostCommands(ctx, store)
 	if err != nil {
 		return res, err
 	}
-	if !ok {
+	if ok {
+		// Without any post command the build ends here, as it does below
+		if !pending.any {
+			return res, nil
+		}
+		postCommands, cursor, noCursorExist = pending.posts, pending.cursor, pending.noCursorExist
+	} else {
 		postCommands, err = store.GetPostCommands(ctx)
 		if err != nil {
 			return res, err
@@ -143,9 +153,20 @@ func BuildTrackingData(ctx context.Context, store CommandStore, config ShellTime
 }
 
 // postsAfterCursorStore is a store that can hand out the post commands recorded after a
-// cursor without decoding the ones at or before it.
+// cursor without decoding the ones at or before it, and say whether it holds any post
+// command at all.
 type postsAfterCursorStore interface {
-	getPostCommandsAfter(ctx context.Context, cursor time.Time) ([]*Command, error)
+	getPostCommandsAfter(ctx context.Context, cursor time.Time) (posts []*Command, any bool, err error)
+}
+
+// pendingPosts is what BuildTrackingData's shortcut read from such a store.
+type pendingPosts struct {
+	// posts are the post commands recorded after the cursor
+	posts []*Command
+	// any is false when the store holds no post command at all, synced or not
+	any           bool
+	cursor        time.Time
+	noCursorExist bool
 }
 
 // pendingPostCommands is BuildTrackingData's shortcut for such a store: the post commands
@@ -154,26 +175,22 @@ type postsAfterCursorStore interface {
 // as with all of them.
 //
 // ok is false when the shortcut doesn't apply and the caller must read everything the
-// plain way: the store has no such method, its cursor can't be read (the plain way
-// reports that error, in its own order), or no post command is waiting (whether the store
-// holds none at all, which ends the build early, only the full read can tell).
-func pendingPostCommands(ctx context.Context, store CommandStore) (posts []*Command, cursor time.Time, noCursorExist bool, ok bool, err error) {
+// plain way: the store has no such method, or its cursor can't be read (the plain way
+// reports that error, in its own order).
+func pendingPostCommands(ctx context.Context, store CommandStore) (pending pendingPosts, ok bool, err error) {
 	fast, isFast := store.(postsAfterCursorStore)
 	if !isFast {
-		return nil, time.Time{}, false, false, nil
+		return pendingPosts{}, false, nil
 	}
-	cursor, noCursorExist, err = store.GetLastCursor(ctx)
+	cursor, noCursorExist, err := store.GetLastCursor(ctx)
 	if err != nil {
-		return nil, time.Time{}, false, false, nil
+		return pendingPosts{}, false, nil
 	}
-	posts, err = fast.getPostCommandsAfter(ctx, cursor)
+	posts, any, err := fast.getPostCommandsAfter(ctx, cursor)
 	if err != nil {
-		return nil, time.Time{}, false, false, err
+		return pendingPosts{}, false, err
 	}
-	if len(posts) == 0 {
-		return nil, time.Time{}, false, false, nil
-	}
-	return posts, cursor, noCursorExist, true, nil
+	return pendingPosts{posts: posts, any: any, cursor: cursor, noCursorExist: noCursorExist}, true, nil
 }
 
 // osInfo is the first OS lookup that worked. The daemon sends a batch on every
