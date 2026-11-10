@@ -99,13 +99,15 @@ func TestX3PushDotfiles_ServerErrorPropagates(t *testing.T) {
 // TestX3HooksInstall_InstallsBashHook covers the install path of
 // commandHooksInstall (lines past the binary-found gate). The bin folder is
 // created so the binary check passes, and bash-preexec.sh is pre-seeded so the
-// bash hook Install() does not attempt a network download. zsh/fish installs
-// fail silently (their configs are absent), bash succeeds and writes hook lines.
+// bash hook Install() does not attempt a network download. zsh/fish are skipped
+// (no config file, not the login shell); bash, the login shell, gets its .bashrc
+// created and the hook lines written.
 func TestX3HooksInstall_InstallsBashHook(t *testing.T) {
 	otel.SetTracerProvider(noop.NewTracerProvider())
 	SKIP_LOGGER_SETTINGS = true
 	home := t.TempDir()
 	t.Setenv("HOME", home)
+	t.Setenv("SHELL", "/bin/bash")
 
 	base := filepath.Join(home, model.COMMAND_BASE_STORAGE_FOLDER)
 	// bin folder present -> "binary not found" gate is skipped.
@@ -132,6 +134,7 @@ func TestX3HooksInstall_BinaryFoundViaPath(t *testing.T) {
 	SKIP_LOGGER_SETTINGS = true
 	home := t.TempDir()
 	t.Setenv("HOME", home)
+	t.Setenv("SHELL", "/bin/bash")
 
 	// Create a fake `shelltime` executable on a dir we put on PATH.
 	binDir := t.TempDir()

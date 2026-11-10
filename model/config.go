@@ -2,6 +2,7 @@ package model
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"os"
@@ -12,6 +13,10 @@ import (
 	"github.com/pelletier/go-toml/v2"
 	"gopkg.in/yaml.v3"
 )
+
+// ErrConfigNotFound means there is no config file yet: shelltime is installed, but
+// `shelltime init` (or `shelltime auth`) hasn't run.
+var ErrConfigNotFound = errors.New("no config file found")
 
 // configFormat represents the format of a config file
 type configFormat string
@@ -234,7 +239,7 @@ func (cs *configService) ReadConfigFile(ctx context.Context, opts ...ReadConfigO
 
 	// Read base config file
 	if files.baseFile == "" {
-		err = fmt.Errorf("no config file found in %s", cs.configDir)
+		err = fmt.Errorf("%w in %s", ErrConfigNotFound, cs.configDir)
 		return
 	}
 

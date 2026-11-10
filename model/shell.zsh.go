@@ -5,8 +5,6 @@ import (
 	"fmt"
 	"os"
 	"strings"
-
-	"github.com/gookit/color"
 )
 
 type ZshHookService struct {
@@ -37,23 +35,25 @@ func (s *ZshHookService) ShellName() string {
 	return s.shellName
 }
 
+func (s *ZshHookService) ConfigPath() string {
+	return s.configPath
+}
+
 func (s *ZshHookService) Install() error {
 	hookFilePath := os.ExpandEnv(fmt.Sprintf("$HOME/%s/hooks/zsh.zsh", COMMAND_BASE_STORAGE_FOLDER))
 	if err := ensureHookFile(hookFilePath, EmbeddedZshHook); err != nil {
 		return fmt.Errorf("failed to ensure zsh hook file: %w", err)
 	}
-
-	if _, err := os.Stat(s.configPath); os.IsNotExist(err) {
-		return fmt.Errorf("zsh config file not found at %s. Please run 'shelltime hooks install'", s.configPath)
+	if err := s.ensureConfigFile(s.configPath); err != nil {
+		return err
+	}
+	if err := s.Check(); err == nil {
+		return nil
 	}
 
 	// Backup the file
 	if err := s.backupFile(s.configPath); err != nil {
 		return err
-	}
-	if err := s.Check(); err == nil {
-		color.Green.Println("Zsh hook is already installed.")
-		return nil
 	}
 
 	// Add hook lines
