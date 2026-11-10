@@ -99,21 +99,27 @@ func BuildTrackingData(ctx context.Context, store CommandStore, config ShellTime
 
 		closestPreCommand := postCommand.FindClosestCommand(preCommands, false)
 
+		// The start falls back to the end, like BuildListedCommands: when no pre
+		// started at or before this post (its pre was lost, or the clock stepped
+		// back in between), FindClosestCommand returns an empty command, whose
+		// zero time would be uploaded as a start in year 1.
 		td := TrackingData{
-			SessionID:   postCommand.SessionID,
-			Command:     postCommand.Command,
-			EndTime:     postCommand.Time.Unix(),
-			EndTimeNano: postCommand.Time.UnixNano(),
-			Result:      postCommand.Result,
-			PPID:        postCommand.PPID,
-			ViaSSH:      postCommand.ViaSSH,
+			SessionID:     postCommand.SessionID,
+			Command:       postCommand.Command,
+			StartTime:     postCommand.Time.Unix(),
+			StartTimeNano: postCommand.Time.UnixNano(),
+			EndTime:       postCommand.Time.Unix(),
+			EndTimeNano:   postCommand.Time.UnixNano(),
+			Result:        postCommand.Result,
+			PPID:          postCommand.PPID,
+			ViaSSH:        postCommand.ViaSSH,
 		}
 
 		if config.DataMasking != nil && *config.DataMasking {
 			td.Command = MaskSensitiveTokens(td.Command)
 		}
 
-		if closestPreCommand != nil {
+		if closestPreCommand != nil && !closestPreCommand.IsNil() {
 			td.StartTime = closestPreCommand.Time.Unix()
 			td.StartTimeNano = closestPreCommand.Time.UnixNano()
 			if pre := closestPreCommand.ViaSSH; pre != nil && (td.ViaSSH == nil || *pre) {
