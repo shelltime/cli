@@ -8,6 +8,7 @@ import (
 	"io/fs"
 	"log/slog"
 	"os"
+	"slices"
 	"sort"
 	"strconv"
 	"time"
@@ -179,6 +180,19 @@ type compactOptions struct {
 	backup bool
 }
 
+// orphanPreMaxAge is how long a pre command is kept waiting for its post. A pre without a
+// post is a command that is still running, or one whose post will never come: the terminal
+// was closed under it, the post was lost, or (in stores written before gc matched pre and
+// post correctly) the post was synced and dropped long ago while the pre stayed. Nothing in
+// the store tells these apart, and every `track` reads all of them, so after this long a
+// pre with no post is taken for one that will never finish and is dropped.
+//
+// Only a pre with no post at or after its start counts, synced or not, and both its start
+// and the time it was written must be that old. The price is a command that really runs
+// longer: when it ends, its post finds no pre under its key, and BuildTrackingData only
+// uploads posts that have one, so that command is not recorded.
+const orphanPreMaxAge = 30 * 24 * time.Hour
+
 // compactAfterSnapshot, when set, runs between reading the files and replacing them.
 // Tests use it to append at exactly the moment a rewrite used to lose a line.
 var compactAfterSnapshot func()
@@ -193,7 +207,8 @@ type storeFileRewrite struct {
 }
 
 // compact rewrites the txt files without the post commands at or before the cursor and
-// the pre commands those complete.
+// the pre commands those complete, and without the pre commands that have waited longer
+// than orphanPreMaxAge for a post.
 //
 // It holds the store's lock exclusively from reading the files to replacing them, so no
 // append that takes the lock can fall in between. An append that doesn't take it (an older
@@ -212,14 +227,35 @@ func (s *fileStore) compact(ctx context.Context, opts compactOptions) error {
 		return err
 	}
 	postCommands := parseCommandLines(postSnapshot)
-	if len(postCommands) == 0 {
-		return nil
-	}
 	preSnapshot, err := readStoreFile(GetPreCommandFilePath())
 	if err != nil {
 		return err
 	}
 	preCommands := parseCommandLines(preSnapshot)
+
+	// The latest post of each command, synced or not: a pre with a post at or after its
+	// start is not an orphan, whatever its age.
+	latestPost := make(map[string]time.Time, len(postCommands))
+	for _, post := range postCommands {
+		key := post.GetUniqueKey()
+		if latest, ok := latestPost[key]; !ok || post.Time.After(latest) {
+			latestPost[key] = post.Time
+		}
+	}
+	orphanBefore := time.Now().Add(-orphanPreMaxAge)
+	isAgedOrphan := func(pre *Command) bool {
+		if !pre.Time.Before(orphanBefore) || !pre.RecordingTime.Before(orphanBefore) {
+			return false
+		}
+		latest, hasPost := latestPost[pre.GetUniqueKey()]
+		return !hasPost || latest.Before(pre.Time)
+	}
+
+	// Without post commands there is nothing synced to drop. The files are only rewritten
+	// if a pre command has aged out.
+	if len(postCommands) == 0 && !slices.ContainsFunc(preCommands, isAgedOrphan) {
+		return nil
+	}
 	cursorSnapshot, err := readStoreFile(GetCursorFilePath())
 	if err != nil {
 		return err
@@ -254,7 +290,12 @@ func (s *fileStore) compact(ctx context.Context, opts compactOptions) error {
 	}
 
 	newPre := make([]*Command, 0)
+	agedOrphans := 0
 	for _, row := range preCommands {
+		if isAgedOrphan(row) {
+			agedOrphans++
+			continue
+		}
 		if row.RecordingTime.After(cursor) {
 			newPre = append(newPre, row)
 			continue
@@ -263,6 +304,9 @@ func (s *fileStore) compact(ctx context.Context, opts compactOptions) error {
 		if !preHasSyncedPost(row, postCommands, cursor) {
 			newPre = append(newPre, row)
 		}
+	}
+	if agedOrphans > 0 {
+		slog.Info("dropped pre commands that never got a post", slog.Int("count", agedOrphans), slog.Duration("olderThan", orphanPreMaxAge))
 	}
 
 	sort.Slice(newPre, func(i, j int) bool { return newPre[i].RecordingTime.Before(newPre[j].RecordingTime) })
