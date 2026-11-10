@@ -23,11 +23,13 @@ func SetupLogger(baseFolder string) {
 			return
 		}
 
-		_, err = os.Create(logFilePath)
+		created, err := os.Create(logFilePath)
 		if err != nil {
 			slog.Error("[ShellTime.xyz] failed to create log file", slog.Any("err", err))
 			return
 		}
+		// Only the file is wanted here; it is opened for append below
+		created.Close()
 	}
 	// Logs can echo command lines. Tighten a world-readable file once; skip
 	// when it is already private so the per-command track path stays cheap.
