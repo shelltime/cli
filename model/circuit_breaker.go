@@ -4,8 +4,10 @@ import (
 	"bufio"
 	"context"
 	"fmt"
+	"io"
 	"log/slog"
 	"os"
+	"strings"
 	"sync"
 	"time"
 )
@@ -42,6 +44,10 @@ type CircuitBreakerService struct {
 	ticker              *time.Ticker
 	stopChan            chan struct{}
 	wg                  sync.WaitGroup
+
+	// pendingMu guards the pending sync file: SaveForRetry appends to it while
+	// the retry timer reads and rewrites it.
+	pendingMu sync.Mutex
 }
 
 // NewCircuitBreakerService creates a new circuit breaker service
@@ -126,6 +132,9 @@ func (s *CircuitBreakerService) RecordFailure() {
 func (s *CircuitBreakerService) SaveForRetry(ctx context.Context, payload []byte) error {
 	filePath := os.ExpandEnv(fmt.Sprintf("%s/%s", "$HOME", SYNC_PENDING_FILE))
 
+	s.pendingMu.Lock()
+	defer s.pendingMu.Unlock()
+
 	file, err := os.OpenFile(filePath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0600)
 	if err != nil {
 		return err
@@ -135,12 +144,10 @@ func (s *CircuitBreakerService) SaveForRetry(ctx context.Context, payload []byte
 		return err
 	}
 
-	_, err = file.Write(payload)
-	if err != nil {
-		return err
-	}
-	_, err = file.WriteString("\n")
-	if err != nil {
+	// One write, so a line is never left without its newline
+	line := make([]byte, 0, len(payload)+1)
+	line = append(append(line, payload...), '\n')
+	if _, err := file.Write(line); err != nil {
 		return err
 	}
 
@@ -170,28 +177,14 @@ func (s *CircuitBreakerService) checkAndRetry(ctx context.Context) {
 func (s *CircuitBreakerService) retryPendingData(ctx context.Context) {
 	filePath := os.ExpandEnv(fmt.Sprintf("%s/%s", "$HOME", SYNC_PENDING_FILE))
 
-	if _, err := os.Stat(filePath); os.IsNotExist(err) {
+	s.pendingMu.Lock()
+	lines, err := readPendingLines(filePath)
+	s.pendingMu.Unlock()
+	if os.IsNotExist(err) {
 		slog.Debug("No pending sync file found, nothing to retry")
 		return
 	}
-
-	file, err := os.Open(filePath)
 	if err != nil {
-		slog.Error("Failed to open pending sync file for retry", slog.Any("err", err))
-		return
-	}
-
-	var lines []string
-	scanner := bufio.NewScanner(file)
-	for scanner.Scan() {
-		line := scanner.Text()
-		if line != "" {
-			lines = append(lines, line)
-		}
-	}
-	file.Close()
-
-	if err := scanner.Err(); err != nil {
 		slog.Error("Error reading pending sync file", slog.Any("err", err))
 		return
 	}
@@ -221,6 +214,22 @@ func (s *CircuitBreakerService) retryPendingData(ctx context.Context) {
 		}
 	}
 
+	s.pendingMu.Lock()
+	defer s.pendingMu.Unlock()
+
+	// Payloads saved while this retry was republishing were appended after the lines it
+	// read. If the file no longer starts with them (log cleanup removed it meanwhile),
+	// every line in it is new.
+	current, err := readPendingLines(filePath)
+	if err != nil && !os.IsNotExist(err) {
+		slog.Error("Error re-reading pending sync file, keeping it as is", slog.Any("err", err))
+		return
+	}
+	if hasLinePrefix(current, lines) {
+		current = current[len(lines):]
+	}
+	failedLines = append(failedLines, current...)
+
 	if err := s.rewriteLogFile(filePath, failedLines); err != nil {
 		slog.Error("Failed to update pending sync file", slog.Any("err", err))
 		return
@@ -229,6 +238,45 @@ func (s *CircuitBreakerService) retryPendingData(ctx context.Context) {
 	slog.Info("Sync data retry completed",
 		slog.Int("republished", successCount),
 		slog.Int("remaining", len(failedLines)))
+}
+
+// readPendingLines returns the non-empty lines of the pending sync file. Each line is one
+// saved sync payload, a whole backlog of commands when the server was away for long, so
+// lines are not size limited: a bufio.Scanner stops at 64 KB, and a file it can't read is
+// never retried.
+func readPendingLines(filePath string) ([]string, error) {
+	file, err := os.Open(filePath)
+	if err != nil {
+		return nil, err
+	}
+	defer file.Close()
+
+	var lines []string
+	reader := bufio.NewReader(file)
+	for {
+		line, err := reader.ReadString('\n')
+		if line = strings.TrimRight(line, "\r\n"); line != "" {
+			lines = append(lines, line)
+		}
+		if err == io.EOF {
+			return lines, nil
+		}
+		if err != nil {
+			return nil, err
+		}
+	}
+}
+
+func hasLinePrefix(lines, prefix []string) bool {
+	if len(lines) < len(prefix) {
+		return false
+	}
+	for i := range prefix {
+		if lines[i] != prefix[i] {
+			return false
+		}
+	}
+	return true
 }
 
 func (s *CircuitBreakerService) rewriteLogFile(logFilePath string, lines []string) error {
