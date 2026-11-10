@@ -1,4 +1,6 @@
-//go:build unix
+// Package syscall has flock on every unix but aix and solaris (illumos, which also
+// carries the solaris tag, has it).
+//go:build unix && !aix && (!solaris || illumos)
 
 package model
 
