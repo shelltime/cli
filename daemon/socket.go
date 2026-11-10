@@ -251,9 +251,8 @@ func (p *SocketHandler) acceptConnections() {
 func (p *SocketHandler) handleConnection(conn net.Conn) {
 	defer conn.Close()
 	conn.SetDeadline(time.Now().Add(5 * time.Second))
-	decoder := json.NewDecoder(conn)
 	var msg SocketMessage
-	if err := decoder.Decode(&msg); err != nil {
+	if err := decodeSocketMessage(conn, &msg); err != nil {
 		slog.Error("Error decoding message", slog.Any("err", err))
 		return
 	}
