@@ -239,7 +239,12 @@ func TestIsRetryableSyncError(t *testing.T) {
 		{name: "rate limited", err: &model.HTTPStatusError{StatusCode: http.StatusTooManyRequests}, want: true},
 		{name: "request timeout", err: &model.HTTPStatusError{StatusCode: http.StatusRequestTimeout}, want: true},
 		{name: "bad request", err: &model.HTTPStatusError{StatusCode: http.StatusBadRequest}, want: false},
-		{name: "unauthorized", err: &model.HTTPStatusError{StatusCode: http.StatusUnauthorized}, want: false},
+		{name: "unprocessable", err: &model.HTTPStatusError{StatusCode: http.StatusUnprocessableEntity}, want: false},
+		{name: "not found", err: &model.HTTPStatusError{StatusCode: http.StatusNotFound}, want: false},
+		// The sender was refused, not the batch: it goes through after the next sign-in
+		{name: "unauthorized", err: &model.HTTPStatusError{StatusCode: http.StatusUnauthorized}, want: true},
+		{name: "forbidden", err: &model.HTTPStatusError{StatusCode: http.StatusForbidden}, want: true},
+		{name: "payment required", err: &model.HTTPStatusError{StatusCode: http.StatusPaymentRequired}, want: true},
 		// Several endpoints: one failure that can work later is enough, in any order
 		{name: "refused by one endpoint, failing on another", want: true, err: errors.Join(
 			&model.HTTPStatusError{StatusCode: http.StatusBadRequest}, &model.HTTPStatusError{StatusCode: http.StatusBadGateway})},
@@ -306,6 +311,28 @@ func TestHandlePubSubSync_SavedBatchIsDeliveredWhenRepublished(t *testing.T) {
 	require.Len(t, got.Data, 1)
 	assert.Equal(t, "make deploy", got.Data[0].Command)
 	assert.Equal(t, int64(20240601120000), got.Data[0].SessionID)
+}
+
+// A token that expired or was revoked gets a 401. The batch is not at fault: it is
+// delivered once the user has signed in again, so it is kept like one the server couldn't
+// take.
+func TestHandlePubSubSync_BatchRefusedForItsTokenIsKept(t *testing.T) {
+	for _, status := range []int{http.StatusUnauthorized, http.StatusForbidden} {
+		t.Run(http.StatusText(status), func(t *testing.T) {
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				w.WriteHeader(status)
+			}))
+			defer server.Close()
+
+			cb := &fakeDaemonCB{open: false}
+			withCircuitBreaker(t, cb)
+			syncConfigFor(t, server.URL)
+
+			payload := model.PostTrackArgs{CursorID: time.Now().UnixNano(), Data: []model.TrackingData{{Command: "ls"}}}
+			require.NoError(t, handlePubSubSync(context.Background(), payload))
+			require.Len(t, cb.savedPayloads, 1)
+		})
+	}
 }
 
 // With a second endpoint configured, which failure was reported used to be whichever

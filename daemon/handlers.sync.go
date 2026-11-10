@@ -58,9 +58,15 @@ func handlePubSubSync(ctx context.Context, socketMsgPayload interface{}) error {
 	return nil
 }
 
-// isRetryableSyncError reports whether sending the same batch again later can work: the
-// request never got an answer (network error, timeout), or the server said it is failing
-// or busy. A batch the server refused (4xx) would be refused again.
+// isRetryableSyncError reports whether sending the same batch again later can work:
+//
+//   - the request never got an answer (network error, timeout);
+//   - the server said it is failing or busy (5xx, 429, 408);
+//   - the server refused the sender, not the batch (401, 402, 403): an expired or revoked
+//     token, or a plan limit. The same batch goes through once the user has signed in
+//     again, and dropping it meanwhile loses it like any other failure would.
+//
+// A batch the server refused for what it holds (any other 4xx) would be refused again.
 //
 // With several endpoints the error holds every endpoint's failure. The batch is worth
 // keeping if any one of them can work later, whichever request failed first.
@@ -71,9 +77,12 @@ func isRetryableSyncError(err error) bool {
 
 	var statusErr *model.HTTPStatusError
 	if errors.As(err, &statusErr) {
-		return statusErr.StatusCode >= http.StatusInternalServerError ||
-			statusErr.StatusCode == http.StatusTooManyRequests ||
-			statusErr.StatusCode == http.StatusRequestTimeout
+		switch statusErr.StatusCode {
+		case http.StatusTooManyRequests, http.StatusRequestTimeout,
+			http.StatusUnauthorized, http.StatusPaymentRequired, http.StatusForbidden:
+			return true
+		}
+		return statusErr.StatusCode >= http.StatusInternalServerError
 	}
 	var urlErr *url.Error
 	return errors.As(err, &urlErr)
