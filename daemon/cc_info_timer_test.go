@@ -16,8 +16,8 @@ import (
 
 type CCInfoTimerTestSuite struct {
 	suite.Suite
-	server                   *httptest.Server
-	originalFetchInterval    time.Duration
+	server                    *httptest.Server
+	originalFetchInterval     time.Duration
 	originalInactivityTimeout time.Duration
 }
 

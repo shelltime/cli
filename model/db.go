@@ -49,7 +49,10 @@ func GetPreCommandsTree(ctx context.Context) (result preCommandTree, err error) 
 	preFilePath := GetPreCommandFilePath()
 	preFileHandler, err := os.Open(preFilePath)
 	if err != nil {
-		slog.Error("Failed to open pre-command file", slog.Any("err", err))
+		// A store without pre.txt holds no pre command yet (see fileStore.GetPreTree)
+		if !os.IsNotExist(err) {
+			slog.Error("Failed to open pre-command file", slog.Any("err", err))
+		}
 		return nil, err
 	}
 	defer preFileHandler.Close()
@@ -88,7 +91,9 @@ func GetPreCommands(ctx context.Context) ([]*Command, error) {
 	preFilePath := GetPreCommandFilePath()
 	preFileHandler, err := os.Open(preFilePath)
 	if err != nil {
-		slog.Error("Failed to open pre-command file", slog.Any("err", err))
+		if !os.IsNotExist(err) {
+			slog.Error("Failed to open pre-command file", slog.Any("err", err))
+		}
 		return nil, err
 	}
 	defer preFileHandler.Close()
@@ -145,6 +150,17 @@ func GetLastCursor(ctx context.Context) (cursorTime time.Time, noCursorExist boo
 		return cursorTime, false, err
 	}
 
+	// if not data exists, just use time.Zero
+	cursorTime, _, err = parseLastCursor(fileContent)
+	if err != nil {
+		slog.Error("Failed to parse cursor value", slog.Any("err", err))
+	}
+	return
+}
+
+// parseLastCursor returns the cursor in the content of cursor.txt: its last non-empty
+// line, a unix time in nanoseconds. found is false when no line holds anything.
+func parseLastCursor(fileContent []byte) (cursorTime time.Time, found bool, err error) {
 	var lastLine string
 	for _, row := range bytes.Split(fileContent, []byte("\n")) {
 		line := string(row)
@@ -153,18 +169,15 @@ func GetLastCursor(ctx context.Context) (cursorTime time.Time, noCursorExist boo
 		}
 		lastLine = line
 	}
-	// if not data exists, just use time.Zero
 	if lastLine == "" {
-		return
+		return time.Time{}, false, nil
 	}
 
 	cursor, err := strconv.Atoi(lastLine)
 	if err != nil {
-		slog.Error("Failed to parse cursor value", slog.Any("err", err))
-		return
+		return time.Time{}, false, err
 	}
-	cursorTime = time.Unix(0, int64(cursor))
-	return
+	return time.Unix(0, int64(cursor)), true, nil
 }
 
 func GetPostCommands(ctx context.Context) ([][]byte, int, error) {

@@ -214,11 +214,11 @@ func TestApps_Collect_DirectoryConfigs(t *testing.T) {
 // apps (bash/fish/nvim/zsh) whose Save writes the .shelltime companion.
 func TestIncludeApps_CollectAndSave(t *testing.T) {
 	cases := []struct {
-		name      string
-		make      func() DotfileApp
-		origRel   string // original config (relative to HOME)
-		stRel     string // .shelltime companion (relative to HOME)
-		checkSub  string // include substring expected in original after setup
+		name     string
+		make     func() DotfileApp
+		origRel  string // original config (relative to HOME)
+		stRel    string // .shelltime companion (relative to HOME)
+		checkSub string // include substring expected in original after setup
 	}{
 		{"ssh", NewSshApp, ".ssh/config", ".ssh/config.shelltime", "config.shelltime"},
 		{"fish", NewFishApp, ".config/fish/config.fish", ".config/fish/config.fish.shelltime", "config.fish.shelltime"},

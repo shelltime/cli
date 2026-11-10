@@ -25,8 +25,8 @@ func SendSessionProjectUpdate(ctx context.Context, config ShellTimeConfig, sessi
 			APIEndpoint: config.APIEndpoint,
 			Token:       config.Token,
 		},
-		Method:  http.MethodPost,
-		Path:    "/api/v1/cc/session-project",
+		Method: http.MethodPost,
+		Path:   "/api/v1/cc/session-project",
 		Payload: &sessionProjectRequest{
 			SessionID:   sessionID,
 			ProjectPath: projectPath,

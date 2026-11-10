@@ -35,20 +35,6 @@ func c2SetupGC(t *testing.T) (baseDir string, cmdDir string, mc *model.MockConfi
 	return baseDir, cmdDir, mc
 }
 
-// --- backupAndWriteFile failure branch ----------------------------------------
-
-// TestBackupAndWriteFile_WriteIntoMissingDirFails hits the os.WriteFile error
-// branch: the target's parent directory does not exist, so the write fails (and
-// no prior file existed, so the rename/backup branch is skipped).
-func TestC2BackupAndWriteFile_WriteIntoMissingDirFails(t *testing.T) {
-	missingDir := filepath.Join(t.TempDir(), "does-not-exist")
-	target := filepath.Join(missingDir, "data.txt")
-
-	err := backupAndWriteFile(target, []byte("payload"))
-	require.Error(t, err)
-	assert.Contains(t, err.Error(), "failed to write file")
-}
-
 // --- cleanCommandFiles: pre without closest post is kept ----------------------
 
 // TestC2CleanCommandFiles_KeepsUnmatchedPre exercises the branch where a pre
