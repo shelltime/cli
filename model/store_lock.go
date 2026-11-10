@@ -18,7 +18,7 @@ import (
 // as it is after the rewrite, because a rewrite replaces a file with a rename.
 //
 // The lock only ever helps. Nobody waits for it longer than commandStoreLockWait, and where
-// it can't be had at all (Windows, a filesystem without flock) everything goes on as it
+// it can't be had at all (Windows, Solaris, a filesystem without flock) everything goes on as it
 // did before the lock existed. See lockCommandStore for what each caller does then.
 
 // commandStoreLockWait bounds the wait for store.lock. An append holds it for a few
