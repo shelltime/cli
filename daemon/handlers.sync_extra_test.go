@@ -240,6 +240,13 @@ func TestIsRetryableSyncError(t *testing.T) {
 		{name: "request timeout", err: &model.HTTPStatusError{StatusCode: http.StatusRequestTimeout}, want: true},
 		{name: "bad request", err: &model.HTTPStatusError{StatusCode: http.StatusBadRequest}, want: false},
 		{name: "unauthorized", err: &model.HTTPStatusError{StatusCode: http.StatusUnauthorized}, want: false},
+		// Several endpoints: one failure that can work later is enough, in any order
+		{name: "refused by one endpoint, failing on another", want: true, err: errors.Join(
+			&model.HTTPStatusError{StatusCode: http.StatusBadRequest}, &model.HTTPStatusError{StatusCode: http.StatusBadGateway})},
+		{name: "failing on one endpoint, refused by another", want: true, err: errors.Join(
+			&model.HTTPStatusError{StatusCode: http.StatusBadGateway}, &model.HTTPStatusError{StatusCode: http.StatusBadRequest})},
+		{name: "refused by every endpoint", want: false, err: errors.Join(
+			&model.HTTPStatusError{StatusCode: http.StatusBadRequest}, &model.HTTPStatusError{StatusCode: http.StatusUnprocessableEntity})},
 		{name: "network error", err: &url.Error{Op: "Post", URL: "http://x", Err: errors.New("connection refused")}, want: true},
 		{name: "local error", err: errors.New("encryption produced an empty key"), want: false},
 	}
@@ -299,4 +306,53 @@ func TestHandlePubSubSync_SavedBatchIsDeliveredWhenRepublished(t *testing.T) {
 	require.Len(t, got.Data, 1)
 	assert.Equal(t, "make deploy", got.Data[0].Command)
 	assert.Equal(t, int64(20240601120000), got.Data[0].SessionID)
+}
+
+// With a second endpoint configured, which failure was reported used to be whichever
+// request finished first. A batch one endpoint refused and the other couldn't take was
+// kept or dropped by that race.
+func TestHandlePubSubSync_SeveralEndpointsKeepTheBatchIfOneCanTakeItLater(t *testing.T) {
+	refusing := func(delay time.Duration) *httptest.Server {
+		return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			time.Sleep(delay)
+			w.WriteHeader(http.StatusBadRequest)
+		}))
+	}
+	failing := func(delay time.Duration) *httptest.Server {
+		return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			time.Sleep(delay)
+			w.WriteHeader(http.StatusServiceUnavailable)
+		}))
+	}
+	const slow = 150 * time.Millisecond
+
+	tests := []struct {
+		name          string
+		first, second *httptest.Server
+		wantSaved     int
+	}{
+		{name: "the refusal arrives first", first: refusing(0), second: failing(slow), wantSaved: 1},
+		{name: "the failure arrives first", first: refusing(slow), second: failing(0), wantSaved: 1},
+		{name: "second endpoint refuses first", first: failing(slow), second: refusing(0), wantSaved: 1},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			defer tt.first.Close()
+			defer tt.second.Close()
+
+			cb := &fakeDaemonCB{open: false}
+			withCircuitBreaker(t, cb)
+			mockCS := model.NewMockConfigService(t)
+			mockCS.On("ReadConfigFile", mock.Anything).Return(model.ShellTimeConfig{
+				Token:       "tok",
+				APIEndpoint: tt.first.URL,
+				Endpoints:   []model.Endpoint{{Token: "tok2", APIEndpoint: tt.second.URL}},
+			}, nil)
+			withStConfig(t, mockCS)
+
+			payload := model.PostTrackArgs{CursorID: time.Now().UnixNano(), Data: []model.TrackingData{{Command: "ls"}}}
+			require.NoError(t, handlePubSubSync(context.Background(), payload))
+			require.Len(t, cb.savedPayloads, tt.wantSaved)
+		})
+	}
 }

@@ -9,6 +9,7 @@ import (
 	"log/slog"
 	"net/http"
 	"net/url"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -60,7 +61,14 @@ func handlePubSubSync(ctx context.Context, socketMsgPayload interface{}) error {
 // isRetryableSyncError reports whether sending the same batch again later can work: the
 // request never got an answer (network error, timeout), or the server said it is failing
 // or busy. A batch the server refused (4xx) would be refused again.
+//
+// With several endpoints the error holds every endpoint's failure. The batch is worth
+// keeping if any one of them can work later, whichever request failed first.
 func isRetryableSyncError(err error) bool {
+	if joined, ok := err.(interface{ Unwrap() []error }); ok {
+		return slices.ContainsFunc(joined.Unwrap(), isRetryableSyncError)
+	}
+
 	var statusErr *model.HTTPStatusError
 	if errors.As(err, &statusErr) {
 		return statusErr.StatusCode >= http.StatusInternalServerError ||
