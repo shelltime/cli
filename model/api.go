@@ -2,6 +2,7 @@ package model
 
 import (
 	"context"
+	"errors"
 	"log/slog"
 	"net/http"
 	"sync"
@@ -91,26 +92,31 @@ func SendLocalDataToServer(ctx context.Context, config ShellTimeConfig, data Pos
 
 	var wg sync.WaitGroup
 
-	wg.Add(len(authPair))
+	// One slot per endpoint, so what is returned doesn't depend on which request
+	// happened to finish first.
+	errs := make([]error, len(authPair))
 
-	errs := make(chan error, len(authPair))
-
-	for _, pair := range authPair {
-		go func(pair Endpoint) {
-			defer wg.Done()
-			err := doSendData(ctx, pair, data)
-			errs <- err
-		}(pair)
+	for i, pair := range authPair {
+		wg.Go(func() {
+			errs[i] = doSendData(ctx, pair, data)
+		})
 	}
 
 	wg.Wait()
-	close(errs)
 
-	for err := range errs {
+	failed := make([]error, 0, len(errs))
+	for _, err := range errs {
 		if err != nil {
-			return err
+			failed = append(failed, err)
 		}
 	}
-
-	return nil
+	switch len(failed) {
+	case 0:
+		return nil
+	case 1:
+		return failed[0]
+	default:
+		// Every failure, in endpoint order (errors.Is and errors.As look at all of them)
+		return errors.Join(failed...)
+	}
 }
