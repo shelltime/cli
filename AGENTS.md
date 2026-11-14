@@ -31,7 +31,6 @@ Keep new code inside the existing package boundary. Do not mix CLI wiring, daemo
 - `go fmt ./...`: format Go code
 - `go vet ./...`: run static analysis
 - `mockery`: regenerate mocks when interfaces change
-- `pp g`: regenerate PromptPal-generated artifacts when relevant
 - `go -C perf test -run '^$' -bench . -benchtime 50x -count 5`: benchmark `shelltime track` latency on the current tree (`perf/` is its own module; see `perf/README.md`)
 - `perf/compare.sh origin/main`: compare `track` latency of a base commit and the working tree, as the `Track Perf` workflow does on every PR and push to `main`
 
@@ -70,4 +69,4 @@ History follows Conventional Commits with scope, for example:
 - `refactor(model): ...`
 - `docs(readme): ...`
 
-Keep commits focused on one behavioral change. PRs should include a short summary, why the change is needed, and test evidence. Link related issues when applicable. If behavior or output changes, include CLI examples or screenshots. Regenerate artifacts such as `pp g` and `mockery` when needed so CI remains green.
+Keep commits focused on one behavioral change. PRs should include a short summary, why the change is needed, and test evidence. Link related issues when applicable. If behavior or output changes, include CLI examples or screenshots. Regenerate mocks with `mockery` when interfaces change so CI remains green.

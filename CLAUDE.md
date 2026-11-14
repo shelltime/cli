@@ -20,8 +20,8 @@ go build -o shelltime ./cmd/cli/main.go
 # Build the daemon binary
 go build -o shelltime-daemon ./cmd/daemon/main.go
 
-# Build with all ldflags (version, commit, AI service config)
-go build -ldflags "-X main.version=v0.1.0 -X main.commit=$(git rev-parse HEAD) -X main.date=$(date -u +%Y-%m-%d) -X main.ppEndpoint=<endpoint> -X main.ppToken=<token>" -o shelltime ./cmd/cli/main.go
+# Build with all ldflags (version, commit, date, Uptrace DSN)
+go build -ldflags "-X main.version=v0.1.0 -X main.commit=$(git rev-parse HEAD) -X main.date=$(date -u +%Y-%m-%d) -X main.uptraceDsn=<dsn>" -o shelltime ./cmd/cli/main.go
 ```
 
 ### Testing
@@ -57,12 +57,9 @@ The `Track Perf` workflow (`.github/workflows/perf.yaml`) runs this on every PR 
 ```bash
 # Generate mocks (uses .mockery.yml configuration, Mockery v3)
 mockery
-
-# Generate PromptPal types (requires pp CLI and API token)
-pp g
 ```
 
-CI runs both `mockery` and `pp g` before tests. Generated files: `model/pp.types.g.go` (PromptPal types), `model/mock_*.go` (testify mocks for service interfaces).
+CI runs `mockery` before tests. Generated files: `model/mock_*.go` (testify mocks for service interfaces).
 
 ### Linting
 ```bash
@@ -82,7 +79,7 @@ go fmt ./...
 ### Service Interfaces (model package)
 Three key interfaces with dependency injection:
 - `ConfigService`: Reads and merges config from `config.yaml`/`config.toml` (YAML preferred) plus the matching `config.local.*` overrides
-- `AIService`: PromptPal integration for AI-powered command suggestions (`shelltime q`)
+- `AIService`: streams `shelltime q` command suggestions from the ShellTime API (`POST /api/v1/ai/command-suggest`, server-sent events)
 - `CommandService`: Executable lookup with fallback paths (handles daemon's limited PATH)
 
 Injection happens in `cmd/*/main.go` via `commands.InjectVar()` and `commands.InjectAIService()`.
@@ -141,7 +138,6 @@ Follow Conventional Commits with scope: `fix(daemon): ...`, `feat(cli): ...`, `r
 
 - **CLI Framework**: `urfave/cli/v2`
 - **Message Queue**: `ThreeDotsLabs/watermill` (in-process pub/sub for daemon)
-- **AI Integration**: `PromptPal/go-sdk` with generated types from `promptpal.yml`
 - **Telemetry**: `uptrace-go` for OTEL
 - **Config**: `pelletier/go-toml/v2`
 - **Git**: `go-git/v5` for branch/dirty detection
@@ -156,5 +152,5 @@ Releases use Release-Please (always-bump-patch) + Goreleaser. macOS builds inclu
 - Daemon is optional but recommended (<8ms latency vs ~100ms+ direct)
 - Encryption requires daemon mode and a token with encryption capability
 - Shell hooks are platform-specific (bash, zsh, fish) - test on target shells
-- CC statusline quota display is macOS-only (requires Keychain access to Claude Code OAuth token)
+- CC statusline quota display needs Claude Code's OAuth token: from the Keychain on macOS, from `~/.claude/.credentials.json` on Linux; other platforms omit it
 - AICodeOtel feature enables AI coding CLI metrics/logs/traces passthrough via gRPC (port 54027) - supports Claude Code, Codex, and other OTEL-compatible CLIs
