@@ -154,6 +154,16 @@ homebrew_casks:
     commit_author:
       name: shelltime-bot
       email: bot@shelltime.xyz
+    # brew swaps the binaries on disk but never touches the running daemon,
+    # so restart it after install/upgrade to pick up the new version.
+    # No-op when the daemon service isn't installed.
+    hooks:
+      post:
+        install_steps: |
+          run "/bin/sh",
+              args:         ["-c", "/bin/launchctl kickstart -k gui/$(/usr/bin/id -u)/xyz.shelltime.daemon 2>/dev/null || true"],
+              must_succeed: false,
+              print_stderr: false
     caveats: |
       Get started with a single command:
         shelltime init
