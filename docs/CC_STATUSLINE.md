@@ -12,7 +12,7 @@ The `shelltime cc statusline` command renders a custom status line for Claude Co
 - Today's total cost (from ShellTime API)
 - AI agent time (session duration)
 - Context window usage percentage
-- Anthropic API quota utilization (5-hour and 7-day windows, macOS only)
+- Anthropic API quota utilization (5-hour and 7-day windows, macOS and Linux)
 
 ## Quick Start
 
@@ -78,13 +78,13 @@ The git section shows the current branch name. If there are uncommitted changes 
 The quota section displays your Anthropic API rate limit utilization across two time windows:
 
 - `🚦 5h:23% 7d:12%` - 23% of 5-hour quota used, 12% of 7-day quota used
-- `🚦 -` - Quota data unavailable (macOS only, requires Claude Code OAuth token)
+- `🚦 -` - Quota data unavailable (requires the Claude Code OAuth token)
 
 The percentage is clickable and links to your [Claude usage settings](https://claude.ai/settings/usage) page.
 
 ### Platform Note
 
-On **Linux**, the quota section (`🚦`) is omitted entirely from the output — the statusline skips from Daily Cost to Time. On **macOS**, it is always shown (either with data or as `🚦 -`).
+On **macOS** and **Linux**, the quota section (`🚦`) is always shown (either with data or as `🚦 -`). On other platforms it is omitted entirely from the output — the statusline skips from Daily Cost to Time.
 
 ### Quota Color Coding
 
@@ -197,11 +197,11 @@ If no token is configured, the daily cost will show as `-`.
 
 ### For Quota Utilization
 
-Requires **macOS** and the ShellTime daemon running. The daemon reads Claude Code's OAuth token from the macOS Keychain (service name: `Claude Code-credentials`) and queries the Anthropic usage API.
+Requires **macOS** or **Linux** and the ShellTime daemon running. The daemon reads Claude Code's OAuth token (from the macOS Keychain, service name `Claude Code-credentials`, or from `~/.claude/.credentials.json` on Linux) and queries the Anthropic usage API.
 
-- **macOS only** - Keychain access is required to retrieve the OAuth token; on Linux the quota section is omitted entirely
+- **macOS and Linux only** - on other platforms the quota section is omitted entirely
 - **Daemon required** - quota data is fetched and cached by the daemon's background timer
-- **No manual setup** - if you're logged into Claude Code on macOS, it works automatically
+- **No manual setup** - if you're logged into Claude Code, it works automatically
 
 If quota data is unavailable, the section will show as `🚦 -`.
 
