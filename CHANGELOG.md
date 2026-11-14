@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.1.99](https://github.com/shelltime/cli/compare/v0.1.98...v0.1.99) (2026-11-14)
+
+
+### Bug Fixes
+
+* **brew:** restart the daemon after brew install/upgrade ([#350](https://github.com/shelltime/cli/issues/350)) ([82967ff](https://github.com/shelltime/cli/commit/82967ffb3609d9bdc88aa6c2b94fe7a9d7355b08))
+* **cli:** print one line from daemon install, uninstall and restart ([#352](https://github.com/shelltime/cli/issues/352)) ([609b4bf](https://github.com/shelltime/cli/commit/609b4bfe3cc5791a604f8190b9200ad4da75b4b9))
+
 ## [0.1.98](https://github.com/shelltime/cli/compare/v0.1.97...v0.1.98) (2026-11-14)
 
 
