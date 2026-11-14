@@ -40,8 +40,14 @@ jobs:
             echo "tag=$RELEASE_TAG" >> "$GITHUB_OUTPUT"
             exit 0
           fi
-          tag=$(git tag --points-at HEAD --list 'v*' | head -n 1)
-          if [ -n "$tag" ] && [ "$(gh release view "$tag" --json assets --jq '.assets | length')" = "0" ]; then
+          tag=$(git tag --points-at HEAD --list 'v*' --sort=-v:refname | head -n 1)
+          if [ -z "$tag" ]; then
+            exit 0
+          fi
+          # A separate assignment, so a failing gh fails the step instead of
+          # quietly skipping goreleaser.
+          assets=$(gh release view "$tag" --json assets --jq '.assets | length')
+          if [ "$assets" = "0" ]; then
             echo "Release $tag has no assets, publishing it again"
             echo "tag=$tag" >> "$GITHUB_OUTPUT"
           fi
