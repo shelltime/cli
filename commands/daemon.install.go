@@ -18,8 +18,18 @@ var DaemonInstallCommand *cli.Command = &cli.Command{
 }
 
 func commandDaemonInstall(c *cli.Context) error {
-	color.Yellow.Println("🔍 Detecting system architecture...")
+	if err := daemonInstall(c); err != nil {
+		return err
+	}
 
+	color.Green.Println("✅ Daemon installed and started")
+	return nil
+}
+
+// daemonInstall installs and starts the daemon service. It prints only what
+// went wrong or took a detour (a daemon binary it had to download, a copy it
+// could not move aside): its callers report success in one line.
+func daemonInstall(c *cli.Context) error {
 	// Get current user's home directory and username
 	currentUser, err := user.Current()
 	if err != nil {
@@ -30,12 +40,8 @@ func commandDaemonInstall(c *cli.Context) error {
 	username := currentUser.Username
 
 	// Bring back a curl-installer daemon preserved as .bak by a previous install
-	restored, err := restoreCurlDaemonBak(filepath.Join(baseFolder, "bin", "shelltime-daemon"))
-	if err != nil {
+	if _, err := restoreCurlDaemonBak(filepath.Join(baseFolder, "bin", "shelltime-daemon")); err != nil {
 		return err
-	}
-	if restored {
-		color.Yellow.Println("🔄 Restored preserved curl-installer daemon from .bak")
 	}
 
 	// Resolve daemon binary (Homebrew/PATH preferred, curl-installer fallback).
@@ -44,9 +50,8 @@ func commandDaemonInstall(c *cli.Context) error {
 	// don't have to rerun the installer.
 	daemonBinPath, err := model.ResolveDaemonBinaryPath()
 	if err != nil {
-		color.Yellow.Println("⚠️  shelltime-daemon binary not found locally.")
 		cliPath, _ := model.ResolveCLIBinaryPath()
-		color.Yellow.Println("⬇️  Attempting to download matching daemon from GitHub releases...")
+		color.Yellow.Println("⬇️  shelltime-daemon not found locally, downloading it from GitHub releases...")
 		daemonBinPath, err = model.EnsureDaemonBinary(c.Context, cliPath, commitID)
 		if err != nil {
 			color.Red.Println("❌ shelltime-daemon binary not found and auto-download failed.")
@@ -55,9 +60,6 @@ func commandDaemonInstall(c *cli.Context) error {
 			color.Yellow.Println("Or via curl installer: curl -sSL https://shelltime.xyz/i | bash")
 			return fmt.Errorf("shelltime-daemon binary not found: %w", err)
 		}
-		color.Green.Printf("✅ Downloaded daemon binary to: %s\n", daemonBinPath)
-	} else {
-		color.Green.Printf("✅ Found daemon binary at: %s\n", daemonBinPath)
 	}
 
 	// If we picked a system-managed binary but a curl-installer copy still
@@ -70,9 +72,7 @@ func commandDaemonInstall(c *cli.Context) error {
 		if info, statErr := os.Stat(curlDaemonPath); statErr == nil && !info.IsDir() {
 			preservedPath := curlDaemonPath + ".bak"
 			_ = os.Remove(preservedPath)
-			if rnErr := os.Rename(curlDaemonPath, preservedPath); rnErr == nil {
-				color.Yellow.Printf("📦 Preserved curl-installer daemon as %s (auto-restores on next `daemon install`).\n", preservedPath)
-			} else {
+			if rnErr := os.Rename(curlDaemonPath, preservedPath); rnErr != nil {
 				color.Yellow.Printf("⚠️ Could not preserve curl-installer daemon at %s: %v\n", curlDaemonPath, rnErr)
 			}
 		}
@@ -85,9 +85,6 @@ func commandDaemonInstall(c *cli.Context) error {
 
 	installer.CheckAndStopExistingService()
 
-	// User-level installation - no system-wide symlink needed
-	color.Yellow.Println("🔍 Setting up user-level daemon installation...")
-
 	if err := installer.InstallService(username); err != nil {
 		return err
 	}
@@ -96,13 +93,7 @@ func commandDaemonInstall(c *cli.Context) error {
 		return err
 	}
 
-	if err := installer.StartService(); err != nil {
-		return err
-	}
-
-	color.Green.Println("✅ Daemon service has been installed and started successfully!")
-	color.Green.Println("💡 Your commands will now be automatically synced to shelltime.xyz faster")
-	return nil
+	return installer.StartService()
 }
 
 // restoreCurlDaemonBak moves curlDaemonPath+".bak" back to curlDaemonPath, but

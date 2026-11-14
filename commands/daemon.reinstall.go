@@ -17,20 +17,13 @@ var DaemonReinstallCommand = &cli.Command{
 }
 
 func commandDaemonReinstall(c *cli.Context) error {
-	color.Yellow.Println("🔄 Starting daemon service reinstallation...")
-
-	// First, uninstall the existing service
-	color.Yellow.Println("🗑  Uninstalling existing daemon service...")
-	if err := commandDaemonUninstall(c); err != nil {
+	if err := daemonUninstall(); err != nil {
+		return err
+	}
+	if err := daemonInstall(c); err != nil {
 		return err
 	}
 
-	// Then, install the service
-	color.Yellow.Println("📦 Installing daemon service...")
-	if err := commandDaemonInstall(c); err != nil {
-		return err
-	}
-
-	color.Green.Println("✅ Daemon service has been successfully reinstalled!")
+	color.Green.Println("✅ Daemon restarted")
 	return nil
 }

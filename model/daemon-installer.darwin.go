@@ -9,8 +9,6 @@ import (
 	"os/user"
 	"path/filepath"
 	"text/template"
-
-	"github.com/gookit/color"
 )
 
 //go:embed sys-desc/xyz.shelltime.daemon.plist
@@ -42,10 +40,7 @@ func (m *MacDaemonInstaller) Check() error {
 }
 
 func (m *MacDaemonInstaller) CheckAndStopExistingService() error {
-	color.Yellow.Println("🔍 Checking if service is running...")
-
 	if err := m.Check(); err == nil {
-		color.Yellow.Println("🛑 Stopping existing service...")
 		currentUser, err := user.Current()
 		if err != nil {
 			return fmt.Errorf("failed to get current user: %w", err)
@@ -119,8 +114,6 @@ func (m *MacDaemonInstaller) RegisterService() error {
 }
 
 func (m *MacDaemonInstaller) StartService() error {
-	color.Yellow.Println("🚀 Starting service...")
-
 	currentUser, err := user.Current()
 	if err != nil {
 		return fmt.Errorf("failed to get current user: %w", err)
@@ -145,17 +138,14 @@ func (m *MacDaemonInstaller) UnregisterService() error {
 
 	agentPath := filepath.Join(currentUser.HomeDir, "Library/LaunchAgents", fmt.Sprintf("%s.plist", m.serviceName))
 
-	color.Yellow.Println("🛑 Stopping service if running...")
 	// Try to stop the service first
 	_ = exec.Command("launchctl", "unload", agentPath).Run()
 
-	color.Yellow.Println("🗑  Removing service files...")
 	// Remove symlink from LaunchAgents
 	if err := os.Remove(agentPath); err != nil && !os.IsNotExist(err) {
 		return fmt.Errorf("failed to remove launch agent plist: %w", err)
 	}
 
-	color.Green.Println("✅ Service unregistered successfully")
 	return nil
 }
 
