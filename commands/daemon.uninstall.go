@@ -17,8 +17,17 @@ var DaemonUninstallCommand = &cli.Command{
 }
 
 func commandDaemonUninstall(c *cli.Context) error {
-	color.Yellow.Println("🔍 Starting daemon service uninstallation...")
+	if err := daemonUninstall(); err != nil {
+		return err
+	}
 
+	color.Green.Println("✅ Daemon uninstalled")
+	return nil
+}
+
+// daemonUninstall removes the daemon service and prints nothing: its callers
+// report the outcome in one line.
+func daemonUninstall() error {
 	// Get current user's home directory and username
 	currentUser, err := user.Current()
 	if err != nil {
@@ -37,11 +46,5 @@ func commandDaemonUninstall(c *cli.Context) error {
 	if err := installer.UnregisterService(); err != nil {
 		return fmt.Errorf("failed to unregister service: %w", err)
 	}
-
-	// No need to remove system-wide symlink for user-level installation
-	color.Yellow.Println("🗑  User-level daemon service cleanup completed...")
-
-	color.Green.Println("✅ Daemon service has been successfully uninstalled!")
-	// color.Yellow.Println("ℹ️  Note: Your commands will now be synced to shelltime.xyz on the next login")
 	return nil
 }

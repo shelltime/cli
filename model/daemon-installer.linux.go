@@ -86,10 +86,7 @@ func (l *LinuxDaemonInstaller) Check() error {
 }
 
 func (l *LinuxDaemonInstaller) CheckAndStopExistingService() error {
-	color.Yellow.Println("🔍 Checking if service is running...")
-
 	if err := l.Check(); err == nil {
-		color.Yellow.Println("🛑 Stopping existing service...")
 		currentUser, err := user.Current()
 		if err != nil {
 			return fmt.Errorf("failed to get current user: %w", err)
@@ -167,17 +164,14 @@ func (l *LinuxDaemonInstaller) StartService() error {
 		return err
 	}
 
-	color.Yellow.Println("🔄 Reloading systemd...")
 	if err := l.systemctlUserCmd("daemon-reload").Run(); err != nil {
 		return fmt.Errorf("failed to reload systemd: %w", err)
 	}
 
-	color.Yellow.Println("✨ Enabling service...")
 	if err := l.systemctlUserCmd("enable", "shelltime").Run(); err != nil {
 		return fmt.Errorf("failed to enable service: %w", err)
 	}
 
-	color.Yellow.Println("🚀 Starting service...")
 	if err := l.systemctlUserCmd("start", "shelltime").Run(); err != nil {
 		return fmt.Errorf("failed to start service: %w", err)
 	}
@@ -196,23 +190,19 @@ func (l *LinuxDaemonInstaller) UnregisterService() error {
 
 	servicePath := filepath.Join(currentUser.HomeDir, ".config/systemd/user/shelltime.service")
 
-	color.Yellow.Println("🛑 Stopping and disabling service if running...")
 	// Try to stop and disable the service
 	_ = l.systemctlUserCmd("stop", "shelltime").Run()
 	_ = l.systemctlUserCmd("disable", "shelltime").Run()
 
-	color.Yellow.Println("🗑  Removing service files...")
 	// Remove symlink from systemd
 	if err := os.Remove(servicePath); err != nil && !os.IsNotExist(err) {
 		return fmt.Errorf("failed to remove systemd service symlink: %w", err)
 	}
 
-	color.Yellow.Println("🔄 Reloading systemd...")
 	if err := l.systemctlUserCmd("daemon-reload").Run(); err != nil {
 		return fmt.Errorf("failed to reload systemd: %w", err)
 	}
 
-	color.Green.Println("✅ Service unregistered successfully")
 	return nil
 }
 
