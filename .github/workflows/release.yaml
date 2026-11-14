@@ -24,6 +24,27 @@ jobs:
         with:
           fetch-depth: 0
       - run: git fetch --force --tags
+      # release-please reports release_created only on the run that tags the
+      # release. If goreleaser then fails (v0.1.97: Apple notarization), a
+      # re-run of this workflow would skip it and leave the release without
+      # binaries, so a re-run publishes the tag on HEAD while its release has
+      # no assets.
+      - name: Find release to publish
+        id: publish
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_CREATED: ${{ steps.release.outputs.release_created }}
+          RELEASE_TAG: ${{ steps.release.outputs.tag_name }}
+        run: |
+          if [ "$RELEASE_CREATED" = "true" ]; then
+            echo "tag=$RELEASE_TAG" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          tag=$(git tag --points-at HEAD --list 'v*' | head -n 1)
+          if [ -n "$tag" ] && [ "$(gh release view "$tag" --json assets --jq '.assets | length')" = "0" ]; then
+            echo "Release $tag has no assets, publishing it again"
+            echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          fi
       - uses: actions/setup-go@v5
         with:
           go-version-file: go.mod
@@ -39,13 +60,13 @@ jobs:
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
       - uses: goreleaser/goreleaser-action@v6
-        if: ${{ steps.release.outputs.release_created }}
+        if: ${{ steps.publish.outputs.tag != '' }}
         with:
           distribution: goreleaser
           version: "~> v2"
           args: release --clean
         env:
-          VERSION: ${{ steps.release.outputs.tag_name }}
+          VERSION: ${{ steps.publish.outputs.tag }}
           UPTRACE_DSN: ${{ secrets.UPTRACE_DSN }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           QUILL_SIGN_P12: ${{ secrets.QUILL_SIGN_P12 }}
