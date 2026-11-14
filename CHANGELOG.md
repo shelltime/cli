@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.1.98](https://github.com/shelltime/cli/compare/v0.1.97...v0.1.98) (2026-11-14)
+
+
+### Bug Fixes
+
+* **ci:** publish a release without assets when the release workflow is re-run ([#349](https://github.com/shelltime/cli/issues/349)) ([21c74ea](https://github.com/shelltime/cli/commit/21c74ea4c75bab455826f1f14dd70a6fc08af15c))
+
+
+### Miscellaneous Chores
+
+* **repo:** remove PromptPal leftovers and document Linux statusline quota ([#347](https://github.com/shelltime/cli/issues/347)) ([88c4237](https://github.com/shelltime/cli/commit/88c4237922081fd6037d4e59948a6d2536a42dc5))
+
 ## [0.1.97](https://github.com/shelltime/cli/compare/v0.1.96...v0.1.97) (2026-11-10)
 
 
