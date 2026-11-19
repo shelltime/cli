@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/gookit/color"
 	"github.com/malamtime/cli/daemon"
 	"github.com/malamtime/cli/model"
 	"github.com/stretchr/testify/assert"
@@ -332,10 +333,32 @@ func (s *CCStatuslineTestSuite) TestFormatQuotaPart_NilValues() {
 	assert.Contains(s.T(), result, "🚦 -")
 }
 
-func (s *CCStatuslineTestSuite) TestFormatQuotaPart_OnlyFiveHourNil() {
-	sd := 0.23
+// Plans without a 5-hour limit: show the 7-day window alone, colored by it.
+func (s *CCStatuslineTestSuite) TestFormatQuotaPart_NoFiveHourWindow() {
+	sd := 31.0
 	result := formatQuotaPart(nil, &sd, "")
-	assert.Contains(s.T(), result, "🚦 -")
+	assert.Contains(s.T(), result, color.Green.Sprint("🚦 7d:31%"))
+	assert.NotContains(s.T(), result, "5h")
+	assert.Contains(s.T(), result, "claude.ai/settings/usage")
+
+	sd = 85.0
+	result = formatQuotaPart(nil, &sd, "oauth")
+	assert.Contains(s.T(), result, color.Red.Sprint("🚦 7d:85%"))
+	assert.NotContains(s.T(), result, "err:")
+}
+
+func (s *CCStatuslineTestSuite) TestFormatQuotaPart_NoSevenDayWindow() {
+	fh := 55.0
+	result := formatQuotaPart(&fh, nil, "")
+	assert.Contains(s.T(), result, color.Yellow.Sprint("🚦 5h:55%"))
+	assert.NotContains(s.T(), result, "7d")
+}
+
+func (s *CCStatuslineTestSuite) TestFormatQuotaPart_BothWindows() {
+	fh := 45.0
+	sd := 85.0
+	result := formatQuotaPart(&fh, &sd, "")
+	assert.Contains(s.T(), result, color.Red.Sprint("🚦 5h:45% 7d:85%"))
 }
 
 func (s *CCStatuslineTestSuite) TestFormatQuotaPart_LowUtilization() {

@@ -91,10 +91,8 @@ func TestSendAnthropicUsageToServer_PostsPayload(t *testing.T) {
 
 	service := NewCCInfoTimerService(&model.ShellTimeConfig{Token: "tok", APIEndpoint: server.URL})
 	usage := &AnthropicRateLimitData{
-		FiveHourUtilization: 0.5,
-		FiveHourResetsAt:    "2025-01-01T00:00:00Z",
-		SevenDayUtilization: 0.25,
-		SevenDayResetsAt:    "2025-01-07T00:00:00Z",
+		FiveHour: &AnthropicRateLimitWindow{Utilization: 0.5, ResetsAt: "2025-01-01T00:00:00Z"},
+		SevenDay: &AnthropicRateLimitWindow{Utilization: 0.25, ResetsAt: "2025-01-07T00:00:00Z"},
 	}
 	service.sendAnthropicUsageToServer(context.Background(), usage)
 
@@ -103,6 +101,38 @@ func TestSendAnthropicUsageToServer_PostsPayload(t *testing.T) {
 	assert.Equal(t, "2025-01-01T00:00:00Z", captured.FiveHour.ResetsAt)
 	assert.Equal(t, 0.25, captured.SevenDay.Utilization)
 	assert.Equal(t, "2025-01-07T00:00:00Z", captured.SevenDay.ResetsAt)
+}
+
+// A window the account doesn't have is left out of the payload, not sent as 0% used.
+func TestSendAnthropicUsageToServer_OmitsMissingWindow(t *testing.T) {
+	var captured map[string]any
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewDecoder(r.Body).Decode(&captured)
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer server.Close()
+
+	service := NewCCInfoTimerService(&model.ShellTimeConfig{Token: "tok", APIEndpoint: server.URL})
+	service.sendAnthropicUsageToServer(context.Background(), &AnthropicRateLimitData{
+		SevenDay: &AnthropicRateLimitWindow{Utilization: 31, ResetsAt: "2026-11-22T09:00:00Z"},
+	})
+
+	require.NotNil(t, captured)
+	assert.NotContains(t, captured, "five_hour")
+	assert.Equal(t, map[string]any{"utilization": float64(31), "resets_at": "2026-11-22T09:00:00Z"}, captured["seven_day"])
+}
+
+func TestSendAnthropicUsageToServer_NoWindowsSendsNothing(t *testing.T) {
+	hit := false
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		hit = true
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer server.Close()
+
+	service := NewCCInfoTimerService(&model.ShellTimeConfig{Token: "tok", APIEndpoint: server.URL})
+	service.sendAnthropicUsageToServer(context.Background(), &AnthropicRateLimitData{})
+	assert.False(t, hit, "no windows -> no request")
 }
 
 func TestSendAnthropicUsageToServer_NoToken(t *testing.T) {
@@ -127,7 +157,7 @@ func TestSendAnthropicUsageToServer_ServerErrorIsSwallowed(t *testing.T) {
 	service := NewCCInfoTimerService(&model.ShellTimeConfig{Token: "tok", APIEndpoint: server.URL})
 	// Must not panic; error is logged and swallowed.
 	assert.NotPanics(t, func() {
-		service.sendAnthropicUsageToServer(context.Background(), &AnthropicRateLimitData{FiveHourUtilization: 1})
+		service.sendAnthropicUsageToServer(context.Background(), &AnthropicRateLimitData{FiveHour: &AnthropicRateLimitWindow{Utilization: 1}})
 	})
 }
 
@@ -140,7 +170,7 @@ func TestFetchRateLimit_FreshCacheSkips(t *testing.T) {
 	// Pre-populate a fresh cache so the TTL guard short-circuits before any
 	// token lookup or network call.
 	service.rateLimitCache.mu.Lock()
-	service.rateLimitCache.usage = &AnthropicRateLimitData{FiveHourUtilization: 0.9}
+	service.rateLimitCache.usage = &AnthropicRateLimitData{FiveHour: &AnthropicRateLimitWindow{Utilization: 0.9}}
 	service.rateLimitCache.fetchedAt = time.Now()
 	service.rateLimitCache.lastAttemptAt = time.Now()
 	service.rateLimitCache.mu.Unlock()
@@ -151,7 +181,8 @@ func TestFetchRateLimit_FreshCacheSkips(t *testing.T) {
 	assert.Equal(t, "", service.GetCachedRateLimitError())
 	rl := service.GetCachedRateLimit()
 	require.NotNil(t, rl)
-	assert.Equal(t, 0.9, rl.FiveHourUtilization)
+	require.NotNil(t, rl.FiveHour)
+	assert.Equal(t, 0.9, rl.FiveHour.Utilization)
 }
 
 func TestFetchRateLimit_OAuthMissingSetsError(t *testing.T) {
@@ -295,7 +326,8 @@ func TestStartUsageSync_SyncsWithoutStatuslineActivity(t *testing.T) {
 
 	rl := service.GetCachedRateLimit()
 	require.NotNil(t, rl)
-	assert.Equal(t, float64(70), rl.SevenDayUtilization)
+	require.NotNil(t, rl.SevenDay)
+	assert.Equal(t, float64(70), rl.SevenDay.Utilization)
 
 	service.timerMu.Lock()
 	assert.False(t, service.timerRunning, "statusline timer should not be started by the usage sync")

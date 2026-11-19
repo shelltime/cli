@@ -248,24 +248,32 @@ func formatStatuslineOutput(p statuslineParams) string {
 }
 
 // formatQuotaPart formats the rate limit quota section of the statusline.
-// Color is based on the max utilization of both buckets.
+// It shows the windows the account has (plans without a 5-hour limit show only 7d),
+// colored by the highest utilization among them.
 func formatQuotaPart(fiveHourUtil, sevenDayUtil *float64, quotaError string) string {
-	if fiveHourUtil == nil || sevenDayUtil == nil {
+	windows := []struct {
+		label string
+		util  *float64
+	}{{"5h", fiveHourUtil}, {"7d", sevenDayUtil}}
+
+	var shown []string
+	maxUtil := 0.0
+	for _, w := range windows {
+		if w.util == nil {
+			continue
+		}
+		shown = append(shown, fmt.Sprintf("%s:%.0f%%", w.label, *w.util))
+		maxUtil = max(maxUtil, *w.util)
+	}
+
+	if len(shown) == 0 {
 		if quotaError != "" {
 			return wrapOSC8Link(claudeUsageURL, color.Red.Sprintf("🚦 err:%s", quotaError))
 		}
 		return wrapOSC8Link(claudeUsageURL, color.Gray.Sprint("🚦 -"))
 	}
 
-	fh := *fiveHourUtil
-	sd := *sevenDayUtil
-
-	text := fmt.Sprintf("🚦 5h:%.0f%% 7d:%.0f%%", fh, sd)
-
-	maxUtil := fh
-	if sd > maxUtil {
-		maxUtil = sd
-	}
+	text := "🚦 " + strings.Join(shown, " ")
 
 	var colored string
 	switch {
