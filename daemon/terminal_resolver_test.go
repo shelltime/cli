@@ -47,6 +47,28 @@ func TestMatchKnownName(t *testing.T) {
 	}
 }
 
+func TestMatchTerminal(t *testing.T) {
+	testCases := []struct {
+		name     string
+		process  string
+		expected string
+	}{
+		{"rex server", "rex", "rex"},
+		{"rex case-insensitive", "Rex", "rex"},
+		{"rex inside another name", "PasswordManagerBrowserExtensionHelper", ""},
+		{"rex inside a daemon name", "powerexperienced", ""},
+		{"substring terminals still match", "ghostty", "ghostty"},
+		{"no terminal match", "fish", ""},
+		{"empty input", "", ""},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			assert.Equal(t, tc.expected, matchTerminal(tc.process))
+		})
+	}
+}
+
 func TestResolveTerminal_NonPositivePPID(t *testing.T) {
 	term, mux := ResolveTerminal(0)
 	assert.Equal(t, "", term)

@@ -35,6 +35,13 @@ var knownTerminals = []string{
 	"cursor",
 }
 
+// Terminals matched by their whole process name, not as a substring: "rex" is also
+// inside names like "BrowserExtensionHelper" and "powerexperienced".
+var knownTerminalsExact = []string{
+	// Rex runs its shells under its server, ".../Rex Server.app/Contents/MacOS/rex"
+	"rex",
+}
+
 // Known terminal multiplexer process names (lowercase for case-insensitive matching)
 var knownMultiplexers = []string{
 	"tmux",
@@ -59,6 +66,16 @@ func matchKnownName(processName string, knownNames []string) string {
 		}
 	}
 	return ""
+}
+
+// matchTerminal returns the known terminal processName belongs to, or "" if none.
+func matchTerminal(processName string) string {
+	for _, known := range knownTerminalsExact {
+		if strings.EqualFold(processName, known) {
+			return known
+		}
+	}
+	return matchKnownName(processName, knownTerminals)
 }
 
 // ResolveTerminal walks up the process tree starting from ppid
@@ -93,7 +110,7 @@ func ResolveTerminal(ppid int) (terminal string, multiplexer string) {
 
 		// Check for terminals
 		if terminal == "" {
-			if matched := matchKnownName(processName, knownTerminals); matched != "" {
+			if matched := matchTerminal(processName); matched != "" {
 				terminal = matched
 			}
 		}
