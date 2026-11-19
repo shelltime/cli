@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.1.99](https://github.com/shelltime/cli/compare/v0.1.98...v0.1.99) (2026-11-19)
+
+
+### Bug Fixes
+
+* **brew:** restart the daemon after brew install/upgrade ([#350](https://github.com/shelltime/cli/issues/350)) ([82967ff](https://github.com/shelltime/cli/commit/82967ffb3609d9bdc88aa6c2b94fe7a9d7355b08))
+* **cli:** print one line from daemon install, uninstall and restart ([#352](https://github.com/shelltime/cli/issues/352)) ([609b4bf](https://github.com/shelltime/cli/commit/609b4bfe3cc5791a604f8190b9200ad4da75b4b9))
+* **daemon:** recognize Rex as the terminal ([#355](https://github.com/shelltime/cli/issues/355)) ([1ac8def](https://github.com/shelltime/cli/commit/1ac8defca7f3fbc3744bc4f6a87fc968d3f92535))
+* **daemon:** show only the quota windows the Claude plan has ([#354](https://github.com/shelltime/cli/issues/354)) ([f8de43e](https://github.com/shelltime/cli/commit/f8de43eaa7e2ae177173c73a2be9bb884481d273))
+
+
+### Miscellaneous Chores
+
+* **ci:** run workflows on GitHub-hosted runners ([#353](https://github.com/shelltime/cli/issues/353)) ([92f160f](https://github.com/shelltime/cli/commit/92f160f760f9c60bdf4c62668a93f46a299f6042))
+
 ## [0.1.98](https://github.com/shelltime/cli/compare/v0.1.97...v0.1.98) (2026-11-14)
 
 
