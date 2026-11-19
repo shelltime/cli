@@ -14,6 +14,7 @@ import (
 
 	"github.com/malamtime/cli/model"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 // withTestUsageURL points fetchAnthropicUsage at a test server for the duration of the test.
@@ -31,7 +32,7 @@ func TestFetchAnthropicUsage_SetsClaudeCodeUserAgent(t *testing.T) {
 		gotCT = r.Header.Get("Content-Type")
 		assert.Equal(t, "Bearer tok", r.Header.Get("Authorization"))
 		assert.Equal(t, "oauth-2025-04-20", r.Header.Get("anthropic-beta"))
-		json.NewEncoder(w).Encode(anthropicUsageResponse{})
+		json.NewEncoder(w).Encode(AnthropicRateLimitData{})
 	}))
 	defer server.Close()
 	withTestUsageURL(t, server.URL)
@@ -46,7 +47,7 @@ func TestFetchAnthropicUsage_UserAgentFallback(t *testing.T) {
 	var gotUA string
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		gotUA = r.Header.Get("User-Agent")
-		json.NewEncoder(w).Encode(anthropicUsageResponse{})
+		json.NewEncoder(w).Encode(AnthropicRateLimitData{})
 	}))
 	defer server.Close()
 	withTestUsageURL(t, server.URL)
@@ -111,7 +112,7 @@ func TestStopTimer_PreservesRateLimitCache(t *testing.T) {
 
 	// Seed a good rate-limit cache.
 	service.rateLimitCache.mu.Lock()
-	service.rateLimitCache.usage = &AnthropicRateLimitData{FiveHourUtilization: 0.5}
+	service.rateLimitCache.usage = &AnthropicRateLimitData{FiveHour: &AnthropicRateLimitWindow{Utilization: 0.5}}
 	service.rateLimitCache.fetchedAt = time.Now()
 	service.rateLimitCache.lastAttemptAt = time.Now()
 	service.rateLimitCache.backoffUntil = time.Now().Add(time.Hour)
@@ -126,8 +127,9 @@ func TestStopTimer_PreservesRateLimitCache(t *testing.T) {
 
 	// The cache must survive an idle stop so the TTL/backoff hold across idle cycles.
 	rl := service.GetCachedRateLimit()
-	assert.NotNil(t, rl)
-	assert.Equal(t, 0.5, rl.FiveHourUtilization)
+	require.NotNil(t, rl)
+	require.NotNil(t, rl.FiveHour)
+	assert.Equal(t, 0.5, rl.FiveHour.Utilization)
 
 	service.rateLimitCache.mu.RLock()
 	assert.False(t, service.rateLimitCache.backoffUntil.IsZero())
@@ -140,41 +142,40 @@ func TestFetchAnthropicUsage_Success(t *testing.T) {
 		assert.Equal(t, "Bearer test-token", r.Header.Get("Authorization"))
 		assert.Equal(t, "oauth-2025-04-20", r.Header.Get("anthropic-beta"))
 
-		resp := anthropicUsageResponse{
-			FiveHour: anthropicUsageBucket{
-				Utilization: 0.45,
-				ResetsAt:    "2025-01-15T12:00:00Z",
-			},
-			SevenDay: anthropicUsageBucket{
-				Utilization: 0.23,
-				ResetsAt:    "2025-01-20T00:00:00Z",
-			},
-		}
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(resp)
+		_, _ = w.Write([]byte(`{"five_hour":{"utilization":0.45,"resets_at":"2025-01-15T12:00:00Z"},"seven_day":{"utilization":0.23,"resets_at":"2025-01-20T00:00:00Z"}}`))
 	}))
 	defer server.Close()
+	withTestUsageURL(t, server.URL)
 
-	// We need to test with the real function but override the URL.
-	// Since fetchAnthropicUsage uses a hardcoded URL, we test the parsing logic
-	// by calling the test server directly.
-	req, err := http.NewRequestWithContext(context.Background(), http.MethodGet, server.URL, nil)
-	assert.NoError(t, err)
-	req.Header.Set("Authorization", "Bearer test-token")
-	req.Header.Set("anthropic-beta", "oauth-2025-04-20")
+	usage, err := fetchAnthropicUsage(context.Background(), "test-token", "")
+	require.NoError(t, err)
 
-	resp, err := http.DefaultClient.Do(req)
-	assert.NoError(t, err)
-	defer resp.Body.Close()
-
-	var usage anthropicUsageResponse
-	err = json.NewDecoder(resp.Body).Decode(&usage)
-	assert.NoError(t, err)
-
+	require.NotNil(t, usage.FiveHour)
 	assert.Equal(t, 0.45, usage.FiveHour.Utilization)
 	assert.Equal(t, "2025-01-15T12:00:00Z", usage.FiveHour.ResetsAt)
+	require.NotNil(t, usage.SevenDay)
 	assert.Equal(t, 0.23, usage.SevenDay.Utilization)
 	assert.Equal(t, "2025-01-20T00:00:00Z", usage.SevenDay.ResetsAt)
+}
+
+// Plans without a 5-hour limit get "five_hour": null (the shape the API returned in November 2026,
+// trimmed): the window must stay nil rather than read as 0% used.
+func TestFetchAnthropicUsage_NoFiveHourWindow(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"five_hour":null,"seven_day":{"utilization":31.0,"resets_at":"2026-11-22T09:00:00.444694+00:00","limit_dollars":null,"used_dollars":null,"remaining_dollars":null,"locked_reason":null},"seven_day_opus":null,"limits":[{"kind":"weekly_all","group":"weekly","percent":31,"severity":"normal","resets_at":"2026-11-22T09:00:00.444694+00:00","scope":null,"is_active":false}]}`))
+	}))
+	defer server.Close()
+	withTestUsageURL(t, server.URL)
+
+	usage, err := fetchAnthropicUsage(context.Background(), "test-token", "")
+	require.NoError(t, err)
+
+	assert.Nil(t, usage.FiveHour)
+	require.NotNil(t, usage.SevenDay)
+	assert.Equal(t, 31.0, usage.SevenDay.Utilization)
+	assert.Equal(t, "2026-11-22T09:00:00.444694+00:00", usage.SevenDay.ResetsAt)
 }
 
 func TestFetchAnthropicUsage_NonOKStatus(t *testing.T) {
@@ -269,21 +270,25 @@ func TestAnthropicRateLimitCache_GetCachedRateLimit_ReturnsCopy(t *testing.T) {
 
 	service.rateLimitCache.mu.Lock()
 	service.rateLimitCache.usage = &AnthropicRateLimitData{
-		FiveHourUtilization: 0.5,
-		SevenDayUtilization: 0.3,
+		FiveHour: &AnthropicRateLimitWindow{Utilization: 0.5},
+		SevenDay: &AnthropicRateLimitWindow{Utilization: 0.3},
 	}
 	service.rateLimitCache.mu.Unlock()
 
 	result := service.GetCachedRateLimit()
-	assert.NotNil(t, result)
-	assert.Equal(t, 0.5, result.FiveHourUtilization)
-	assert.Equal(t, 0.3, result.SevenDayUtilization)
+	require.NotNil(t, result)
+	require.NotNil(t, result.FiveHour)
+	require.NotNil(t, result.SevenDay)
+	assert.Equal(t, 0.5, result.FiveHour.Utilization)
+	assert.Equal(t, 0.3, result.SevenDay.Utilization)
 
-	// Modify returned copy - original should be unchanged
-	result.FiveHourUtilization = 0.99
+	// Modify returned copy - original should be unchanged, windows included
+	result.FiveHour.Utilization = 0.99
+	result.SevenDay = nil
 
 	service.rateLimitCache.mu.RLock()
-	assert.Equal(t, 0.5, service.rateLimitCache.usage.FiveHourUtilization)
+	assert.Equal(t, 0.5, service.rateLimitCache.usage.FiveHour.Utilization)
+	assert.NotNil(t, service.rateLimitCache.usage.SevenDay)
 	service.rateLimitCache.mu.RUnlock()
 }
 

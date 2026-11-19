@@ -410,10 +410,14 @@ func (p *SocketHandler) handleCCInfo(conn net.Conn, msg SocketMessage) {
 		UserLogin:           p.ccInfoTimer.GetCachedUserLogin(),
 	}
 
-	// Populate rate limit fields if available, otherwise surface error
+	// Populate the rate limit windows the account has, otherwise surface error
 	if rl := p.ccInfoTimer.GetCachedRateLimit(); rl != nil {
-		response.FiveHourUtilization = &rl.FiveHourUtilization
-		response.SevenDayUtilization = &rl.SevenDayUtilization
+		if rl.FiveHour != nil {
+			response.FiveHourUtilization = &rl.FiveHour.Utilization
+		}
+		if rl.SevenDay != nil {
+			response.SevenDayUtilization = &rl.SevenDay.Utilization
+		}
 	} else {
 		response.QuotaError = p.ccInfoTimer.GetCachedRateLimitError()
 	}

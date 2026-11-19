@@ -556,8 +556,8 @@ func (s *CCInfoTimerService) fetchRateLimit(ctx context.Context) {
 	}()
 
 	slog.Debug("Anthropic rate limit updated",
-		slog.Float64("5h", usage.FiveHourUtilization),
-		slog.Float64("7d", usage.SevenDayUtilization))
+		slog.Any("5h", usage.FiveHour),
+		slog.Any("7d", usage.SevenDay))
 }
 
 // GetCachedUserLogin returns the cached user login, or empty string if not yet fetched.
@@ -614,33 +614,14 @@ func (s *CCInfoTimerService) fetchUserProfile(ctx context.Context) {
 }
 
 // sendAnthropicUsageToServer sends the Anthropic usage data to the ShellTime server
-// for scheduling push notifications when rate limits reset.
+// for scheduling push notifications when rate limits reset. A window the account doesn't have is
+// left out of the payload; nothing is sent when it has neither.
 func (s *CCInfoTimerService) sendAnthropicUsageToServer(ctx context.Context, usage *AnthropicRateLimitData) {
-	if s.config.Token == "" {
+	if s.config.Token == "" || (usage.FiveHour == nil && usage.SevenDay == nil) {
 		return
 	}
 
-	type usageBucket struct {
-		Utilization float64 `json:"utilization"`
-		ResetsAt    string  `json:"resets_at"`
-	}
-	type usagePayload struct {
-		FiveHour usageBucket `json:"five_hour"`
-		SevenDay usageBucket `json:"seven_day"`
-	}
-
-	payload := usagePayload{
-		FiveHour: usageBucket{
-			Utilization: usage.FiveHourUtilization,
-			ResetsAt:    usage.FiveHourResetsAt,
-		},
-		SevenDay: usageBucket{
-			Utilization: usage.SevenDayUtilization,
-			ResetsAt:    usage.SevenDayResetsAt,
-		},
-	}
-
-	err := model.SendHTTPRequestJSON(model.HTTPRequestOptions[usagePayload, any]{
+	err := model.SendHTTPRequestJSON(model.HTTPRequestOptions[AnthropicRateLimitData, any]{
 		Context: ctx,
 		Endpoint: model.Endpoint{
 			Token:       s.config.Token,
@@ -648,7 +629,7 @@ func (s *CCInfoTimerService) sendAnthropicUsageToServer(ctx context.Context, usa
 		},
 		Method:  "POST",
 		Path:    "/api/v1/anthropic-usage",
-		Payload: payload,
+		Payload: *usage,
 		Timeout: 5 * time.Second,
 	})
 	if err != nil {
@@ -665,9 +646,7 @@ func (s *CCInfoTimerService) GetCachedRateLimit() *AnthropicRateLimitData {
 		return nil
 	}
 
-	// Return a copy
-	copy := *s.rateLimitCache.usage
-	return &copy
+	return s.rateLimitCache.usage.clone()
 }
 
 // GetCachedRateLimitError returns the last error from rate limit fetching, or empty string if none.

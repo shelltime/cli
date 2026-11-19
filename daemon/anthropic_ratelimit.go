@@ -43,12 +43,32 @@ var fetchClaudeCodeOAuthTokenFunc = fetchClaudeCodeOAuthToken
 // not, so the endpoint authenticates them but returns 403 "does not meet scope requirement user:profile".
 const anthropicUsageRequiredScope = "user:profile"
 
-// AnthropicRateLimitData holds the parsed rate limit utilization data
+// AnthropicRateLimitWindow is one quota window of the usage API.
+type AnthropicRateLimitWindow struct {
+	Utilization float64 `json:"utilization"`
+	ResetsAt    string  `json:"resets_at"`
+}
+
+// AnthropicRateLimitData holds the quota windows of the usage API, in the shape the API returns
+// them and /api/v1/anthropic-usage takes them. A window is nil when the account has no such limit:
+// plans without a 5-hour limit get "five_hour": null, and it is then left out of the payload.
 type AnthropicRateLimitData struct {
-	FiveHourUtilization float64
-	FiveHourResetsAt    string
-	SevenDayUtilization float64
-	SevenDayResetsAt    string
+	FiveHour *AnthropicRateLimitWindow `json:"five_hour,omitempty"`
+	SevenDay *AnthropicRateLimitWindow `json:"seven_day,omitempty"`
+}
+
+// clone returns a copy that shares no window with d.
+func (d *AnthropicRateLimitData) clone() *AnthropicRateLimitData {
+	c := &AnthropicRateLimitData{}
+	if d.FiveHour != nil {
+		w := *d.FiveHour
+		c.FiveHour = &w
+	}
+	if d.SevenDay != nil {
+		w := *d.SevenDay
+		c.SevenDay = &w
+	}
+	return c
 }
 
 type anthropicRateLimitCache struct {
@@ -69,17 +89,6 @@ type anthropicAPIError struct {
 
 func (e *anthropicAPIError) Error() string {
 	return fmt.Sprintf("anthropic usage API returned status %d", e.StatusCode)
-}
-
-// anthropicUsageResponse maps the Anthropic API response
-type anthropicUsageResponse struct {
-	FiveHour anthropicUsageBucket `json:"five_hour"`
-	SevenDay anthropicUsageBucket `json:"seven_day"`
-}
-
-type anthropicUsageBucket struct {
-	Utilization float64 `json:"utilization"`
-	ResetsAt    string  `json:"resets_at"`
 }
 
 // claudeCodeCredentials maps the JSON stored in macOS Keychain or ~/.claude/.credentials.json
@@ -199,17 +208,12 @@ func fetchAnthropicUsage(ctx context.Context, token, version string) (*Anthropic
 		}
 	}
 
-	var usage anthropicUsageResponse
+	var usage AnthropicRateLimitData
 	if err := json.NewDecoder(resp.Body).Decode(&usage); err != nil {
 		return nil, fmt.Errorf("failed to decode usage response: %w", err)
 	}
 
-	return &AnthropicRateLimitData{
-		FiveHourUtilization: usage.FiveHour.Utilization,
-		FiveHourResetsAt:    usage.FiveHour.ResetsAt,
-		SevenDayUtilization: usage.SevenDay.Utilization,
-		SevenDayResetsAt:    usage.SevenDay.ResetsAt,
-	}, nil
+	return &usage, nil
 }
 
 // parseRetryAfter parses an HTTP Retry-After header in delay-seconds form.

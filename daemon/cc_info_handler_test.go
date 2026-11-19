@@ -339,8 +339,8 @@ func (s *CCInfoHandlerTestSuite) TestHandleCCInfo_IncludesRateLimitWhenCached() 
 	// Pre-populate rate limit cache
 	handler.ccInfoTimer.rateLimitCache.mu.Lock()
 	handler.ccInfoTimer.rateLimitCache.usage = &AnthropicRateLimitData{
-		FiveHourUtilization: 0.45,
-		SevenDayUtilization: 0.23,
+		FiveHour: &AnthropicRateLimitWindow{Utilization: 0.45},
+		SevenDay: &AnthropicRateLimitWindow{Utilization: 0.23},
 	}
 	handler.ccInfoTimer.rateLimitCache.fetchedAt = time.Now()
 	handler.ccInfoTimer.rateLimitCache.mu.Unlock()
@@ -369,6 +369,50 @@ func (s *CCInfoHandlerTestSuite) TestHandleCCInfo_IncludesRateLimitWhenCached() 
 	assert.NotNil(s.T(), response.SevenDayUtilization)
 	assert.Equal(s.T(), 0.45, *response.FiveHourUtilization)
 	assert.Equal(s.T(), 0.23, *response.SevenDayUtilization)
+}
+
+// A plan without a 5-hour limit: only the 7-day window is answered, and no error.
+func (s *CCInfoHandlerTestSuite) TestHandleCCInfo_OmitsMissingFiveHourWindow() {
+	config := &model.ShellTimeConfig{
+		SocketPath: s.socketPath,
+	}
+
+	ch := NewGoChannel(PubSubConfig{OutputChannelBuffer: 10}, nil)
+	defer ch.Close()
+	handler := NewSocketHandler(config, ch)
+
+	handler.ccInfoTimer.rateLimitCache.mu.Lock()
+	handler.ccInfoTimer.rateLimitCache.usage = &AnthropicRateLimitData{
+		SevenDay: &AnthropicRateLimitWindow{Utilization: 31},
+	}
+	handler.ccInfoTimer.rateLimitCache.fetchedAt = time.Now()
+	handler.ccInfoTimer.rateLimitCache.mu.Unlock()
+
+	serverConn, clientConn := net.Pipe()
+	defer serverConn.Close()
+	defer clientConn.Close()
+
+	msg := SocketMessage{
+		Type: SocketMessageTypeCCInfo,
+		Payload: map[string]interface{}{
+			"timeRange": "today",
+		},
+	}
+
+	go func() {
+		handler.handleCCInfo(serverConn, msg)
+	}()
+
+	var response CCInfoResponse
+	decoder := json.NewDecoder(clientConn)
+	err := decoder.Decode(&response)
+
+	assert.NoError(s.T(), err)
+	assert.Nil(s.T(), response.FiveHourUtilization)
+	if assert.NotNil(s.T(), response.SevenDayUtilization) {
+		assert.Equal(s.T(), 31.0, *response.SevenDayUtilization)
+	}
+	assert.Empty(s.T(), response.QuotaError)
 }
 
 func (s *CCInfoHandlerTestSuite) TestHandleCCInfo_OmitsRateLimitWhenNotCached() {

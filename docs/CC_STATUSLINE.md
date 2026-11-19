@@ -75,9 +75,10 @@ The git section shows the current branch name. If there are uncommitted changes 
 
 ### Quota Utilization
 
-The quota section displays your Anthropic API rate limit utilization across two time windows:
+The quota section displays your Anthropic API rate limit utilization for the windows your plan has:
 
 - `🚦 5h:23% 7d:12%` - 23% of 5-hour quota used, 12% of 7-day quota used
+- `🚦 7d:12%` - The plan has no 5-hour limit (the usage API reports `five_hour: null`), so only the 7-day window is shown
 - `🚦 -` - Quota data unavailable (requires the Claude Code OAuth token)
 
 The percentage is clickable and links to your [Claude usage settings](https://claude.ai/settings/usage) page.
@@ -88,7 +89,7 @@ On **macOS** and **Linux**, the quota section (`🚦`) is always shown (either w
 
 ### Quota Color Coding
 
-Color is based on the **maximum** utilization across both windows:
+Color is based on the **maximum** utilization across the windows shown:
 
 | Usage | Color | Meaning |
 |-------|-------|---------|
