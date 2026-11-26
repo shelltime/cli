@@ -3,6 +3,7 @@ package model
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -20,11 +21,13 @@ import (
 type projectsServer struct {
 	server     *httptest.Server
 	unresolved []UnresolvedProject
-	truncated  bool
+	// pageSize pages the listing like the server, by the last project sent; 0 sends it whole.
+	pageSize int
 
-	mu    sync.Mutex
-	hosts []string
-	moved [][]ProjectRepository
+	mu     sync.Mutex
+	hosts  []string
+	afters []*unresolvedProjectCursor
+	moved  [][]ProjectRepository
 }
 
 func newProjectsServer(t *testing.T, unresolved ...UnresolvedProject) *projectsServer {
@@ -39,7 +42,20 @@ func newProjectsServer(t *testing.T, unresolved ...UnresolvedProject) *projectsS
 			var body unresolvedProjectsRequest
 			require.NoError(t, json.NewDecoder(r.Body).Decode(&body))
 			ps.hosts = body.Hosts
-			_ = json.NewEncoder(w).Encode(unresolvedProjectsResponse{Projects: ps.unresolved, Truncated: ps.truncated})
+			ps.afters = append(ps.afters, body.After)
+			start := 0
+			if body.After != nil {
+				for i, p := range ps.unresolved {
+					if p.Host == body.After.Host && p.Pwd == body.After.Pwd {
+						start = i + 1
+					}
+				}
+			}
+			end := len(ps.unresolved)
+			if ps.pageSize > 0 {
+				end = min(start+ps.pageSize, end)
+			}
+			_ = json.NewEncoder(w).Encode(unresolvedProjectsResponse{Projects: ps.unresolved[start:end], Truncated: end < len(ps.unresolved)})
 		case "/api/v1/cc/projects/repositories":
 			var body projectRepositoriesRequest
 			require.NoError(t, json.NewDecoder(r.Body).Decode(&body))
@@ -65,7 +81,7 @@ func TestMigrateProjectRepositories(t *testing.T) {
 	repos := NewGitRepositoryResolver(time.Minute)
 	repos.git = func(_ context.Context, dir string, args ...string) (string, error) {
 		if dir != clone {
-			return "", os.ErrNotExist
+			return "", gitExitError{errors.New("not a git repository")}
 		}
 		return (&fakeGit{root: clone, remotes: "origin", url: "git@github.com:acme/web.git"}).run(context.Background(), dir, args...)
 	}
@@ -85,12 +101,42 @@ func TestMigrateProjectRepositories(t *testing.T) {
 	require.Len(t, ps.moved, 1)
 	assert.Equal(t, result.Linked, ps.moved[0])
 	assert.Equal(t, 3, result.Sessions)
-	assert.False(t, result.Truncated)
+	assert.True(t, result.Complete())
+}
 
-	ps.truncated = true
-	result, err = MigrateProjectRepositories(context.Background(), endpoint, []string{"mbp"}, repos, true)
+// The listing comes a page at a time; folders that can't be moved stay in it, so the run pages
+// by the last project of each page.
+func TestMigrateProjectRepositoriesPages(t *testing.T) {
+	ps := newProjectsServer(t,
+		UnresolvedProject{Host: "mbp", Pwd: "/gone/a"},
+		UnresolvedProject{Host: "mbp", Pwd: "/gone/b"},
+		UnresolvedProject{Host: "mbp", Pwd: "/gone/c"},
+	)
+	ps.pageSize = 2
+	result, err := MigrateProjectRepositories(context.Background(), Endpoint{Token: "tok", APIEndpoint: ps.server.URL}, []string{"mbp"}, NewGitRepositoryResolver(0), false)
 	require.NoError(t, err)
-	assert.True(t, result.Truncated, "a list the server cut short is reported")
+	assert.Equal(t, 3, result.Checked)
+	assert.Equal(t, 3, result.Missing)
+	assert.True(t, result.Complete())
+	require.Len(t, ps.afters, 2)
+	assert.Nil(t, ps.afters[0])
+	assert.Equal(t, &unresolvedProjectCursor{Host: "mbp", Pwd: "/gone/b"}, ps.afters[1])
+}
+
+// A folder git couldn't answer for is unknown, not "no repository": the run isn't complete.
+func TestMigrateProjectRepositoriesCountsUncheckedFolders(t *testing.T) {
+	dir := t.TempDir()
+	ps := newProjectsServer(t, UnresolvedProject{Host: "mbp", Pwd: dir})
+	repos := NewGitRepositoryResolver(time.Minute)
+	repos.git = func(context.Context, string, ...string) (string, error) {
+		return "", context.DeadlineExceeded
+	}
+	result, err := MigrateProjectRepositories(context.Background(), Endpoint{Token: "tok", APIEndpoint: ps.server.URL}, []string{"mbp"}, repos, false)
+	require.NoError(t, err)
+	assert.Equal(t, 1, result.Unchecked)
+	assert.Zero(t, result.NotRepositories)
+	assert.False(t, result.Complete())
+	assert.Empty(t, ps.moved)
 }
 
 func TestMigrateProjectRepositoriesWithoutHosts(t *testing.T) {
@@ -115,6 +161,9 @@ func TestMigrateProjectRepositoriesReportsServerErrors(t *testing.T) {
 func TestProjectMigrationHosts(t *testing.T) {
 	hostname, err := os.Hostname()
 	require.NoError(t, err)
+	if genericHostNames[strings.ToLower(hostname)] {
+		t.Skip("this machine's host name is a generic one")
+	}
 	hosts := ProjectMigrationHosts("old-name")
 	assert.Equal(t, hostname, hosts[0])
 	assert.Equal(t, "old-name", hosts[len(hosts)-1])

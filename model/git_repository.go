@@ -88,7 +88,11 @@ type GitRepository struct {
 const (
 	// gitRepositoryTimeout bounds a whole lookup (up to three git runs), well under an OTLP
 	// exporter's timeout, since the daemon resolves on the export path.
-	gitRepositoryTimeout    = 2 * time.Second
+	gitRepositoryTimeout = 2 * time.Second
+	// gitRepositoryRetryAfter is how long a lookup that timed out or couldn't start git is
+	// remembered: long enough that a hung mount doesn't cost every export the whole budget,
+	// short enough that the directory is asked about again soon.
+	gitRepositoryRetryAfter = 30 * time.Second
 	gitRepositoryMaxEntries = 512
 )
 
@@ -101,9 +105,10 @@ func (e gitExitError) Error() string { return e.err.Error() }
 func (e gitExitError) Unwrap() error { return e.err }
 
 // GitRepositoryResolver finds the repository a directory belongs to with the git CLI, and
-// remembers definitive answers for a while, negative ones included: the daemon asks for the same
-// few directories on every OTEL export and statusline render. Concurrent lookups of one
-// directory share one run of git.
+// remembers answers for a while, negative ones included: the daemon asks for the same few
+// directories on every OTEL export and statusline render. A definitive answer is kept for the
+// resolver's TTL, one from a lookup that timed out or couldn't start git for
+// gitRepositoryRetryAfter at most. Concurrent lookups of one directory share one run of git.
 type GitRepositoryResolver struct {
 	ttl time.Duration
 	// git runs git with args in dir; tests replace it.
@@ -116,13 +121,15 @@ type GitRepositoryResolver struct {
 }
 
 type gitRepositoryEntry struct {
-	repo    GitRepository
-	expires time.Time
+	repo       GitRepository
+	definitive bool
+	expires    time.Time
 }
 
 type gitRepositoryCall struct {
-	done chan struct{}
-	repo GitRepository
+	done       chan struct{}
+	repo       GitRepository
+	definitive bool
 }
 
 // NewGitRepositoryResolver returns a resolver that keeps answers for ttl (0 keeps nothing).
@@ -168,27 +175,34 @@ func runGit(ctx context.Context, dir string, args ...string) (string, error) {
 // Resolve returns the repository dir belongs to. A directory that doesn't exist, isn't in a
 // work tree or can't be read returns the zero GitRepository.
 func (r *GitRepositoryResolver) Resolve(ctx context.Context, dir string) GitRepository {
+	repo, _ := r.Lookup(ctx, dir)
+	return repo
+}
+
+// Lookup is Resolve, and also says whether the answer is definitive: false when git timed out or
+// couldn't run (or ctx ended first), so the directory's repository is unknown rather than none.
+func (r *GitRepositoryResolver) Lookup(ctx context.Context, dir string) (GitRepository, bool) {
 	dir = strings.TrimSpace(dir)
 	if dir == "" || !filepath.IsAbs(dir) {
-		return GitRepository{}
+		return GitRepository{}, true
 	}
 	dir = filepath.Clean(dir)
 	if dir == string(filepath.Separator) {
-		return GitRepository{}
+		return GitRepository{}, true
 	}
 
 	r.mu.Lock()
 	if e, ok := r.cache[dir]; ok && r.now().Before(e.expires) {
 		r.mu.Unlock()
-		return e.repo
+		return e.repo, e.definitive
 	}
 	if call, ok := r.inflight[dir]; ok {
 		r.mu.Unlock()
 		select {
 		case <-call.done:
-			return call.repo
+			return call.repo, call.definitive
 		case <-ctx.Done():
-			return GitRepository{}
+			return GitRepository{}, false
 		}
 	}
 	call := &gitRepositoryCall{done: make(chan struct{})}
@@ -202,9 +216,9 @@ func (r *GitRepositoryResolver) Resolve(ctx context.Context, dir string) GitRepo
 	cancel()
 
 	r.mu.Lock()
-	call.repo = repo
+	call.repo, call.definitive = repo, definitive
 	delete(r.inflight, dir)
-	if definitive && r.ttl > 0 {
+	if ttl := r.entryTTL(definitive); ttl > 0 {
 		now := r.now()
 		if len(r.cache) >= gitRepositoryMaxEntries {
 			for k, e := range r.cache {
@@ -216,11 +230,19 @@ func (r *GitRepositoryResolver) Resolve(ctx context.Context, dir string) GitRepo
 				clear(r.cache)
 			}
 		}
-		r.cache[dir] = gitRepositoryEntry{repo: repo, expires: now.Add(r.ttl)}
+		r.cache[dir] = gitRepositoryEntry{repo: repo, definitive: definitive, expires: now.Add(ttl)}
 	}
 	r.mu.Unlock()
 	close(call.done)
-	return repo
+	return repo, definitive
+}
+
+// entryTTL is how long an answer is kept.
+func (r *GitRepositoryResolver) entryTTL(definitive bool) time.Duration {
+	if definitive {
+		return r.ttl
+	}
+	return min(r.ttl, gitRepositoryRetryAfter)
 }
 
 // lookup asks git about dir. definitive is false when git timed out or couldn't run, so the

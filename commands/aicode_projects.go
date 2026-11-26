@@ -46,6 +46,9 @@ func commandAICodeProjects(c *cli.Context) error {
 	if cfg.Token == "" {
 		return errors.New("no ShellTime token configured, run `shelltime init` first")
 	}
+	if skippedInAICloudOnly(cfg, "Projects not grouped") {
+		return nil
+	}
 	endpoint := model.Endpoint{Token: cfg.Token, APIEndpoint: cfg.APIEndpoint}
 	hosts := model.ProjectMigrationHosts(model.NewClaudeSettingsAICodeOtelEnvService().ResourceMachineName())
 	dryRun := c.Bool("dry-run")
@@ -79,8 +82,11 @@ func commandAICodeProjects(c *cli.Context) error {
 
 	fmt.Printf("%d folder projects found: %d in a git repository, %d no longer here, %d not in a repository with a remote.\n",
 		result.Checked, len(result.Linked), result.Missing, result.NotRepositories)
+	if result.Unchecked > 0 {
+		color.Yellow.Printf("git didn't answer for %d folders; run it again to check them.\n", result.Unchecked)
+	}
 	if result.Truncated {
-		color.Yellow.Println("The server listed only part of this machine's folder projects; run it again to check the rest.")
+		color.Yellow.Println("This machine has more folder projects than one run goes through; run it again to check the rest.")
 	}
 	switch {
 	case dryRun:

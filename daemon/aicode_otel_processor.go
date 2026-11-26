@@ -78,22 +78,30 @@ func NewAICodeOtelProcessor(config model.ShellTimeConfig) *AICodeOtelProcessor {
 const repositoryCacheTTL = 10 * time.Minute
 
 // resolveRepository returns the canonical URL of the repository the resource's working
-// directory belongs to, or "".
+// directory belongs to, or "". A resource that names its repository itself needs no lookup.
 func (p *AICodeOtelProcessor) resolveRepository(ctx context.Context, res *otelResource) string {
 	if p.repos == nil || res.attrs.Pwd == "" {
+		return ""
+	}
+	if _, ok := res.attrs.Attributes[model.AICodeRepositoryAttribute]; ok {
 		return ""
 	}
 	return p.repos.Resolve(ctx, res.attrs.Pwd).URL
 }
 
-// fillRepository adds the resource's repository to a record that doesn't name one yet. It is
-// seeded before the record's own attributes, so a vcs.repository.url.full that Claude Code
-// sent on the record still wins.
+// fillRepository adds the repository of the resource's working directory to a record that
+// doesn't name one. It is seeded before the record's own attributes, so a
+// vcs.repository.url.full that Claude Code sent on the record still wins, and it adds nothing
+// when the agent named the repository on the resource (events carry that one already; metrics
+// don't copy the resource's other attributes, and must not get a different one from the folder).
 func fillRepository(attrs map[string]any, res *otelResource) map[string]any {
 	if res.repository == "" {
 		return attrs
 	}
 	if _, ok := attrs[model.AICodeRepositoryAttribute]; ok {
+		return attrs
+	}
+	if _, ok := res.attrs.Attributes[model.AICodeRepositoryAttribute]; ok {
 		return attrs
 	}
 	return setAttribute(attrs, model.AICodeRepositoryAttribute, res.repository)

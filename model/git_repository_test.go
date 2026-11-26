@@ -129,13 +129,15 @@ func TestGitRepositoryResolverCachesNegativeAnswers(t *testing.T) {
 	assert.Equal(t, 1, git.calls)
 }
 
-// A timeout, or git failing to start, says nothing about the directory: the next lookup asks
-// again instead of serving a cached "no repository" for the whole TTL.
+// A timeout, or git failing to start, says nothing about the directory: it is kept only briefly
+// and reported as unknown, instead of serving a cached "no repository" for the whole TTL.
 func TestGitRepositoryResolverDoesNotCacheTransientFailures(t *testing.T) {
 	dir := t.TempDir()
 	calls := 0
 	failing := true
-	r := NewGitRepositoryResolver(time.Minute)
+	now := time.Unix(1_700_000_000, 0)
+	r := NewGitRepositoryResolver(time.Hour)
+	r.now = func() time.Time { return now }
 	r.git = func(ctx context.Context, d string, args ...string) (string, error) {
 		calls++
 		if failing {
@@ -144,12 +146,23 @@ func TestGitRepositoryResolverDoesNotCacheTransientFailures(t *testing.T) {
 		return (&fakeGit{root: dir, remotes: "origin", url: "https://github.com/acme/web"}).run(ctx, d, args...)
 	}
 
-	assert.Equal(t, GitRepository{}, r.Resolve(context.Background(), dir))
+	repo, definitive := r.Lookup(context.Background(), dir)
+	assert.Equal(t, GitRepository{}, repo)
+	assert.False(t, definitive, "unknown, not no repository")
 	failing = false
-	assert.Equal(t, "https://github.com/acme/web", r.Resolve(context.Background(), dir).URL)
-	assert.Equal(t, 4, calls, "the failed lookup was not cached")
+	_, definitive = r.Lookup(context.Background(), dir)
+	assert.False(t, definitive)
+	assert.Equal(t, 1, calls, "a hung directory doesn't cost every caller the whole budget")
+
+	now = now.Add(gitRepositoryRetryAfter + time.Second)
+	repo, definitive = r.Lookup(context.Background(), dir)
+	assert.Equal(t, "https://github.com/acme/web", repo.URL)
+	assert.True(t, definitive)
+	assert.Equal(t, 4, calls, "asked again soon after")
+
+	now = now.Add(30 * time.Minute)
 	r.Resolve(context.Background(), dir)
-	assert.Equal(t, 4, calls, "the answer was")
+	assert.Equal(t, 4, calls, "a definitive answer is kept for the TTL")
 }
 
 // Concurrent lookups of one directory share one run of git.

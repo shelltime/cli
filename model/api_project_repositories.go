@@ -30,11 +30,18 @@ type ProjectRepository struct {
 
 type unresolvedProjectsRequest struct {
 	Hosts []string `json:"hosts"`
+	// After is the last project of the previous page.
+	After *unresolvedProjectCursor `json:"after,omitempty"`
+}
+
+type unresolvedProjectCursor struct {
+	Host string `json:"host"`
+	Pwd  string `json:"pwd"`
 }
 
 type unresolvedProjectsResponse struct {
 	Projects []UnresolvedProject `json:"projects"`
-	// Truncated is true when the server matched more folders than it listed.
+	// Truncated is true when more folders follow this page.
 	Truncated bool `json:"truncated"`
 }
 
@@ -46,20 +53,24 @@ type projectRepositoriesResponse struct {
 	Updated int `json:"updated"`
 }
 
-// FetchUnresolvedProjects lists the folder projects of the given hosts, the names this machine
-// has reported its sessions under. truncated is true when the server matched more than it
-// listed.
-func FetchUnresolvedProjects(ctx context.Context, endpoint Endpoint, hosts []string) (projects []UnresolvedProject, truncated bool, err error) {
+// FetchUnresolvedProjects lists a page of the folder projects of the given hosts, the names this
+// machine has reported its sessions under, by machine and folder. after is the last project of
+// the previous page (nil for the first); truncated is true when more follow.
+func FetchUnresolvedProjects(ctx context.Context, endpoint Endpoint, hosts []string, after *UnresolvedProject) (projects []UnresolvedProject, truncated bool, err error) {
 	ctx, span := modelTracer.Start(ctx, "project_repositories.unresolved")
 	defer span.End()
 
+	req := &unresolvedProjectsRequest{Hosts: hosts}
+	if after != nil {
+		req.After = &unresolvedProjectCursor{Host: after.Host, Pwd: after.Pwd}
+	}
 	var resp unresolvedProjectsResponse
 	err = SendHTTPRequestJSON(HTTPRequestOptions[*unresolvedProjectsRequest, unresolvedProjectsResponse]{
 		Context:  ctx,
 		Endpoint: endpoint,
 		Method:   http.MethodPost,
 		Path:     "/api/v1/cc/projects/unresolved",
-		Payload:  &unresolvedProjectsRequest{Hosts: hosts},
+		Payload:  req,
 		Response: &resp,
 		Timeout:  30 * time.Second,
 	})

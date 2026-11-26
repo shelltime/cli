@@ -15,7 +15,16 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+// withMigrationHosts names this machine for the migration in a test.
+func withMigrationHosts(t *testing.T, hosts ...string) {
+	t.Helper()
+	original := projectMigrationHosts
+	projectMigrationHosts = func() []string { return hosts }
+	t.Cleanup(func() { projectMigrationHosts = original })
+}
+
 func TestRunProjectMigrationOnce(t *testing.T) {
+	withMigrationHosts(t, "mbp")
 	dir := gitRepoWithOrigin(t, "git@github.com:acme/web.git")
 	var requests atomic.Int32
 	var moved []model.ProjectRepository
@@ -49,7 +58,24 @@ func TestRunProjectMigrationOnce(t *testing.T) {
 	assert.Equal(t, int32(2), requests.Load(), "with the marker in place nothing is asked again")
 }
 
+// A machine with only a host name many machines share asks nothing and leaves no marker, so a
+// real name (a later `cc install`, a renamed host) is picked up on another start.
+func TestRunProjectMigrationOnceWithoutHosts(t *testing.T) {
+	withMigrationHosts(t)
+	var requests atomic.Int32
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requests.Add(1)
+	}))
+	t.Cleanup(server.Close)
+	marker := filepath.Join(t.TempDir(), model.ProjectMigrationMarkerFile)
+
+	runProjectMigrationOnce(context.Background(), model.ShellTimeConfig{Token: "tok", APIEndpoint: server.URL}, 0, marker)
+	assert.NoFileExists(t, marker)
+	assert.Zero(t, requests.Load())
+}
+
 func TestRunProjectMigrationOnceRetriesATruncatedList(t *testing.T) {
+	withMigrationHosts(t, "mbp")
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		_ = json.NewEncoder(w).Encode(map[string]any{"projects": []any{}, "truncated": true})
 	}))
@@ -61,6 +87,7 @@ func TestRunProjectMigrationOnceRetriesATruncatedList(t *testing.T) {
 }
 
 func TestRunProjectMigrationOnceSurvivesAnUnwritableMarker(t *testing.T) {
+	withMigrationHosts(t, "mbp")
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		_ = json.NewEncoder(w).Encode(map[string]any{"projects": []any{}})
 	}))
@@ -76,6 +103,7 @@ func TestRunProjectMigrationOnceSurvivesAnUnwritableMarker(t *testing.T) {
 }
 
 func TestRunProjectMigrationOnceRetriesLater(t *testing.T) {
+	withMigrationHosts(t, "mbp")
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusNotFound)
 	}))

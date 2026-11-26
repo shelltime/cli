@@ -60,6 +60,10 @@ func ProjectMigrationHosts(settingsMachineName string) []string {
 	return hosts
 }
 
+// projectMigrationMaxPages bounds one migration run: 50 pages of the server's listing (2000
+// folders each).
+const projectMigrationMaxPages = 50
+
 // ProjectMigrationResult is what a project migration found and did.
 type ProjectMigrationResult struct {
 	// Checked counts the folder projects the server listed for this machine.
@@ -73,53 +77,75 @@ type ProjectMigrationResult struct {
 	Missing int
 	// NotRepositories counts folders outside a git work tree, or in one without a remote.
 	NotRepositories int
-	// Truncated is true when the server matched more folders than it listed; a later run sees
-	// the rest, once the folders this one moved are gone from the list.
+	// Unchecked counts folders git couldn't answer for (it timed out or didn't start); a later
+	// run asks again.
+	Unchecked int
+	// Truncated is true when the server had more folders than this run went through.
 	Truncated bool
 }
 
+// Complete reports whether every folder of the machine got a definitive answer, so the migration
+// needn't run again.
+func (r ProjectMigrationResult) Complete() bool {
+	return !r.Truncated && r.Unchecked == 0
+}
+
 // MigrateProjectRepositories moves this machine's folder projects into the projects of their git
-// repositories: the server lists the folders it still groups sessions by, and every folder that
-// still exists here and is a clone with a remote is sent back with its repository. Only this
-// machine can answer, since the folders are on its disk. A dry run sends nothing back.
+// repositories: the server lists the folders it still groups sessions by, a page at a time, and
+// every folder that still exists here and is a clone with a remote is sent back with its
+// repository. Only this machine can answer, since the folders are on its disk. A dry run sends
+// nothing back.
 func MigrateProjectRepositories(ctx context.Context, endpoint Endpoint, hosts []string, repos *GitRepositoryResolver, dryRun bool) (ProjectMigrationResult, error) {
 	var result ProjectMigrationResult
 	if len(hosts) == 0 {
 		return result, nil
 	}
-	projects, truncated, err := FetchUnresolvedProjects(ctx, endpoint, hosts)
-	if err != nil {
-		return result, err
-	}
-	result.Checked = len(projects)
-	result.Truncated = truncated
 
-	for _, p := range projects {
-		if err := ctx.Err(); err != nil {
-			return result, err
-		}
-		if info, err := os.Stat(p.Pwd); err != nil || !info.IsDir() {
-			result.Missing++
-			continue
-		}
-		repo := repos.Resolve(ctx, p.Pwd)
-		if repo.URL == "" {
-			result.NotRepositories++
-			continue
-		}
-		result.Linked = append(result.Linked, ProjectRepository{Host: p.Host, Pwd: p.Pwd, Repository: repo.URL})
-	}
-	if dryRun {
-		return result, nil
-	}
-
-	for start := 0; start < len(result.Linked); start += ProjectRepositoriesMaxProjects {
-		end := min(start+ProjectRepositoriesMaxProjects, len(result.Linked))
-		updated, err := SendProjectRepositories(ctx, endpoint, result.Linked[start:end])
+	var after *UnresolvedProject
+	for page := 0; page < projectMigrationMaxPages; page++ {
+		projects, truncated, err := FetchUnresolvedProjects(ctx, endpoint, hosts, after)
 		if err != nil {
 			return result, err
 		}
-		result.Sessions += updated
+		result.Checked += len(projects)
+		result.Truncated = truncated
+
+		var linked []ProjectRepository
+		for _, p := range projects {
+			if err := ctx.Err(); err != nil {
+				return result, err
+			}
+			if info, err := os.Stat(p.Pwd); err != nil || !info.IsDir() {
+				result.Missing++
+				continue
+			}
+			repo, definitive := repos.Lookup(ctx, p.Pwd)
+			switch {
+			case !definitive:
+				result.Unchecked++
+			case repo.URL == "":
+				result.NotRepositories++
+			default:
+				linked = append(linked, ProjectRepository{Host: p.Host, Pwd: p.Pwd, Repository: repo.URL})
+			}
+		}
+		result.Linked = append(result.Linked, linked...)
+
+		if !dryRun {
+			for start := 0; start < len(linked); start += ProjectRepositoriesMaxProjects {
+				end := min(start+ProjectRepositoriesMaxProjects, len(linked))
+				updated, err := SendProjectRepositories(ctx, endpoint, linked[start:end])
+				if err != nil {
+					return result, err
+				}
+				result.Sessions += updated
+			}
+		}
+
+		if !truncated || len(projects) == 0 {
+			break
+		}
+		after = &projects[len(projects)-1]
 	}
 	return result, nil
 }

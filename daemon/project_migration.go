@@ -20,11 +20,16 @@ const projectMigrationDelay = 2 * time.Minute
 // projects, once per machine (see model.MigrateProjectRepositories): sessions recorded before
 // the daemon named repositories are grouped by folder on the server, and only this machine can
 // tell which repository a folder is a clone of. It runs in the background a while after start
-// and leaves a marker when it is done; a server that doesn't support it yet, a failure, or a
-// list the server cut short leaves none, so the next start tries again. `shelltime cc projects`
-// runs it by hand.
+// and leaves a marker when it is done; a server that doesn't support it yet, a failure, a list
+// it didn't get through, a folder git couldn't answer for, or a machine without a host name of
+// its own leaves none, so the next start tries again. `shelltime cc projects` runs it by hand.
 func RunProjectMigrationOnce(ctx context.Context, cfg model.ShellTimeConfig) {
 	runProjectMigrationOnce(ctx, cfg, projectMigrationDelay, model.ProjectMigrationMarkerPath())
+}
+
+// projectMigrationHosts names this machine for the migration; tests replace it.
+var projectMigrationHosts = func() []string {
+	return model.ProjectMigrationHosts(model.NewClaudeSettingsAICodeOtelEnvService().ResourceMachineName())
 }
 
 type projectMigrationMarker struct {
@@ -48,7 +53,13 @@ func runProjectMigrationOnce(ctx context.Context, cfg model.ShellTimeConfig, del
 	}
 
 	endpoint := model.Endpoint{Token: cfg.Token, APIEndpoint: cfg.APIEndpoint}
-	hosts := model.ProjectMigrationHosts(model.NewClaudeSettingsAICodeOtelEnvService().ResourceMachineName())
+	hosts := projectMigrationHosts()
+	if len(hosts) == 0 {
+		// Only names many machines share (localhost, ...): nothing to ask about, and no marker,
+		// so a real name (a later `cc install`, a renamed host) is picked up on another start.
+		slog.Debug("Project migration skipped: this machine has no host name of its own")
+		return
+	}
 	result, err := model.MigrateProjectRepositories(ctx, endpoint, hosts, model.NewGitRepositoryResolver(time.Hour), false)
 	if err != nil {
 		var statusErr *model.HTTPStatusError
@@ -60,7 +71,7 @@ func runProjectMigrationOnce(ctx context.Context, cfg model.ShellTimeConfig, del
 		return
 	}
 
-	if !result.Truncated {
+	if result.Complete() {
 		marker, _ := json.Marshal(projectMigrationMarker{
 			MigratedAt: time.Now().UTC(),
 			Checked:    result.Checked,
@@ -81,5 +92,6 @@ func runProjectMigrationOnce(ctx context.Context, cfg model.ShellTimeConfig, del
 		slog.Int("sessions", result.Sessions),
 		slog.Int("missing", result.Missing),
 		slog.Int("notRepositories", result.NotRepositories),
+		slog.Int("unchecked", result.Unchecked),
 		slog.Bool("truncated", result.Truncated))
 }

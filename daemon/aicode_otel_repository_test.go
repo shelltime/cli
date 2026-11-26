@@ -60,9 +60,16 @@ func TestRepositoryFromWorkingDirectory(t *testing.T) {
 		kv("vcs.repository.url.full", strVal("https://github.com/example-org/example-repo")),
 	), model.AICodeOtelSourceClaudeCode)
 	claude.repository = p.resolveRepository(context.Background(), claude)
+	assert.Empty(t, claude.repository, "no lookup when the resource names its repository")
 	event = p.parseLogRecord(claudeRecord("user_prompt", kv("prompt", strVal("hi"))), claude, "test-scope")
 	require.NotNil(t, event)
 	assert.Equal(t, "https://github.com/example-org/example-repo", event.Attributes[model.AICodeRepositoryAttribute])
+	// Metrics don't copy the resource's other attributes, and get no different repository from
+	// the folder either, even with a repository resolved for it.
+	claude.repository = "https://github.com/acme/web"
+	metrics = p.parseMetric(sumMetric("claude_code.active_time.total", delta, 30, kv("type", strVal("cli"))), claude, "com.anthropic.claude_code")
+	require.Len(t, metrics, 1)
+	assert.NotContains(t, metrics[0].Attributes, model.AICodeRepositoryAttribute)
 }
 
 func TestRepositoryNeedsAWorkingDirectory(t *testing.T) {

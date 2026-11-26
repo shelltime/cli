@@ -55,6 +55,18 @@ func TestAICodeProjectsMovesClones(t *testing.T) {
 	assert.Equal(t, 1, moves)
 }
 
+func TestAICodeProjectsSkippedInAICloudOnly(t *testing.T) {
+	t.Setenv("CLAUDE_CODE_REMOTE", "true")
+	var requests int
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requests++
+	}))
+	t.Cleanup(server.Close)
+
+	require.NoError(t, runProjects(t, "cc", "tok", server.URL))
+	assert.Zero(t, requests, "a cloud VM sends no host name or folders")
+}
+
 func TestAICodeProjectsErrors(t *testing.T) {
 	assert.ErrorContains(t, runProjects(t, "cc", "", "http://127.0.0.1:0"), "no ShellTime token")
 
