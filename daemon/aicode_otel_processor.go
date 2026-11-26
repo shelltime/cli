@@ -40,6 +40,9 @@ type AICodeOtelProcessor struct {
 	// cloudSessionID is the Claude Code cloud session the daemon runs in (from its environment),
 	// added to Claude Code records that don't carry one. Empty on a local machine.
 	cloudSessionID string
+	// repos finds the git repository of a record's working directory, so the server can group
+	// sessions by repository rather than by folder. Nil adds no repository.
+	repos *model.GitRepositoryResolver
 
 	// maxRequestBytes bounds the JSON body of one backend request; larger batches are split.
 	maxRequestBytes int
@@ -65,8 +68,35 @@ func NewAICodeOtelProcessor(config model.ShellTimeConfig) *AICodeOtelProcessor {
 		hostname:        hostname,
 		debug:           debug,
 		cloudSessionID:  model.CloudSessionIDFromEnv(os.Getenv),
+		repos:           model.NewGitRepositoryResolver(repositoryCacheTTL),
 		maxRequestBytes: model.AICodeOtelMaxRequestBytes,
 	}
+}
+
+// repositoryCacheTTL is how long the daemon trusts what git said about a directory. A remote
+// rarely changes; a folder that becomes a clone is picked up within this time.
+const repositoryCacheTTL = 10 * time.Minute
+
+// resolveRepository returns the canonical URL of the repository the resource's working
+// directory belongs to, or "".
+func (p *AICodeOtelProcessor) resolveRepository(ctx context.Context, res *otelResource) string {
+	if p.repos == nil || res.attrs.Pwd == "" {
+		return ""
+	}
+	return p.repos.Resolve(ctx, res.attrs.Pwd).URL
+}
+
+// fillRepository adds the resource's repository to a record that doesn't name one yet. It is
+// seeded before the record's own attributes, so a vcs.repository.url.full that Claude Code
+// sent on the record still wins.
+func fillRepository(attrs map[string]any, res *otelResource) map[string]any {
+	if res.repository == "" {
+		return attrs
+	}
+	if _, ok := attrs[model.AICodeRepositoryAttribute]; ok {
+		return attrs
+	}
+	return setAttribute(attrs, model.AICodeRepositoryAttribute, res.repository)
 }
 
 // fillCloudSessionID adds the daemon's cloud session id to the attributes of a Claude Code
@@ -117,6 +147,9 @@ type otelResource struct {
 	attrs  *model.AICodeOtelResourceAttributes
 	// digest identifies the resource in stable ids. It is computed once per resource.
 	digest [sha256.Size]byte
+	// repository is the canonical URL of the git repository of the resource's working
+	// directory, or "" (see resolveRepository).
+	repository string
 }
 
 // deterministicMarshal encodes OTLP messages byte-for-byte reproducibly, so an exporter retry of
@@ -185,6 +218,7 @@ func (p *AICodeOtelProcessor) ProcessMetrics(ctx context.Context, req *collmetri
 
 		// Extract resource attributes once for all metrics in this resource
 		res := newOtelResource(resource, source)
+		res.repository = p.resolveRepository(ctx, res)
 		project := p.detectProject(resource, source)
 
 		var metrics []model.AICodeOtelMetric
@@ -231,6 +265,7 @@ func (p *AICodeOtelProcessor) ProcessLogs(ctx context.Context, req *collogsv1.Ex
 
 		// Extract resource attributes once for all events in this resource
 		res := newOtelResource(resource, source)
+		res.repository = p.resolveRepository(ctx, res)
 		project := p.detectProject(resource, source)
 
 		var events []model.AICodeOtelEvent
@@ -671,6 +706,7 @@ func (p *AICodeOtelProcessor) parseMetric(m *metricsv1.Metric, res *otelResource
 		// Seeded before the data point's attributes, so they can't crowd it out; a ccr.session.id
 		// on the data point still wins.
 		metric.Attributes = p.fillCloudSessionID(metric.Attributes, res.source)
+		metric.Attributes = fillRepository(metric.Attributes, res)
 		// Then extract data point attributes (can override resource attrs)
 		for _, attr := range dp.GetAttributes() {
 			applyMetricAttribute(&metric, attr, metricType)
@@ -761,6 +797,7 @@ func (p *AICodeOtelProcessor) parseLogRecord(lr *logsv1.LogRecord, res *otelReso
 	}
 	// Seeded the same way: a ccr.session.id on the record itself still wins.
 	event.Attributes = p.fillCloudSessionID(event.Attributes, res.source)
+	event.Attributes = fillRepository(event.Attributes, res)
 
 	var fallbacks eventFallbacks
 	for _, attr := range lr.GetAttributes() {

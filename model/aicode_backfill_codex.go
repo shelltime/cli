@@ -50,6 +50,10 @@ type codexSessionMeta struct {
 	Cwd           string `json:"cwd"`
 	CLIVersion    string `json:"cli_version"`
 	ModelProvider string `json:"model_provider"`
+	// Git is what Codex found about the working directory when the session started.
+	Git *struct {
+		RepositoryURL string `json:"repository_url"`
+	} `json:"git"`
 }
 
 type codexTurnContext struct {
@@ -125,6 +129,7 @@ type codexFileState struct {
 	path         string
 	sessionID    string
 	cwd          string
+	repository   string // canonical URL of the session's git remote, from session_meta
 	cliVersion   string
 	provider     string
 	metaTs       time.Time
@@ -194,6 +199,7 @@ func ParseCodexRollouts(roots []string, opts BackfillOptions) (*BackfillParseRes
 			s.Events[i].Pwd = meta.cwd
 			s.Events[i].AppVersion = meta.cliVersion
 		}
+		s.Repository = meta.repository
 		finalizeBackfillSession(s)
 		if len(s.Events) > 0 {
 			sessions = append(sessions, s)
@@ -309,6 +315,9 @@ func (p *codexParser) handleSessionMeta(st *codexFileState, raw json.RawMessage,
 	}
 	st.metaTs = ts
 	st.cwd = meta.Cwd
+	if meta.Git != nil {
+		st.repository, _ = CanonicalRepositoryURL(meta.Git.RepositoryURL)
+	}
 	st.cliVersion = meta.CLIVersion
 	st.provider = meta.ModelProvider
 }

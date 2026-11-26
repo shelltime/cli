@@ -9,6 +9,7 @@ import (
 	"os"
 	"os/user"
 	"path/filepath"
+	"strings"
 
 	"github.com/gookit/color"
 )
@@ -227,6 +228,30 @@ func (s *ClaudeSettingsAICodeOtelEnvService) StatusLineCommand() (string, error)
 		return "", nil
 	}
 	return settings.StatusLine.Command, nil
+}
+
+// ResourceMachineName returns the machine.name in the OTEL_RESOURCE_ATTRIBUTES of settings.json:
+// the host name `cc install` wrote there, which Claude Code reports its sessions under even after
+// the machine's name changes. Empty when it isn't set or can't be read.
+func (s *ClaudeSettingsAICodeOtelEnvService) ResourceMachineName() string {
+	data, _, err := s.readSettings()
+	if err != nil || data == nil {
+		return ""
+	}
+	var settings struct {
+		Env map[string]any `json:"env"`
+	}
+	if err := json.Unmarshal(data, &settings); err != nil {
+		return ""
+	}
+	attrs, _ := settings.Env["OTEL_RESOURCE_ATTRIBUTES"].(string)
+	for _, pair := range strings.Split(attrs, ",") {
+		key, value, ok := strings.Cut(pair, "=")
+		if ok && strings.TrimSpace(key) == "machine.name" {
+			return strings.TrimSpace(value)
+		}
+	}
+	return ""
 }
 
 // readSettings returns the settings file content and mode. A missing file yields nil data.

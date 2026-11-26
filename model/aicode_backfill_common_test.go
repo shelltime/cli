@@ -1,6 +1,7 @@
 package model
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -140,4 +141,34 @@ func TestCollectJSONL(t *testing.T) {
 	require.NoError(t, err)
 	assert.Len(t, inRange, 1)
 	assert.Equal(t, "recent.jsonl", filepath.Base(inRange[0]))
+}
+
+func TestAttachBackfillRepositories(t *testing.T) {
+	recorded := &BackfillSession{
+		ID:         "recorded",
+		Repository: "https://github.com/acme/recorded",
+		Events: []AICodeBackfillEvent{
+			{Pwd: "/gone"},
+			{Pwd: "/gone", Attributes: map[string]any{AICodeRepositoryAttribute: "https://github.com/acme/own"}},
+		},
+	}
+	dir := t.TempDir()
+	git := &fakeGit{root: dir, remotes: "origin", url: "https://github.com/acme/from-cwd.git"}
+	repos := NewGitRepositoryResolver(time.Minute)
+	repos.git = git.run
+	fromCwd := &BackfillSession{ID: "cwd", Events: []AICodeBackfillEvent{{Pwd: dir}, {Pwd: dir}}}
+	nowhere := &BackfillSession{ID: "nowhere", Events: []AICodeBackfillEvent{{Pwd: filepath.Join(dir, "missing")}}}
+	empty := &BackfillSession{ID: "empty"}
+
+	AttachBackfillRepositories(context.Background(), []*BackfillSession{recorded, fromCwd, nowhere, empty}, repos)
+
+	assert.Equal(t, "https://github.com/acme/recorded", recorded.Events[0].Attributes[AICodeRepositoryAttribute])
+	assert.Equal(t, "https://github.com/acme/own", recorded.Events[1].Attributes[AICodeRepositoryAttribute], "an event's own value is kept")
+	assert.Equal(t, "https://github.com/acme/from-cwd", fromCwd.Repository)
+	for _, e := range fromCwd.Events {
+		assert.Equal(t, "https://github.com/acme/from-cwd", e.Attributes[AICodeRepositoryAttribute])
+	}
+	assert.Empty(t, nowhere.Repository)
+	assert.Nil(t, nowhere.Events[0].Attributes)
+	assert.Equal(t, 3, git.calls, "the recorded repository needs no git call")
 }

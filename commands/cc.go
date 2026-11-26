@@ -15,6 +15,7 @@ var CCCommand = &cli.Command{
 		CCStatuslineCommand,
 		CCBackfillCommand,
 		CCPullRequestCommand,
+		AICodeProjectsCommand,
 	},
 }
 
