@@ -176,7 +176,25 @@ func mergeConfig(base, local *ShellTimeConfig) {
 		base.Exclude = local.Exclude
 	}
 	if local.AICodeOtel != nil {
-		base.AICodeOtel = local.AICodeOtel
+		// Field by field: a local file that only sets debug or the port must not turn the
+		// collector off or bring back the repository a base sendRepository: false keeps to itself
+		if base.AICodeOtel == nil {
+			base.AICodeOtel = &AICodeOtel{}
+		}
+		merged := *base.AICodeOtel
+		if local.AICodeOtel.Enabled != nil {
+			merged.Enabled = local.AICodeOtel.Enabled
+		}
+		if local.AICodeOtel.GRPCPort != 0 {
+			merged.GRPCPort = local.AICodeOtel.GRPCPort
+		}
+		if local.AICodeOtel.Debug != nil {
+			merged.Debug = local.AICodeOtel.Debug
+		}
+		if local.AICodeOtel.SendRepository != nil {
+			merged.SendRepository = local.AICodeOtel.SendRepository
+		}
+		base.AICodeOtel = &merged
 	}
 	if local.LogCleanup != nil {
 		base.LogCleanup = local.LogCleanup

@@ -649,3 +649,24 @@ func TestConfigFilePathsAndValidate(t *testing.T) {
 	assert.Error(t, ValidateConfigFile(localPath))
 	assert.Error(t, ValidateConfigFile(filepath.Join(dir, "missing.yaml")))
 }
+
+// A local aiCodeOtel block that only sets debug keeps the base file's other settings, the
+// repository opt-out included.
+func TestLocalAICodeOtelMergesFieldByField(t *testing.T) {
+	tmpDir := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(tmpDir, "config.yaml"), []byte(`token: tok
+aiCodeOtel:
+  enabled: true
+  grpcPort: 54100
+  sendRepository: false`), 0o644))
+	require.NoError(t, os.WriteFile(filepath.Join(tmpDir, "config.local.yaml"), []byte(`aiCodeOtel:
+  debug: true`), 0o644))
+
+	config, err := NewConfigService(tmpDir).ReadConfigFile(context.Background())
+	require.NoError(t, err)
+	require.NotNil(t, config.AICodeOtel)
+	assert.True(t, *config.AICodeOtel.Enabled)
+	assert.Equal(t, 54100, config.AICodeOtel.GRPCPort)
+	assert.True(t, *config.AICodeOtel.Debug)
+	assert.False(t, config.SendsRepository())
+}
