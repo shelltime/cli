@@ -40,7 +40,7 @@ type projectMigrationMarker struct {
 }
 
 func runProjectMigrationOnce(ctx context.Context, cfg model.ShellTimeConfig, delay time.Duration, markerPath string) {
-	if cfg.Token == "" {
+	if cfg.Token == "" || !cfg.SendsRepository() {
 		return
 	}
 	if _, err := os.Stat(markerPath); err == nil {

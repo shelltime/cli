@@ -115,7 +115,12 @@ func MigrateProjectRepositories(ctx context.Context, endpoint Endpoint, hosts []
 			if err := ctx.Err(); err != nil {
 				return result, err
 			}
-			if info, err := os.Stat(p.Pwd); err != nil || !info.IsDir() {
+			isDir, ok := statDir(p.Pwd, repos.timeout)
+			if !ok {
+				result.Unchecked++
+				continue
+			}
+			if !isDir {
 				result.Missing++
 				continue
 			}

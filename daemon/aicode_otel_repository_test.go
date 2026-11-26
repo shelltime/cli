@@ -86,3 +86,34 @@ func TestRepositoryNeedsAWorkingDirectory(t *testing.T) {
 	res := newOtelResource(serviceResource("codex_cli_rs", kv("pwd", strVal(dir))), model.AICodeOtelSourceCodex)
 	assert.Empty(t, p.resolveRepository(context.Background(), res), "a processor without a resolver adds nothing")
 }
+
+// With aiCodeOtel.sendRepository off, the daemon asks git nothing and removes the repository an
+// agent reports itself.
+func TestRepositoryNotSentWhenTurnedOff(t *testing.T) {
+	dir := gitRepoWithOrigin(t, "git@github.com:acme/web.git")
+	off := false
+	p := NewAICodeOtelProcessor(model.ShellTimeConfig{AICodeOtel: &model.AICodeOtel{SendRepository: &off}})
+	assert.Nil(t, p.repos)
+
+	codex := newOtelResource(serviceResource("codex_cli_rs", kv("pwd", strVal(dir))), model.AICodeOtelSourceCodex)
+	codex.repository = p.resolveRepository(context.Background(), codex)
+	assert.Empty(t, codex.repository)
+	event := p.parseLogRecord(codexRecord("user_prompt", kv("vcs.repository.url.full", strVal("https://github.com/acme/other"))), codex, "test-scope")
+	require.NotNil(t, event)
+	assert.NotContains(t, event.Attributes, model.AICodeRepositoryAttribute)
+
+	claude := newOtelResource(serviceResource("claude-code",
+		kv("pwd", strVal(dir)),
+		kv("vcs.repository.url.full", strVal("https://github.com/example-org/example-repo")),
+	), model.AICodeOtelSourceClaudeCode)
+	event = p.parseLogRecord(claudeRecord("user_prompt", kv("prompt", strVal("hi"))), claude, "test-scope")
+	require.NotNil(t, event)
+	assert.NotContains(t, event.Attributes, model.AICodeRepositoryAttribute, "the resource's repository is removed too")
+	delta := metricsv1.AggregationTemporality_AGGREGATION_TEMPORALITY_DELTA
+	metrics := p.parseMetric(sumMetric("claude_code.active_time.total", delta, 30, kv("vcs.repository.url.full", strVal("https://github.com/acme/other"))), claude, "com.anthropic.claude_code")
+	require.Len(t, metrics, 1)
+	assert.NotContains(t, metrics[0].Attributes, model.AICodeRepositoryAttribute)
+
+	assert.Nil(t, socketRepositoryResolver(model.ShellTimeConfig{AICodeOtel: &model.AICodeOtel{SendRepository: &off}}))
+	assert.NotNil(t, socketRepositoryResolver(model.ShellTimeConfig{}))
+}

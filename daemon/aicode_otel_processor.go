@@ -43,6 +43,9 @@ type AICodeOtelProcessor struct {
 	// repos finds the git repository of a record's working directory, so the server can group
 	// sessions by repository rather than by folder. Nil adds no repository.
 	repos *model.GitRepositoryResolver
+	// dropRepository removes vcs.repository.url.full from every record, the agent's own too
+	// (aiCodeOtel.sendRepository: false).
+	dropRepository bool
 
 	// maxRequestBytes bounds the JSON body of one backend request; larger batches are split.
 	maxRequestBytes int
@@ -58,6 +61,10 @@ func NewAICodeOtelProcessor(config model.ShellTimeConfig) *AICodeOtelProcessor {
 	}
 
 	debug := config.AICodeOtel != nil && config.AICodeOtel.Debug != nil && *config.AICodeOtel.Debug
+	var repos *model.GitRepositoryResolver
+	if config.SendsRepository() {
+		repos = model.NewGitRepositoryResolver(repositoryCacheTTL)
+	}
 
 	return &AICodeOtelProcessor{
 		config: config,
@@ -68,7 +75,8 @@ func NewAICodeOtelProcessor(config model.ShellTimeConfig) *AICodeOtelProcessor {
 		hostname:        hostname,
 		debug:           debug,
 		cloudSessionID:  model.CloudSessionIDFromEnv(os.Getenv),
-		repos:           model.NewGitRepositoryResolver(repositoryCacheTTL),
+		repos:           repos,
+		dropRepository:  !config.SendsRepository(),
 		maxRequestBytes: model.AICodeOtelMaxRequestBytes,
 	}
 }
@@ -719,6 +727,9 @@ func (p *AICodeOtelProcessor) parseMetric(m *metricsv1.Metric, res *otelResource
 		for _, attr := range dp.GetAttributes() {
 			applyMetricAttribute(&metric, attr, metricType)
 		}
+		if p.dropRepository {
+			delete(metric.Attributes, model.AICodeRepositoryAttribute)
+		}
 		metrics = append(metrics, metric)
 	}
 
@@ -815,6 +826,9 @@ func (p *AICodeOtelProcessor) parseLogRecord(lr *logsv1.LogRecord, res *otelReso
 
 	if event.SessionID == "" && event.ConversationID != "" {
 		event.SessionID = event.ConversationID
+	}
+	if p.dropRepository {
+		delete(event.Attributes, model.AICodeRepositoryAttribute)
 	}
 
 	return event

@@ -93,12 +93,16 @@ const (
 	// remembered: long enough that a hung mount doesn't cost every export the whole budget,
 	// short enough that the directory is asked about again soon.
 	gitRepositoryRetryAfter = 30 * time.Second
+	// gitRepositoryGrace is how long past the budget a lookup is waited for. A stat or a git
+	// run stuck in the kernel (a hung network mount) ignores the context, so the waiting stops
+	// here instead and the directory counts as stuck until that lookup returns.
+	gitRepositoryGrace      = 250 * time.Millisecond
 	gitRepositoryMaxEntries = 512
 )
 
 // gitExitError is git exiting with an error status: a definitive answer (not a work tree, no
-// such remote), unlike a timeout or git failing to start, which say nothing about the
-// directory and are not cached.
+// such remote), unlike a timeout, a signal, git failing to start or refusing a repository it
+// doesn't trust (safe.directory), which say nothing about the directory and are not cached.
 type gitExitError struct{ err error }
 
 func (e gitExitError) Error() string { return e.err.Error() }
@@ -111,6 +115,8 @@ func (e gitExitError) Unwrap() error { return e.err }
 // gitRepositoryRetryAfter at most. Concurrent lookups of one directory share one run of git.
 type GitRepositoryResolver struct {
 	ttl time.Duration
+	// timeout is the budget of one lookup, gitRepositoryTimeout unless a test sets it.
+	timeout time.Duration
 	// git runs git with args in dir; tests replace it.
 	git func(ctx context.Context, dir string, args ...string) (string, error)
 	now func() time.Time
@@ -118,6 +124,9 @@ type GitRepositoryResolver struct {
 	mu       sync.Mutex
 	cache    map[string]gitRepositoryEntry
 	inflight map[string]*gitRepositoryCall
+	// stuck holds directories whose lookup outlived its budget and hasn't returned yet; they get
+	// no second one meanwhile, so a hung mount costs one blocked thread, not one per retry.
+	stuck map[string]struct{}
 }
 
 type gitRepositoryEntry struct {
@@ -136,26 +145,37 @@ type gitRepositoryCall struct {
 func NewGitRepositoryResolver(ttl time.Duration) *GitRepositoryResolver {
 	return &GitRepositoryResolver{
 		ttl:      ttl,
+		timeout:  gitRepositoryTimeout,
 		git:      runGit,
 		now:      time.Now,
 		cache:    make(map[string]gitRepositoryEntry),
 		inflight: make(map[string]*gitRepositoryCall),
+		stuck:    make(map[string]struct{}),
 	}
 }
 
 var (
-	gitBinaryOnce sync.Once
-	gitBinary     = "git"
+	gitBinaryMu       sync.Mutex
+	gitBinary         string
+	gitBinaryLookedAt time.Time
 )
 
-// gitExecutable finds git once, also where the daemon's limited PATH doesn't reach (Homebrew,
-// /usr/local/bin), through the CommandService's fallback paths.
+// gitExecutable finds git, also where the daemon's limited PATH doesn't reach (Homebrew,
+// /usr/local/bin), through the CommandService's fallback paths. A path found is kept; while
+// none is, it looks again every gitRepositoryRetryAfter, so git installed after the daemon
+// started is picked up, and runs the bare "git" meanwhile.
 func gitExecutable() string {
-	gitBinaryOnce.Do(func() {
+	gitBinaryMu.Lock()
+	defer gitBinaryMu.Unlock()
+	if gitBinary == "" && time.Since(gitBinaryLookedAt) >= gitRepositoryRetryAfter {
+		gitBinaryLookedAt = time.Now()
 		if path, err := NewCommandService().LookPath("git"); err == nil {
 			gitBinary = path
 		}
-	})
+	}
+	if gitBinary == "" {
+		return "git"
+	}
 	return gitBinary
 }
 
@@ -166,10 +186,23 @@ func runGit(ctx context.Context, dir string, args ...string) (string, error) {
 	cmd.Env = append(os.Environ(), "GIT_OPTIONAL_LOCKS=0", "GIT_TERMINAL_PROMPT=0")
 	out, err := cmd.Output()
 	var exitErr *exec.ExitError
-	if err != nil && errors.As(err, &exitErr) && ctx.Err() == nil {
+	if err != nil && errors.As(err, &exitErr) && ctx.Err() == nil && gitExitIsAnswer(exitErr) {
 		return "", gitExitError{err}
 	}
 	return strings.TrimSpace(string(out)), err
+}
+
+// gitExitIsAnswer reports whether git's error exit says something about the directory. Killed
+// by a signal (ExitCode -1), or refusing a repository owned by someone else, it doesn't: the
+// directory may well be a clone.
+func gitExitIsAnswer(err *exec.ExitError) bool {
+	if err.ExitCode() < 0 {
+		return false
+	}
+	stderr := strings.ToLower(string(err.Stderr))
+	return !strings.Contains(stderr, "dubious ownership") &&
+		!strings.Contains(stderr, "safe.directory") &&
+		!strings.Contains(stderr, "unsafe repository")
 }
 
 // Resolve returns the repository dir belongs to. A directory that doesn't exist, isn't in a
@@ -196,6 +229,10 @@ func (r *GitRepositoryResolver) Lookup(ctx context.Context, dir string) (GitRepo
 		r.mu.Unlock()
 		return e.repo, e.definitive
 	}
+	if _, ok := r.stuck[dir]; ok {
+		r.mu.Unlock()
+		return GitRepository{}, false
+	}
 	if call, ok := r.inflight[dir]; ok {
 		r.mu.Unlock()
 		select {
@@ -209,13 +246,53 @@ func (r *GitRepositoryResolver) Lookup(ctx context.Context, dir string) (GitRepo
 	r.inflight[dir] = call
 	r.mu.Unlock()
 
-	// The lookup isn't tied to this caller's context, so a caller that gives up doesn't spoil
-	// the answer for the others waiting on it; the budget bounds it instead.
-	lookupCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), gitRepositoryTimeout)
-	repo, definitive := r.lookup(lookupCtx, dir)
-	cancel()
+	var repo GitRepository
+	var definitive bool
+	// Every waiter is released however this ends.
+	defer func() {
+		r.finish(dir, call, repo, definitive)
+		close(call.done)
+	}()
 
+	// The lookup isn't tied to this caller's context, so a caller that gives up doesn't spoil
+	// the answer for the others waiting on it; the budget bounds it instead. It runs on its own
+	// goroutine because the budget can't interrupt a stat or a git run blocked in the kernel.
+	type answer struct {
+		repo       GitRepository
+		definitive bool
+	}
+	answers := make(chan answer, 1)
+	timeout := r.timeout
+	go func() {
+		lookupCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), timeout)
+		defer cancel()
+		a := answer{}
+		a.repo, a.definitive = r.lookup(lookupCtx, dir)
+		answers <- a
+	}()
+	timer := time.NewTimer(timeout + gitRepositoryGrace)
+	defer timer.Stop()
+	select {
+	case a := <-answers:
+		repo, definitive = a.repo, a.definitive
+	case <-timer.C:
+		r.mu.Lock()
+		r.stuck[dir] = struct{}{}
+		r.mu.Unlock()
+		go func() {
+			<-answers
+			r.mu.Lock()
+			delete(r.stuck, dir)
+			r.mu.Unlock()
+		}()
+	}
+	return repo, definitive
+}
+
+// finish publishes a lookup's answer to the cache and to the callers waiting on it.
+func (r *GitRepositoryResolver) finish(dir string, call *gitRepositoryCall, repo GitRepository, definitive bool) {
 	r.mu.Lock()
+	defer r.mu.Unlock()
 	call.repo, call.definitive = repo, definitive
 	delete(r.inflight, dir)
 	if ttl := r.entryTTL(definitive); ttl > 0 {
@@ -232,9 +309,24 @@ func (r *GitRepositoryResolver) Lookup(ctx context.Context, dir string) (GitRepo
 		}
 		r.cache[dir] = gitRepositoryEntry{repo: repo, definitive: definitive, expires: now.Add(ttl)}
 	}
-	r.mu.Unlock()
-	close(call.done)
-	return repo, definitive
+}
+
+// statDir reports whether dir is a directory. ok is false when the stat didn't return within
+// timeout: on a hung network mount it blocks in the kernel, where no context reaches it.
+func statDir(dir string, timeout time.Duration) (isDir, ok bool) {
+	result := make(chan bool, 1)
+	go func() {
+		info, err := os.Stat(dir)
+		result <- err == nil && info.IsDir()
+	}()
+	timer := time.NewTimer(timeout)
+	defer timer.Stop()
+	select {
+	case isDir := <-result:
+		return isDir, true
+	case <-timer.C:
+		return false, false
+	}
 }
 
 // entryTTL is how long an answer is kept.

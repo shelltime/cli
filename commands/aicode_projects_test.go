@@ -37,6 +37,11 @@ func TestAICodeProjectsMovesClones(t *testing.T) {
 		require.NoError(t, err, string(out))
 	}
 
+	// The machine's own host name may be a generic one (a CI runner's), which names nothing.
+	originalHosts := aiCodeProjectsHosts
+	aiCodeProjectsHosts = func() []string { return []string{"mbp"} }
+	t.Cleanup(func() { aiCodeProjectsHosts = originalHosts })
+
 	var moves int
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {

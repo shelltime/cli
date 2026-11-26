@@ -32,6 +32,17 @@ type AICodeOtel struct {
 	Enabled  *bool `toml:"enabled" yaml:"enabled" json:"enabled"`
 	GRPCPort int   `toml:"grpcPort,omitempty" yaml:"grpcPort,omitempty" json:"grpcPort,omitempty"` // default: 54027
 	Debug    *bool `toml:"debug" yaml:"debug" json:"debug"`                                        // write raw JSON to debug files
+	// SendRepository names the git repository of each coding agent session's folder, so the
+	// server groups sessions by repository (default true). False: ShellTime never asks git or
+	// sends a repository, and the daemon removes the one Claude Code reports, so sessions are
+	// grouped by machine and folder.
+	SendRepository *bool `toml:"sendRepository,omitempty" yaml:"sendRepository,omitempty" json:"sendRepository,omitempty"`
+}
+
+// SendsRepository reports whether AI coding agent data may name its git repository: on unless
+// aiCodeOtel.sendRepository is false.
+func (c ShellTimeConfig) SendsRepository() bool {
+	return c.AICodeOtel == nil || c.AICodeOtel.SendRepository == nil || *c.AICodeOtel.SendRepository
 }
 
 // CodeTracking configuration for coding activity heartbeat tracking

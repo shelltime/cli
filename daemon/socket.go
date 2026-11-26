@@ -127,8 +127,17 @@ func NewSocketHandler(config *model.ShellTimeConfig, ch *GoChannel) *SocketHandl
 		stopChan:    make(chan struct{}),
 		ccInfoTimer: NewCCInfoTimerService(config),
 		aiCloudOnly: model.IsAICloudOnly(*config, os.Getenv),
-		repos:       model.NewGitRepositoryResolver(repositoryCacheTTL),
+		repos:       socketRepositoryResolver(*config),
 	}
+}
+
+// socketRepositoryResolver is nil, so session_project messages name no repository, when
+// aiCodeOtel.sendRepository is false.
+func socketRepositoryResolver(config model.ShellTimeConfig) *model.GitRepositoryResolver {
+	if !config.SendsRepository() {
+		return nil
+	}
+	return model.NewGitRepositoryResolver(repositoryCacheTTL)
 }
 
 // SetConfigService makes heartbeat messages check the config on disk instead of the one

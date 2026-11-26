@@ -34,6 +34,11 @@ var AICodeProjectsCommand = &cli.Command{
 	Action: commandAICodeProjects,
 }
 
+// aiCodeProjectsHosts names this machine for the migration; tests replace it.
+var aiCodeProjectsHosts = func() []string {
+	return model.ProjectMigrationHosts(model.NewClaudeSettingsAICodeOtelEnvService().ResourceMachineName())
+}
+
 func commandAICodeProjects(c *cli.Context) error {
 	ctx, span := commandTracer.Start(c.Context, "aicode.projects", trace.WithSpanKind(trace.SpanKindClient))
 	defer span.End()
@@ -49,8 +54,12 @@ func commandAICodeProjects(c *cli.Context) error {
 	if skippedInAICloudOnly(cfg, "Projects not grouped") {
 		return nil
 	}
+	if !cfg.SendsRepository() {
+		color.Yellow.Println("Projects not grouped: aiCodeOtel.sendRepository is off, so no repository is sent.")
+		return nil
+	}
 	endpoint := model.Endpoint{Token: cfg.Token, APIEndpoint: cfg.APIEndpoint}
-	hosts := model.ProjectMigrationHosts(model.NewClaudeSettingsAICodeOtelEnvService().ResourceMachineName())
+	hosts := aiCodeProjectsHosts()
 	dryRun := c.Bool("dry-run")
 
 	color.Yellow.Println("Looking for projects grouped by folder...")

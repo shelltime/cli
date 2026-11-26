@@ -6,7 +6,9 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -219,6 +221,71 @@ func TestGitRepositoryResolverWaiterGivesUp(t *testing.T) {
 
 	close(release)
 	assert.Equal(t, "https://github.com/acme/web", (<-first).URL)
+}
+
+// A lookup blocked where its context can't reach (a hung network mount) stops being waited for
+// after the budget, and the directory gets no second lookup until that one returns.
+func TestGitRepositoryResolverGivesUpOnAStuckLookup(t *testing.T) {
+	dir := t.TempDir()
+	release := make(chan struct{})
+	var calls atomic.Int32
+	r := NewGitRepositoryResolver(0)
+	r.timeout = 20 * time.Millisecond
+	r.git = func(ctx context.Context, d string, args ...string) (string, error) {
+		calls.Add(1)
+		<-release // ignores ctx, like a syscall in the kernel
+		return (&fakeGit{root: dir, remotes: "origin", url: "https://github.com/acme/web"}).run(ctx, d, args...)
+	}
+
+	start := time.Now()
+	repo, definitive := r.Lookup(context.Background(), dir)
+	assert.Less(t, time.Since(start), 2*time.Second)
+	assert.Equal(t, GitRepository{}, repo)
+	assert.False(t, definitive)
+
+	_, definitive = r.Lookup(context.Background(), dir)
+	assert.False(t, definitive)
+	assert.Equal(t, int32(1), calls.Load(), "no second lookup while the first is stuck")
+
+	close(release)
+	assert.Eventually(t, func() bool {
+		r.mu.Lock()
+		defer r.mu.Unlock()
+		return len(r.stuck) == 0
+	}, 2*time.Second, 5*time.Millisecond)
+	r.timeout = time.Second
+	repo, definitive = r.Lookup(context.Background(), dir)
+	assert.True(t, definitive)
+	assert.Equal(t, "https://github.com/acme/web", repo.URL)
+}
+
+// git refusing a repository it doesn't trust, or killed by a signal, says nothing about the
+// directory; any other error exit does.
+func TestGitExitIsAnswer(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("needs sh")
+	}
+	exitOf := func(script string) *exec.ExitError {
+		_, err := exec.Command("sh", "-c", script).Output()
+		var exitErr *exec.ExitError
+		require.ErrorAs(t, err, &exitErr)
+		return exitErr
+	}
+	assert.True(t, gitExitIsAnswer(exitOf(`echo "fatal: not a git repository" >&2; exit 128`)))
+	assert.True(t, gitExitIsAnswer(exitOf(`echo "error: No such remote 'origin'" >&2; exit 2`)))
+	assert.False(t, gitExitIsAnswer(exitOf(`echo "fatal: detected dubious ownership in repository at '/x'" >&2; exit 128`)))
+	assert.False(t, gitExitIsAnswer(exitOf(`kill -9 $$`)))
+}
+
+func TestStatDir(t *testing.T) {
+	dir := t.TempDir()
+	file := filepath.Join(dir, "f")
+	require.NoError(t, os.WriteFile(file, nil, 0o600))
+	for path, want := range map[string]bool{dir: true, file: false, filepath.Join(dir, "missing"): false} {
+		isDir, ok := statDir(path, time.Second)
+		assert.True(t, ok)
+		assert.Equal(t, want, isDir, path)
+	}
 }
 
 func TestGitRepositoryResolverSkipsWhatIsNotADirectory(t *testing.T) {
