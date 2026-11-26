@@ -49,6 +49,32 @@ func TestRunProjectMigrationOnce(t *testing.T) {
 	assert.Equal(t, int32(2), requests.Load(), "with the marker in place nothing is asked again")
 }
 
+func TestRunProjectMigrationOnceRetriesATruncatedList(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewEncoder(w).Encode(map[string]any{"projects": []any{}, "truncated": true})
+	}))
+	t.Cleanup(server.Close)
+	marker := filepath.Join(t.TempDir(), model.ProjectMigrationMarkerFile)
+
+	runProjectMigrationOnce(context.Background(), model.ShellTimeConfig{Token: "tok", APIEndpoint: server.URL}, 0, marker)
+	assert.NoFileExists(t, marker, "the rest of the list is checked on the next start")
+}
+
+func TestRunProjectMigrationOnceSurvivesAnUnwritableMarker(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewEncoder(w).Encode(map[string]any{"projects": []any{}})
+	}))
+	t.Cleanup(server.Close)
+	parent := filepath.Join(t.TempDir(), "file")
+	require.NoError(t, os.WriteFile(parent, nil, 0o600))
+	marker := filepath.Join(parent, model.ProjectMigrationMarkerFile)
+
+	assert.NotPanics(t, func() {
+		runProjectMigrationOnce(context.Background(), model.ShellTimeConfig{Token: "tok", APIEndpoint: server.URL}, 0, marker)
+	})
+	assert.NoFileExists(t, marker)
+}
+
 func TestRunProjectMigrationOnceRetriesLater(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusNotFound)

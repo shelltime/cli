@@ -2,6 +2,7 @@ package model
 
 import (
 	"context"
+	"errors"
 	"net/url"
 	"os"
 	"os/exec"
@@ -85,21 +86,33 @@ type GitRepository struct {
 }
 
 const (
+	// gitRepositoryTimeout bounds a whole lookup (up to three git runs), well under an OTLP
+	// exporter's timeout, since the daemon resolves on the export path.
 	gitRepositoryTimeout    = 2 * time.Second
 	gitRepositoryMaxEntries = 512
 )
 
+// gitExitError is git exiting with an error status: a definitive answer (not a work tree, no
+// such remote), unlike a timeout or git failing to start, which say nothing about the
+// directory and are not cached.
+type gitExitError struct{ err error }
+
+func (e gitExitError) Error() string { return e.err.Error() }
+func (e gitExitError) Unwrap() error { return e.err }
+
 // GitRepositoryResolver finds the repository a directory belongs to with the git CLI, and
-// remembers the answer for a while, negative ones included: the daemon asks for the same few
-// directories on every OTEL export and statusline render.
+// remembers definitive answers for a while, negative ones included: the daemon asks for the same
+// few directories on every OTEL export and statusline render. Concurrent lookups of one
+// directory share one run of git.
 type GitRepositoryResolver struct {
 	ttl time.Duration
 	// git runs git with args in dir; tests replace it.
 	git func(ctx context.Context, dir string, args ...string) (string, error)
 	now func() time.Time
 
-	mu    sync.Mutex
-	cache map[string]gitRepositoryEntry
+	mu       sync.Mutex
+	cache    map[string]gitRepositoryEntry
+	inflight map[string]*gitRepositoryCall
 }
 
 type gitRepositoryEntry struct {
@@ -107,24 +120,48 @@ type gitRepositoryEntry struct {
 	expires time.Time
 }
 
+type gitRepositoryCall struct {
+	done chan struct{}
+	repo GitRepository
+}
+
 // NewGitRepositoryResolver returns a resolver that keeps answers for ttl (0 keeps nothing).
 func NewGitRepositoryResolver(ttl time.Duration) *GitRepositoryResolver {
 	return &GitRepositoryResolver{
-		ttl:   ttl,
-		git:   runGit,
-		now:   time.Now,
-		cache: make(map[string]gitRepositoryEntry),
+		ttl:      ttl,
+		git:      runGit,
+		now:      time.Now,
+		cache:    make(map[string]gitRepositoryEntry),
+		inflight: make(map[string]*gitRepositoryCall),
 	}
 }
 
+var (
+	gitBinaryOnce sync.Once
+	gitBinary     = "git"
+)
+
+// gitExecutable finds git once, also where the daemon's limited PATH doesn't reach (Homebrew,
+// /usr/local/bin), through the CommandService's fallback paths.
+func gitExecutable() string {
+	gitBinaryOnce.Do(func() {
+		if path, err := NewCommandService().LookPath("git"); err == nil {
+			gitBinary = path
+		}
+	})
+	return gitBinary
+}
+
 // runGit runs git without taking optional locks (it must never get in the way of the user's
-// own git commands), without prompting and under a deadline.
+// own git commands) and without prompting, under ctx's deadline.
 func runGit(ctx context.Context, dir string, args ...string) (string, error) {
-	ctx, cancel := context.WithTimeout(ctx, gitRepositoryTimeout)
-	defer cancel()
-	cmd := exec.CommandContext(ctx, "git", append([]string{"-C", dir}, args...)...)
+	cmd := exec.CommandContext(ctx, gitExecutable(), append([]string{"-C", dir}, args...)...)
 	cmd.Env = append(os.Environ(), "GIT_OPTIONAL_LOCKS=0", "GIT_TERMINAL_PROMPT=0")
 	out, err := cmd.Output()
+	var exitErr *exec.ExitError
+	if err != nil && errors.As(err, &exitErr) && ctx.Err() == nil {
+		return "", gitExitError{err}
+	}
 	return strings.TrimSpace(string(out)), err
 }
 
@@ -140,21 +177,35 @@ func (r *GitRepositoryResolver) Resolve(ctx context.Context, dir string) GitRepo
 		return GitRepository{}
 	}
 
-	now := r.now()
 	r.mu.Lock()
-	if e, ok := r.cache[dir]; ok && now.Before(e.expires) {
+	if e, ok := r.cache[dir]; ok && r.now().Before(e.expires) {
 		r.mu.Unlock()
 		return e.repo
 	}
+	if call, ok := r.inflight[dir]; ok {
+		r.mu.Unlock()
+		select {
+		case <-call.done:
+			return call.repo
+		case <-ctx.Done():
+			return GitRepository{}
+		}
+	}
+	call := &gitRepositoryCall{done: make(chan struct{})}
+	r.inflight[dir] = call
 	r.mu.Unlock()
 
-	repo := r.lookup(ctx, dir)
-	if ctx.Err() != nil {
-		return repo // a cancelled lookup says nothing about the directory
-	}
+	// The lookup isn't tied to this caller's context, so a caller that gives up doesn't spoil
+	// the answer for the others waiting on it; the budget bounds it instead.
+	lookupCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), gitRepositoryTimeout)
+	repo, definitive := r.lookup(lookupCtx, dir)
+	cancel()
 
-	if r.ttl > 0 {
-		r.mu.Lock()
+	r.mu.Lock()
+	call.repo = repo
+	delete(r.inflight, dir)
+	if definitive && r.ttl > 0 {
+		now := r.now()
 		if len(r.cache) >= gitRepositoryMaxEntries {
 			for k, e := range r.cache {
 				if !now.Before(e.expires) {
@@ -166,38 +217,45 @@ func (r *GitRepositoryResolver) Resolve(ctx context.Context, dir string) GitRepo
 			}
 		}
 		r.cache[dir] = gitRepositoryEntry{repo: repo, expires: now.Add(r.ttl)}
-		r.mu.Unlock()
 	}
+	r.mu.Unlock()
+	close(call.done)
 	return repo
 }
 
-func (r *GitRepositoryResolver) lookup(ctx context.Context, dir string) GitRepository {
+// lookup asks git about dir. definitive is false when git timed out or couldn't run, so the
+// answer isn't cached and the next record asks again.
+func (r *GitRepositoryResolver) lookup(ctx context.Context, dir string) (repo GitRepository, definitive bool) {
+	answered := func(err error) bool {
+		var exit gitExitError
+		return errors.As(err, &exit)
+	}
 	if info, err := os.Stat(dir); err != nil || !info.IsDir() {
-		return GitRepository{}
+		return GitRepository{}, true
 	}
 	root, err := r.git(ctx, dir, "rev-parse", "--show-toplevel")
 	if err != nil || root == "" {
-		return GitRepository{}
+		return GitRepository{}, err == nil || answered(err)
 	}
-	repo := GitRepository{Root: filepath.Clean(root)}
+	repo = GitRepository{Root: filepath.Clean(root)}
 
 	remotes, err := r.git(ctx, dir, "remote")
 	if err != nil {
-		return repo
+		return repo, answered(err)
 	}
 	name := pickGitRemote(strings.Fields(remotes))
 	if name == "" {
-		return repo
+		return repo, true
 	}
 	// get-url applies the user's url.<base>.insteadOf rewrites, unlike reading the config.
 	raw, err := r.git(ctx, dir, "remote", "get-url", name)
 	if err != nil {
-		return repo
+		return repo, answered(err)
 	}
 	if u, ok := CanonicalRepositoryURL(raw); ok {
 		repo.URL = u
 	}
-	return repo
+	return repo, true
 }
 
 // pickGitRemote prefers origin, the remote a clone creates and the one the user pushes to (so a

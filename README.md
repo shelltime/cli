@@ -101,9 +101,11 @@ shelltime codex install
 | `shelltime cc statusline` | Print the Claude Code statusline (reads the session JSON Claude Code sends on stdin) |
 | `shelltime cc backfill` | Upload past Claude Code usage from local transcripts |
 | `shelltime cc pr --session-id <id> <url>...` | Link pull requests to a Claude Code session (called by the ShellTime Claude Code mod) |
+| `shelltime cc projects` | Group this machine's coding agent projects by git repository instead of folder (`--dry-run` lists what would move). The daemon does this once on its own; see [Projects](#projects) |
 | `shelltime codex install` | Add ShellTime OTEL config to `~/.codex/config.toml` |
 | `shelltime codex uninstall` | Remove ShellTime OTEL config from `~/.codex/config.toml` |
 | `shelltime codex backfill` | Upload past Codex usage from local session files |
+| `shelltime codex projects` | Same as `shelltime cc projects`: the projects of both agents are grouped together |
 
 ### Environment helpers
 
@@ -198,6 +200,12 @@ For formatting details and platform notes, see [docs/CC_STATUSLINE.md](docs/CC_S
 - **Codex**: the exporter and flags are merged into the `[otel]` table of `~/.codex/config.toml`. Your other `[otel]` keys are kept.
 
 Besides tokens and cost, both tools then send your prompts, tool details (shell commands, file paths, truncated tool input or output, errors) and the assistant's responses. To keep some of these out, set `OTEL_LOG_USER_PROMPTS`, `OTEL_LOG_TOOL_DETAILS` or `OTEL_LOG_ASSISTANT_RESPONSES` to `0` in the `env` of `~/.claude/settings.json`, or `otel.log_user_prompt` / `otel.log_agent_responses` to `false` in `~/.codex/config.toml`. Re-running the install command resets them. `shelltime doctor` warns when a config written by an older version is missing newer keys, and `shelltime doctor --fix` re-runs the install.
+
+## Projects
+
+ShellTime groups your coding agent sessions into projects by the git repository they ran in, so a renamed or moved clone, a worktree or a subfolder stays one project. The repository comes from the folder's `origin` remote (else `upstream`, else the first remote), sent as `https://<host>/<path>` with any credentials in the remote URL removed. Claude Code reports it itself (`shelltime cc install` turns this on); for Codex and older Claude Code setups the daemon asks git about the session's folder. Sessions outside a repository, or in one without a remote, are grouped by machine and folder.
+
+Sessions recorded before this were grouped by folder. A couple of minutes after it starts, the daemon moves this machine's folder projects whose folders still exist and are clones into their repository's project, once, and leaves `~/.shelltime/project-repositories.v1` behind. `shelltime cc projects` does the same by hand (`--dry-run` shows the folders and repositories without changing anything). Folders that no longer exist (renamed or deleted) can't be checked, and host names many machines share, like `localhost`, are skipped.
 
 ## Codex Usage Tracking
 

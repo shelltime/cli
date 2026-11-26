@@ -20,8 +20,9 @@ const projectMigrationDelay = 2 * time.Minute
 // projects, once per machine (see model.MigrateProjectRepositories): sessions recorded before
 // the daemon named repositories are grouped by folder on the server, and only this machine can
 // tell which repository a folder is a clone of. It runs in the background a while after start
-// and leaves a marker when it is done; a server that doesn't support it yet, or a failure,
-// leaves none, so the next start tries again. `shelltime cc projects` runs it by hand.
+// and leaves a marker when it is done; a server that doesn't support it yet, a failure, or a
+// list the server cut short leaves none, so the next start tries again. `shelltime cc projects`
+// runs it by hand.
 func RunProjectMigrationOnce(ctx context.Context, cfg model.ShellTimeConfig) {
 	runProjectMigrationOnce(ctx, cfg, projectMigrationDelay, model.ProjectMigrationMarkerPath())
 }
@@ -59,22 +60,26 @@ func runProjectMigrationOnce(ctx context.Context, cfg model.ShellTimeConfig, del
 		return
 	}
 
-	marker, _ := json.Marshal(projectMigrationMarker{
-		MigratedAt: time.Now().UTC(),
-		Checked:    result.Checked,
-		Linked:     len(result.Linked),
-		Sessions:   result.Sessions,
-	})
-	if err := os.MkdirAll(filepath.Dir(markerPath), 0o700); err == nil {
-		err = os.WriteFile(markerPath, marker, 0o600)
-	}
-	if err != nil {
-		slog.Warn("Failed to write the project migration marker", slog.Any("err", err))
+	if !result.Truncated {
+		marker, _ := json.Marshal(projectMigrationMarker{
+			MigratedAt: time.Now().UTC(),
+			Checked:    result.Checked,
+			Linked:     len(result.Linked),
+			Sessions:   result.Sessions,
+		})
+		werr := os.MkdirAll(filepath.Dir(markerPath), 0o700)
+		if werr == nil {
+			werr = os.WriteFile(markerPath, marker, 0o600)
+		}
+		if werr != nil {
+			slog.Warn("Failed to write the project migration marker; it runs again on the next start", slog.Any("err", werr))
+		}
 	}
 	slog.Info("Project migration finished",
 		slog.Int("checked", result.Checked),
 		slog.Int("linked", len(result.Linked)),
 		slog.Int("sessions", result.Sessions),
 		slog.Int("missing", result.Missing),
-		slog.Int("notRepositories", result.NotRepositories))
+		slog.Int("notRepositories", result.NotRepositories),
+		slog.Bool("truncated", result.Truncated))
 }

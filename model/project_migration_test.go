@@ -20,6 +20,7 @@ import (
 type projectsServer struct {
 	server     *httptest.Server
 	unresolved []UnresolvedProject
+	truncated  bool
 
 	mu    sync.Mutex
 	hosts []string
@@ -38,7 +39,7 @@ func newProjectsServer(t *testing.T, unresolved ...UnresolvedProject) *projectsS
 			var body unresolvedProjectsRequest
 			require.NoError(t, json.NewDecoder(r.Body).Decode(&body))
 			ps.hosts = body.Hosts
-			_ = json.NewEncoder(w).Encode(unresolvedProjectsResponse{Projects: ps.unresolved})
+			_ = json.NewEncoder(w).Encode(unresolvedProjectsResponse{Projects: ps.unresolved, Truncated: ps.truncated})
 		case "/api/v1/cc/projects/repositories":
 			var body projectRepositoriesRequest
 			require.NoError(t, json.NewDecoder(r.Body).Decode(&body))
@@ -84,6 +85,18 @@ func TestMigrateProjectRepositories(t *testing.T) {
 	require.Len(t, ps.moved, 1)
 	assert.Equal(t, result.Linked, ps.moved[0])
 	assert.Equal(t, 3, result.Sessions)
+	assert.False(t, result.Truncated)
+
+	ps.truncated = true
+	result, err = MigrateProjectRepositories(context.Background(), endpoint, []string{"mbp"}, repos, true)
+	require.NoError(t, err)
+	assert.True(t, result.Truncated, "a list the server cut short is reported")
+}
+
+func TestMigrateProjectRepositoriesWithoutHosts(t *testing.T) {
+	result, err := MigrateProjectRepositories(context.Background(), Endpoint{Token: "tok", APIEndpoint: "http://127.0.0.1:0"}, nil, NewGitRepositoryResolver(0), false)
+	require.NoError(t, err, "no names to ask about means nothing to do, and no request")
+	assert.Zero(t, result.Checked)
 }
 
 func TestMigrateProjectRepositoriesReportsServerErrors(t *testing.T) {
@@ -109,6 +122,8 @@ func TestProjectMigrationHosts(t *testing.T) {
 		assert.Contains(t, hosts, short)
 	}
 	assert.Equal(t, hosts[:len(hosts)-1], ProjectMigrationHosts(hostname), "names are listed once")
+	assert.NotContains(t, ProjectMigrationHosts("localhost"), "localhost", "a name many machines share is left out")
+	assert.NotContains(t, ProjectMigrationHosts("Ubuntu"), "Ubuntu")
 }
 
 func TestResourceMachineName(t *testing.T) {

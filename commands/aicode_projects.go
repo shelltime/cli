@@ -61,6 +61,9 @@ func commandAICodeProjects(c *cli.Context) error {
 		return fmt.Errorf("project migration failed: %w", err)
 	}
 
+	if len(hosts) == 0 {
+		return errors.New("this machine's host name is one many machines share (like localhost), so its projects can't be told apart from theirs")
+	}
 	if result.Checked == 0 {
 		color.Green.Println("Every project of this machine is already grouped by repository.")
 		return nil
@@ -76,6 +79,9 @@ func commandAICodeProjects(c *cli.Context) error {
 
 	fmt.Printf("%d folder projects found: %d in a git repository, %d no longer here, %d not in a repository with a remote.\n",
 		result.Checked, len(result.Linked), result.Missing, result.NotRepositories)
+	if result.Truncated {
+		color.Yellow.Println("The server listed only part of this machine's folder projects; run it again to check the rest.")
+	}
 	switch {
 	case dryRun:
 		color.Green.Println("Dry run: nothing was changed.")

@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"sync"
 	"testing"
 	"time"
 
@@ -85,7 +86,7 @@ func (f *fakeGit) run(_ context.Context, dir string, args ...string) (string, er
 	switch {
 	case args[0] == "rev-parse":
 		if f.root == "" {
-			return "", errors.New("not a git repository")
+			return "", gitExitError{errors.New("not a git repository")}
 		}
 		return f.root, nil
 	case len(args) == 1 && args[0] == "remote":
@@ -126,6 +127,85 @@ func TestGitRepositoryResolverCachesNegativeAnswers(t *testing.T) {
 	assert.Equal(t, GitRepository{}, r.Resolve(context.Background(), dir))
 	assert.Equal(t, GitRepository{}, r.Resolve(context.Background(), dir))
 	assert.Equal(t, 1, git.calls)
+}
+
+// A timeout, or git failing to start, says nothing about the directory: the next lookup asks
+// again instead of serving a cached "no repository" for the whole TTL.
+func TestGitRepositoryResolverDoesNotCacheTransientFailures(t *testing.T) {
+	dir := t.TempDir()
+	calls := 0
+	failing := true
+	r := NewGitRepositoryResolver(time.Minute)
+	r.git = func(ctx context.Context, d string, args ...string) (string, error) {
+		calls++
+		if failing {
+			return "", context.DeadlineExceeded
+		}
+		return (&fakeGit{root: dir, remotes: "origin", url: "https://github.com/acme/web"}).run(ctx, d, args...)
+	}
+
+	assert.Equal(t, GitRepository{}, r.Resolve(context.Background(), dir))
+	failing = false
+	assert.Equal(t, "https://github.com/acme/web", r.Resolve(context.Background(), dir).URL)
+	assert.Equal(t, 4, calls, "the failed lookup was not cached")
+	r.Resolve(context.Background(), dir)
+	assert.Equal(t, 4, calls, "the answer was")
+}
+
+// Concurrent lookups of one directory share one run of git.
+func TestGitRepositoryResolverSharesConcurrentLookups(t *testing.T) {
+	dir := t.TempDir()
+	release := make(chan struct{})
+	var mu sync.Mutex
+	calls := 0
+	r := NewGitRepositoryResolver(time.Minute)
+	r.git = func(ctx context.Context, d string, args ...string) (string, error) {
+		mu.Lock()
+		calls++
+		mu.Unlock()
+		<-release
+		return (&fakeGit{root: dir, remotes: "origin", url: "https://github.com/acme/web"}).run(ctx, d, args...)
+	}
+
+	var wg sync.WaitGroup
+	results := make([]GitRepository, 5)
+	for i := range results {
+		wg.Add(1)
+		go func(i int) {
+			defer wg.Done()
+			results[i] = r.Resolve(context.Background(), dir)
+		}(i)
+	}
+	time.Sleep(50 * time.Millisecond)
+	close(release)
+	wg.Wait()
+
+	for _, got := range results {
+		assert.Equal(t, "https://github.com/acme/web", got.URL)
+	}
+	assert.Equal(t, 3, calls, "one lookup: rev-parse, remote, get-url")
+}
+
+// A caller that gives up returns at once; the lookup it started still finishes for the others.
+func TestGitRepositoryResolverWaiterGivesUp(t *testing.T) {
+	dir := t.TempDir()
+	release := make(chan struct{})
+	r := NewGitRepositoryResolver(time.Minute)
+	r.git = func(ctx context.Context, d string, args ...string) (string, error) {
+		<-release
+		return (&fakeGit{root: dir, remotes: "origin", url: "https://github.com/acme/web"}).run(ctx, d, args...)
+	}
+
+	first := make(chan GitRepository)
+	go func() { first <- r.Resolve(context.Background(), dir) }()
+	time.Sleep(20 * time.Millisecond)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	assert.Equal(t, GitRepository{}, r.Resolve(ctx, dir), "a cancelled waiter gets nothing")
+
+	close(release)
+	assert.Equal(t, "https://github.com/acme/web", (<-first).URL)
 }
 
 func TestGitRepositoryResolverSkipsWhatIsNotADirectory(t *testing.T) {

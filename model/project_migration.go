@@ -16,15 +16,32 @@ func ProjectMigrationMarkerPath() string {
 	return filepath.Join(os.ExpandEnv("$HOME"), COMMAND_BASE_STORAGE_FOLDER, ProjectMigrationMarkerFile)
 }
 
+// genericHostNames are host names many machines share (a fresh install, a container, a CI
+// runner). Another machine's folder project under one of them may exist here as a clone of
+// something else, so the migration never claims them.
+var genericHostNames = map[string]bool{
+	"localhost":             true,
+	"localhost.localdomain": true,
+	"ubuntu":                true,
+	"debian":                true,
+	"fedora":                true,
+	"archlinux":             true,
+	"raspberrypi":           true,
+	"runner":                true,
+	"buildkitsandbox":       true,
+	"docker-desktop":        true,
+	"(none)":                true,
+}
+
 // ProjectMigrationHosts returns the names this machine may have reported its coding agent
 // sessions under: its host name, the host name without its domain (macOS adds and drops .local),
 // and the machine.name `cc install` wrote into Claude Code's settings, which keeps the name the
-// machine had then.
+// machine had then. Generic names many machines share are left out.
 func ProjectMigrationHosts(settingsMachineName string) []string {
 	var hosts []string
 	add := func(h string) {
 		h = strings.TrimSpace(h)
-		if h == "" || len(hosts) >= ProjectRepositoriesMaxHosts {
+		if h == "" || genericHostNames[strings.ToLower(h)] || len(hosts) >= ProjectRepositoriesMaxHosts {
 			return
 		}
 		for _, existing := range hosts {
@@ -56,6 +73,9 @@ type ProjectMigrationResult struct {
 	Missing int
 	// NotRepositories counts folders outside a git work tree, or in one without a remote.
 	NotRepositories int
+	// Truncated is true when the server matched more folders than it listed; a later run sees
+	// the rest, once the folders this one moved are gone from the list.
+	Truncated bool
 }
 
 // MigrateProjectRepositories moves this machine's folder projects into the projects of their git
@@ -64,11 +84,15 @@ type ProjectMigrationResult struct {
 // machine can answer, since the folders are on its disk. A dry run sends nothing back.
 func MigrateProjectRepositories(ctx context.Context, endpoint Endpoint, hosts []string, repos *GitRepositoryResolver, dryRun bool) (ProjectMigrationResult, error) {
 	var result ProjectMigrationResult
-	projects, err := FetchUnresolvedProjects(ctx, endpoint, hosts)
+	if len(hosts) == 0 {
+		return result, nil
+	}
+	projects, truncated, err := FetchUnresolvedProjects(ctx, endpoint, hosts)
 	if err != nil {
 		return result, err
 	}
 	result.Checked = len(projects)
+	result.Truncated = truncated
 
 	for _, p := range projects {
 		if err := ctx.Err(); err != nil {

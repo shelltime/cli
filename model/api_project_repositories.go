@@ -34,6 +34,8 @@ type unresolvedProjectsRequest struct {
 
 type unresolvedProjectsResponse struct {
 	Projects []UnresolvedProject `json:"projects"`
+	// Truncated is true when the server matched more folders than it listed.
+	Truncated bool `json:"truncated"`
 }
 
 type projectRepositoriesRequest struct {
@@ -45,13 +47,14 @@ type projectRepositoriesResponse struct {
 }
 
 // FetchUnresolvedProjects lists the folder projects of the given hosts, the names this machine
-// has reported its sessions under.
-func FetchUnresolvedProjects(ctx context.Context, endpoint Endpoint, hosts []string) ([]UnresolvedProject, error) {
+// has reported its sessions under. truncated is true when the server matched more than it
+// listed.
+func FetchUnresolvedProjects(ctx context.Context, endpoint Endpoint, hosts []string) (projects []UnresolvedProject, truncated bool, err error) {
 	ctx, span := modelTracer.Start(ctx, "project_repositories.unresolved")
 	defer span.End()
 
 	var resp unresolvedProjectsResponse
-	err := SendHTTPRequestJSON(HTTPRequestOptions[*unresolvedProjectsRequest, unresolvedProjectsResponse]{
+	err = SendHTTPRequestJSON(HTTPRequestOptions[*unresolvedProjectsRequest, unresolvedProjectsResponse]{
 		Context:  ctx,
 		Endpoint: endpoint,
 		Method:   http.MethodPost,
@@ -60,7 +63,7 @@ func FetchUnresolvedProjects(ctx context.Context, endpoint Endpoint, hosts []str
 		Response: &resp,
 		Timeout:  30 * time.Second,
 	})
-	return resp.Projects, err
+	return resp.Projects, resp.Truncated, err
 }
 
 // SendProjectRepositories moves folder projects into their repositories' projects and returns
