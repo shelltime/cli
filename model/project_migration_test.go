@@ -139,29 +139,42 @@ func TestMigrateProjectRepositoriesCountsUncheckedFolders(t *testing.T) {
 	assert.Empty(t, ps.moved)
 }
 
-// After a few folders go unanswered, a run stops asking about the rest.
+// After a few folders' stats time out (a hung mount), a run stops asking about the rest; git
+// refusing folders doesn't stop it.
 func TestMigrateProjectRepositoriesStopsAskingWhenUnanswered(t *testing.T) {
 	var projects []UnresolvedProject
 	for range 6 {
 		projects = append(projects, UnresolvedProject{Host: "mbp", Pwd: t.TempDir()})
 	}
 	ps := newProjectsServer(t, projects...)
+	endpoint := Endpoint{Token: "tok", APIEndpoint: ps.server.URL}
+
 	var mu sync.Mutex
 	asked := map[string]bool{}
-	repos := NewGitRepositoryResolver(time.Minute)
+	repos := NewGitRepositoryResolver(0)
 	repos.git = func(_ context.Context, dir string, _ ...string) (string, error) {
 		mu.Lock()
 		asked[dir] = true
 		mu.Unlock()
-		return "", context.DeadlineExceeded
+		return "", context.DeadlineExceeded // or a safe.directory refusal: no answer
 	}
-	result, err := MigrateProjectRepositories(context.Background(), Endpoint{Token: "tok", APIEndpoint: ps.server.URL}, []string{"mbp"}, repos, false)
+	result, err := MigrateProjectRepositories(context.Background(), endpoint, []string{"mbp"}, repos, false)
+	require.NoError(t, err)
+	assert.Equal(t, 6, result.Unchecked)
+	assert.Len(t, asked, 6, "folders git didn't answer for don't stop the run")
+
+	original := statDir
+	t.Cleanup(func() { statDir = original })
+	var stats int
+	statDir = func(string, time.Duration) dirState {
+		stats++
+		return dirTimedOut
+	}
+	result, err = MigrateProjectRepositories(context.Background(), endpoint, []string{"mbp"}, repos, false)
 	require.NoError(t, err)
 	assert.Equal(t, 6, result.Unchecked)
 	assert.False(t, result.Complete())
-	mu.Lock()
-	defer mu.Unlock()
-	assert.Len(t, asked, projectMigrationMaxUnanswered)
+	assert.Equal(t, projectMigrationMaxUnanswered, stats, "after a few hung stats the rest aren't asked about")
 }
 
 func TestMigrateProjectRepositoriesWithoutHosts(t *testing.T) {

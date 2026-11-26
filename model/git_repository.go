@@ -3,6 +3,7 @@ package model
 import (
 	"context"
 	"errors"
+	"io/fs"
 	"net/url"
 	"os"
 	"os/exec"
@@ -318,6 +319,11 @@ func (r *GitRepositoryResolver) finish(dir string, call *gitRepositoryCall, repo
 	defer r.mu.Unlock()
 	call.repo, call.definitive = repo, definitive
 	delete(r.inflight, dir)
+	// An abandoned lookup that answered in the meantime has cached its answer; "unknown" never
+	// replaces it.
+	if e, ok := r.cache[dir]; ok && !definitive && e.definitive && r.now().Before(e.expires) {
+		return
+	}
 	if ttl := r.entryTTL(definitive); ttl > 0 {
 		now := r.now()
 		if len(r.cache) >= gitRepositoryMaxEntries {
@@ -334,21 +340,38 @@ func (r *GitRepositoryResolver) finish(dir string, call *gitRepositoryCall, repo
 	}
 }
 
-// statDir reports whether dir is a directory. ok is false when the stat didn't return within
-// timeout: on a hung network mount it blocks in the kernel, where no context reaches it.
-func statDir(dir string, timeout time.Duration) (isDir, ok bool) {
-	result := make(chan bool, 1)
+// dirState is what a stat of a project's folder said.
+type dirState int
+
+const (
+	dirExists   dirState = iota
+	dirMissing           // nothing there, or not a directory
+	dirUnknown           // the stat failed some other way (permissions, I/O)
+	dirTimedOut          // the stat didn't return in time, as on a hung network mount
+)
+
+// statDir stats dir, giving up after timeout: on a hung network mount the stat blocks in the
+// kernel, where no context reaches it. Tests replace it.
+var statDir = func(dir string, timeout time.Duration) dirState {
+	result := make(chan dirState, 1)
 	go func() {
 		info, err := os.Stat(dir)
-		result <- err == nil && info.IsDir()
+		switch {
+		case err == nil && info.IsDir():
+			result <- dirExists
+		case err == nil, errors.Is(err, fs.ErrNotExist):
+			result <- dirMissing
+		default:
+			result <- dirUnknown
+		}
 	}()
 	timer := time.NewTimer(timeout)
 	defer timer.Stop()
 	select {
-	case isDir := <-result:
-		return isDir, true
+	case state := <-result:
+		return state
 	case <-timer.C:
-		return false, false
+		return dirTimedOut
 	}
 }
 

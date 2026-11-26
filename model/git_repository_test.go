@@ -316,10 +316,8 @@ func TestStatDir(t *testing.T) {
 	dir := t.TempDir()
 	file := filepath.Join(dir, "f")
 	require.NoError(t, os.WriteFile(file, nil, 0o600))
-	for path, want := range map[string]bool{dir: true, file: false, filepath.Join(dir, "missing"): false} {
-		isDir, ok := statDir(path, time.Second)
-		assert.True(t, ok)
-		assert.Equal(t, want, isDir, path)
+	for path, want := range map[string]dirState{dir: dirExists, file: dirMissing, filepath.Join(dir, "missing"): dirMissing} {
+		assert.Equal(t, want, statDir(path, time.Second), path)
 	}
 }
 
