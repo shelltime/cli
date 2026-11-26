@@ -3,6 +3,7 @@ package daemon
 import (
 	"context"
 	"os/exec"
+	"path/filepath"
 	"testing"
 
 	"github.com/malamtime/cli/model"
@@ -135,6 +136,11 @@ func TestRepositoryNotFilledForAnotherWorkingDirectory(t *testing.T) {
 	event = p.parseLogRecord(codexRecord("user_prompt", kv("pwd", strVal(dir))), codex, "test-scope")
 	require.NotNil(t, event)
 	assert.Equal(t, "https://github.com/acme/web", event.Attributes[model.AICodeRepositoryAttribute], "the same folder keeps it")
+
+	event = p.parseLogRecord(codexRecord("user_prompt", kv("pwd", strVal(filepath.Join(dir, "src", "api")))), codex, "test-scope")
+	require.NotNil(t, event)
+	assert.Equal(t, "https://github.com/acme/web", event.Attributes[model.AICodeRepositoryAttribute], "a subfolder of the work tree keeps it")
+	assert.False(t, insideDir(dir+"-other", dir), "a sibling with a longer name is outside")
 
 	event = p.parseLogRecord(codexRecord("user_prompt", kv("pwd", strVal("/elsewhere")), kv("vcs.repository.url.full", strVal("https://github.com/acme/other"))), codex, "test-scope")
 	require.NotNil(t, event)

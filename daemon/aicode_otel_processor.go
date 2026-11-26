@@ -94,7 +94,18 @@ func (p *AICodeOtelProcessor) resolveRepository(ctx context.Context, res *otelRe
 	if _, ok := res.attrs.Attributes[model.AICodeRepositoryAttribute]; ok {
 		return ""
 	}
-	return p.repos.Resolve(ctx, res.attrs.Pwd).URL
+	repo := p.repos.Resolve(ctx, res.attrs.Pwd)
+	res.repositoryRoot = repo.Root
+	return repo.URL
+}
+
+// insideDir reports whether path is root or a directory below it.
+func insideDir(path, root string) bool {
+	if root == "" {
+		return false
+	}
+	rel, err := filepath.Rel(root, filepath.Clean(path))
+	return err == nil && rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator))
 }
 
 // fillRepository adds the repository of the resource's working directory to a record that
@@ -116,10 +127,11 @@ func fillRepository(attrs map[string]any, res *otelResource) map[string]any {
 }
 
 // unfillRepository takes back the repository fillRepository added when the record named a
-// working directory of its own: the repository is the resource's folder's, not necessarily that
-// one's. A repository the record itself named stays.
+// working directory of its own outside the resource's work tree: the repository is the
+// resource's folder's, not necessarily that one's. A subfolder of the same work tree keeps it,
+// and so does a repository the record itself named.
 func unfillRepository(attrs map[string]any, res *otelResource, filled bool, pwd string) {
-	if !filled || pwd == "" || pwd == res.attrs.Pwd {
+	if !filled || pwd == "" || pwd == res.attrs.Pwd || insideDir(pwd, res.repositoryRoot) {
 		return
 	}
 	if attrs[model.AICodeRepositoryAttribute] == res.repository {
@@ -178,6 +190,8 @@ type otelResource struct {
 	// repository is the canonical URL of the git repository of the resource's working
 	// directory, or "" (see resolveRepository).
 	repository string
+	// repositoryRoot is the top level of that repository's work tree.
+	repositoryRoot string
 }
 
 // deterministicMarshal encodes OTLP messages byte-for-byte reproducibly, so an exporter retry of
