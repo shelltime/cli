@@ -23,6 +23,11 @@ func runProjects(t *testing.T, group string, token, endpoint string, args ...str
 	configService = mc
 	t.Cleanup(func() { configService = original })
 
+	// The machine's own host name may be a generic one (a CI runner's), which names nothing.
+	originalHosts := aiCodeProjectsHosts
+	aiCodeProjectsHosts = func() []string { return []string{"mbp"} }
+	t.Cleanup(func() { aiCodeProjectsHosts = originalHosts })
+
 	app := &cli.App{Name: "t", Commands: []*cli.Command{{Name: group, Subcommands: []*cli.Command{AICodeProjectsCommand}}}}
 	return app.Run(append([]string{"t", group, "projects"}, args...))
 }
@@ -36,11 +41,6 @@ func TestAICodeProjectsMovesClones(t *testing.T) {
 		out, err := exec.Command("git", append([]string{"-C", dir}, args...)...).CombinedOutput()
 		require.NoError(t, err, string(out))
 	}
-
-	// The machine's own host name may be a generic one (a CI runner's), which names nothing.
-	originalHosts := aiCodeProjectsHosts
-	aiCodeProjectsHosts = func() []string { return []string{"mbp"} }
-	t.Cleanup(func() { aiCodeProjectsHosts = originalHosts })
 
 	var moves int
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

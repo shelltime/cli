@@ -332,6 +332,9 @@ func (p *AICodeOtelProcessor) ProcessTraces(ctx context.Context, req *colltracev
 		for _, ss := range rs.GetScopeSpans() {
 			for _, s := range ss.GetSpans() {
 				if span := parseSpan(s, source, attrs); span != nil {
+					if p.dropRepository {
+						dropSpanRepository(span)
+					}
 					spans = append(spans, *span)
 				}
 			}
@@ -427,6 +430,15 @@ func parseSpan(s *tracev1.Span, source string, res *model.AICodeOtelResourceAttr
 	}
 
 	return span
+}
+
+// dropSpanRepository removes the repository from a span and its events
+// (aiCodeOtel.sendRepository: false).
+func dropSpanRepository(span *model.AICodeOtelSpan) {
+	delete(span.Attributes, model.AICodeRepositoryAttribute)
+	for i := range span.Events {
+		delete(span.Events[i].Attributes, model.AICodeRepositoryAttribute)
+	}
 }
 
 // fillSpanSessionIDs gives spans without a session id the one another span of the same trace

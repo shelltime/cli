@@ -207,7 +207,7 @@ ShellTime groups your coding agent sessions into projects by the git repository 
 
 Sessions recorded before this were grouped by folder. A couple of minutes after it starts, the daemon moves this machine's folder projects whose folders still exist and are clones into their repository's project, once, and leaves `~/.shelltime/project-repositories.v1` behind. `shelltime cc projects` does the same by hand (`--dry-run` shows the folders and repositories without changing anything). Folders that no longer exist (renamed or deleted) can't be checked, and host names many machines share, like `localhost`, are skipped. A folder moves whole, into the repository it is a clone of today, so only folders where no session ever named a repository are moved this way: the server keys the others from the sessions that did, each session from the closest one before it.
 
-To keep repository names to yourself, set `sendRepository: false` under `aiCodeOtel` in `~/.shelltime/config.yaml`. The daemon then never asks git, removes the repository Claude Code reports, and skips the migration; sessions are grouped by machine and folder.
+To keep repository names to yourself, set `sendRepository: false` under `aiCodeOtel` in `~/.shelltime/config.yaml`. The daemon then never asks git, removes the repository Claude Code reports, and skips the migration; sessions are grouped by machine and folder. Restart the daemon (`shelltime daemon reinstall`) for a change to take effect.
 
 ## Codex Usage Tracking
 
