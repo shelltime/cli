@@ -117,3 +117,26 @@ func TestRepositoryNotSentWhenTurnedOff(t *testing.T) {
 	assert.Nil(t, socketRepositoryResolver(model.ShellTimeConfig{AICodeOtel: &model.AICodeOtel{SendRepository: &off}}))
 	assert.NotNil(t, socketRepositoryResolver(model.ShellTimeConfig{}))
 }
+
+// A record that names a working directory of its own doesn't get the resource folder's
+// repository; one that names its repository keeps it.
+func TestRepositoryNotFilledForAnotherWorkingDirectory(t *testing.T) {
+	dir := gitRepoWithOrigin(t, "git@github.com:acme/web.git")
+	p := NewAICodeOtelProcessor(model.ShellTimeConfig{})
+	codex := newOtelResource(serviceResource("codex_cli_rs", kv("pwd", strVal(dir))), model.AICodeOtelSourceCodex)
+	codex.repository = p.resolveRepository(context.Background(), codex)
+	require.Equal(t, "https://github.com/acme/web", codex.repository)
+
+	event := p.parseLogRecord(codexRecord("user_prompt", kv("pwd", strVal("/elsewhere"))), codex, "test-scope")
+	require.NotNil(t, event)
+	assert.Equal(t, "/elsewhere", event.Pwd)
+	assert.NotContains(t, event.Attributes, model.AICodeRepositoryAttribute)
+
+	event = p.parseLogRecord(codexRecord("user_prompt", kv("pwd", strVal(dir))), codex, "test-scope")
+	require.NotNil(t, event)
+	assert.Equal(t, "https://github.com/acme/web", event.Attributes[model.AICodeRepositoryAttribute], "the same folder keeps it")
+
+	event = p.parseLogRecord(codexRecord("user_prompt", kv("pwd", strVal("/elsewhere")), kv("vcs.repository.url.full", strVal("https://github.com/acme/other"))), codex, "test-scope")
+	require.NotNil(t, event)
+	assert.Equal(t, "https://github.com/acme/other", event.Attributes[model.AICodeRepositoryAttribute], "the record's own repository stays")
+}

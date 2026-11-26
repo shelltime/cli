@@ -115,6 +115,18 @@ func fillRepository(attrs map[string]any, res *otelResource) map[string]any {
 	return setAttribute(attrs, model.AICodeRepositoryAttribute, res.repository)
 }
 
+// unfillRepository takes back the repository fillRepository added when the record named a
+// working directory of its own: the repository is the resource's folder's, not necessarily that
+// one's. A repository the record itself named stays.
+func unfillRepository(attrs map[string]any, res *otelResource, filled bool, pwd string) {
+	if !filled || pwd == "" || pwd == res.attrs.Pwd {
+		return
+	}
+	if attrs[model.AICodeRepositoryAttribute] == res.repository {
+		delete(attrs, model.AICodeRepositoryAttribute)
+	}
+}
+
 // fillCloudSessionID adds the daemon's cloud session id to the attributes of a Claude Code
 // record that doesn't carry ccr.session.id yet. In a cloud VM the daemon is started by the
 // session's SessionStart hook, so every Claude Code record it receives belongs to that session.
@@ -734,11 +746,14 @@ func (p *AICodeOtelProcessor) parseMetric(m *metricsv1.Metric, res *otelResource
 		// Seeded before the data point's attributes, so they can't crowd it out; a ccr.session.id
 		// on the data point still wins.
 		metric.Attributes = p.fillCloudSessionID(metric.Attributes, res.source)
+		_, had := metric.Attributes[model.AICodeRepositoryAttribute]
 		metric.Attributes = fillRepository(metric.Attributes, res)
+		_, has := metric.Attributes[model.AICodeRepositoryAttribute]
 		// Then extract data point attributes (can override resource attrs)
 		for _, attr := range dp.GetAttributes() {
 			applyMetricAttribute(&metric, attr, metricType)
 		}
+		unfillRepository(metric.Attributes, res, has && !had, metric.Pwd)
 		if p.dropRepository {
 			delete(metric.Attributes, model.AICodeRepositoryAttribute)
 		}
@@ -828,13 +843,16 @@ func (p *AICodeOtelProcessor) parseLogRecord(lr *logsv1.LogRecord, res *otelReso
 	}
 	// Seeded the same way: a ccr.session.id on the record itself still wins.
 	event.Attributes = p.fillCloudSessionID(event.Attributes, res.source)
+	_, had := event.Attributes[model.AICodeRepositoryAttribute]
 	event.Attributes = fillRepository(event.Attributes, res)
+	_, has := event.Attributes[model.AICodeRepositoryAttribute]
 
 	var fallbacks eventFallbacks
 	for _, attr := range lr.GetAttributes() {
 		applyEventAttribute(event, &fallbacks, attr.GetKey(), attr.GetValue())
 	}
 	fallbacks.apply(event, res.attrs)
+	unfillRepository(event.Attributes, res, has && !had, event.Pwd)
 
 	if event.SessionID == "" && event.ConversationID != "" {
 		event.SessionID = event.ConversationID
