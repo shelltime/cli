@@ -64,6 +64,12 @@ func ProjectMigrationHosts(settingsMachineName string) []string {
 // folders each).
 const projectMigrationMaxPages = 50
 
+// projectMigrationMaxUnanswered is how many folders may go unanswered (a stat or git that
+// timed out, as on a hung network mount) before a run stops asking about the rest, each of which
+// would cost the whole budget and a blocked thread. They count as unchecked, so a later run
+// asks again.
+const projectMigrationMaxUnanswered = 3
+
 // ProjectMigrationResult is what a project migration found and did.
 type ProjectMigrationResult struct {
 	// Checked counts the folder projects the server listed for this machine.
@@ -102,6 +108,7 @@ func MigrateProjectRepositories(ctx context.Context, endpoint Endpoint, hosts []
 	}
 
 	var after *UnresolvedProject
+	unanswered := 0
 	for page := 0; page < projectMigrationMaxPages; page++ {
 		projects, truncated, err := FetchUnresolvedProjects(ctx, endpoint, hosts, after)
 		if err != nil {
@@ -115,8 +122,13 @@ func MigrateProjectRepositories(ctx context.Context, endpoint Endpoint, hosts []
 			if err := ctx.Err(); err != nil {
 				return result, err
 			}
+			if unanswered >= projectMigrationMaxUnanswered {
+				result.Unchecked++
+				continue
+			}
 			isDir, ok := statDir(p.Pwd, repos.timeout)
 			if !ok {
+				unanswered++
 				result.Unchecked++
 				continue
 			}
@@ -127,6 +139,7 @@ func MigrateProjectRepositories(ctx context.Context, endpoint Endpoint, hosts []
 			repo, definitive := repos.Lookup(ctx, p.Pwd)
 			switch {
 			case !definitive:
+				unanswered++
 				result.Unchecked++
 			case repo.URL == "":
 				result.NotRepositories++

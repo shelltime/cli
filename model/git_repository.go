@@ -54,6 +54,9 @@ func CanonicalRepositoryURL(remote string) (string, bool) {
 			host = host[at+1:]
 		}
 		path = remote[colon+1:]
+		if unescaped, err := url.PathUnescape(path); err == nil {
+			path = unescaped
+		}
 	}
 
 	host = strings.ToLower(strings.TrimSuffix(host, "."))
@@ -72,6 +75,12 @@ func CanonicalRepositoryURL(remote string) (string, bool) {
 	}
 	if len(segments) == 0 || slices.Contains(segments, "..") || slices.Contains(segments, ".") {
 		return "", false
+	}
+	// Each segment is escaped again, so every spelling of a name ("My Project", "My%20Project",
+	// a non-ASCII name raw or escaped) gives one URL, and a %23 or %3F stays part of the name.
+	// The server escapes the same way (model.CanonicalRepositoryURL there).
+	for i, s := range segments {
+		segments[i] = url.PathEscape(s)
 	}
 	return "https://" + host + "/" + strings.Join(segments, "/"), true
 }
@@ -135,6 +144,11 @@ type gitRepositoryEntry struct {
 	expires    time.Time
 }
 
+type gitRepositoryAnswer struct {
+	repo       GitRepository
+	definitive bool
+}
+
 type gitRepositoryCall struct {
 	done       chan struct{}
 	repo       GitRepository
@@ -183,7 +197,8 @@ func gitExecutable() string {
 // own git commands) and without prompting, under ctx's deadline.
 func runGit(ctx context.Context, dir string, args ...string) (string, error) {
 	cmd := exec.CommandContext(ctx, gitExecutable(), append([]string{"-C", dir}, args...)...)
-	cmd.Env = append(os.Environ(), "GIT_OPTIONAL_LOCKS=0", "GIT_TERMINAL_PROMPT=0")
+	// Messages in English: gitExitIsAnswer reads them.
+	cmd.Env = append(os.Environ(), "GIT_OPTIONAL_LOCKS=0", "GIT_TERMINAL_PROMPT=0", "LC_ALL=C", "LANGUAGE=")
 	out, err := cmd.Output()
 	var exitErr *exec.ExitError
 	if err != nil && errors.As(err, &exitErr) && ctx.Err() == nil && gitExitIsAnswer(exitErr) {
@@ -257,16 +272,12 @@ func (r *GitRepositoryResolver) Lookup(ctx context.Context, dir string) (GitRepo
 	// The lookup isn't tied to this caller's context, so a caller that gives up doesn't spoil
 	// the answer for the others waiting on it; the budget bounds it instead. It runs on its own
 	// goroutine because the budget can't interrupt a stat or a git run blocked in the kernel.
-	type answer struct {
-		repo       GitRepository
-		definitive bool
-	}
-	answers := make(chan answer, 1)
+	answers := make(chan gitRepositoryAnswer, 1)
 	timeout := r.timeout
 	go func() {
 		lookupCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), timeout)
 		defer cancel()
-		a := answer{}
+		a := gitRepositoryAnswer{}
 		a.repo, a.definitive = r.lookup(lookupCtx, dir)
 		answers <- a
 	}()
@@ -275,18 +286,30 @@ func (r *GitRepositoryResolver) Lookup(ctx context.Context, dir string) (GitRepo
 	select {
 	case a := <-answers:
 		repo, definitive = a.repo, a.definitive
+	case <-ctx.Done():
+		// This caller gave up (its exporter went away, the daemon is stopping).
+		r.abandon(dir, answers)
 	case <-timer.C:
-		r.mu.Lock()
-		r.stuck[dir] = struct{}{}
-		r.mu.Unlock()
-		go func() {
-			<-answers
-			r.mu.Lock()
-			delete(r.stuck, dir)
-			r.mu.Unlock()
-		}()
+		r.abandon(dir, answers)
 	}
 	return repo, definitive
+}
+
+// abandon stops waiting for a lookup that is still running: the directory gets no other lookup
+// until this one returns, and its answer is kept then for whoever asks next.
+func (r *GitRepositoryResolver) abandon(dir string, answers <-chan gitRepositoryAnswer) {
+	r.mu.Lock()
+	r.stuck[dir] = struct{}{}
+	r.mu.Unlock()
+	go func() {
+		a := <-answers
+		r.mu.Lock()
+		defer r.mu.Unlock()
+		delete(r.stuck, dir)
+		if ttl := r.entryTTL(a.definitive); ttl > 0 && len(r.cache) < gitRepositoryMaxEntries {
+			r.cache[dir] = gitRepositoryEntry{repo: a.repo, definitive: a.definitive, expires: r.now().Add(ttl)}
+		}
+	}()
 }
 
 // finish publishes a lookup's answer to the cache and to the callers waiting on it.

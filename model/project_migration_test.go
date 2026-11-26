@@ -139,6 +139,31 @@ func TestMigrateProjectRepositoriesCountsUncheckedFolders(t *testing.T) {
 	assert.Empty(t, ps.moved)
 }
 
+// After a few folders go unanswered, a run stops asking about the rest.
+func TestMigrateProjectRepositoriesStopsAskingWhenUnanswered(t *testing.T) {
+	var projects []UnresolvedProject
+	for range 6 {
+		projects = append(projects, UnresolvedProject{Host: "mbp", Pwd: t.TempDir()})
+	}
+	ps := newProjectsServer(t, projects...)
+	var mu sync.Mutex
+	asked := map[string]bool{}
+	repos := NewGitRepositoryResolver(time.Minute)
+	repos.git = func(_ context.Context, dir string, _ ...string) (string, error) {
+		mu.Lock()
+		asked[dir] = true
+		mu.Unlock()
+		return "", context.DeadlineExceeded
+	}
+	result, err := MigrateProjectRepositories(context.Background(), Endpoint{Token: "tok", APIEndpoint: ps.server.URL}, []string{"mbp"}, repos, false)
+	require.NoError(t, err)
+	assert.Equal(t, 6, result.Unchecked)
+	assert.False(t, result.Complete())
+	mu.Lock()
+	defer mu.Unlock()
+	assert.Len(t, asked, projectMigrationMaxUnanswered)
+}
+
 func TestMigrateProjectRepositoriesWithoutHosts(t *testing.T) {
 	result, err := MigrateProjectRepositories(context.Background(), Endpoint{Token: "tok", APIEndpoint: "http://127.0.0.1:0"}, nil, NewGitRepositoryResolver(0), false)
 	require.NoError(t, err, "no names to ask about means nothing to do, and no request")

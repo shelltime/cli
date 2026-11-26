@@ -45,6 +45,20 @@ func TestCanonicalRepositoryURL(t *testing.T) {
 	}
 }
 
+// Names are escaped the same way whatever the remote's form, like the server does.
+func TestCanonicalRepositoryURLEscapesNames(t *testing.T) {
+	for remote, want := range map[string]string{
+		"https://dev.azure.com/org/My%20Project/_git/repo": "https://dev.azure.com/org/My%20Project/_git/repo",
+		"https://example.com/acme/repo%23one.git":          "https://example.com/acme/repo%23one",
+		"https://github.com/acme/Ⱥ":                        "https://github.com/acme/%C8%BA",
+		"git@github.com:acme/%c8%ba.git":                   "https://github.com/acme/%C8%BA",
+	} {
+		got, ok := CanonicalRepositoryURL(remote)
+		require.True(t, ok, remote)
+		assert.Equal(t, want, got, remote)
+	}
+}
+
 func TestCanonicalRepositoryURLRejectsLocalRemotes(t *testing.T) {
 	for _, remote := range []string{
 		"",
@@ -257,6 +271,27 @@ func TestGitRepositoryResolverGivesUpOnAStuckLookup(t *testing.T) {
 	repo, definitive = r.Lookup(context.Background(), dir)
 	assert.True(t, definitive)
 	assert.Equal(t, "https://github.com/acme/web", repo.URL)
+}
+
+// A caller whose context ends stops waiting; the lookup's answer is kept for the next caller.
+func TestGitRepositoryResolverCallerGivesUp(t *testing.T) {
+	dir := t.TempDir()
+	release := make(chan struct{})
+	r := NewGitRepositoryResolver(time.Minute)
+	r.git = func(ctx context.Context, d string, args ...string) (string, error) {
+		<-release
+		return (&fakeGit{root: dir, remotes: "origin", url: "https://github.com/acme/web"}).run(ctx, d, args...)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Millisecond)
+	defer cancel()
+	_, definitive := r.Lookup(ctx, dir)
+	assert.False(t, definitive)
+
+	close(release)
+	assert.Eventually(t, func() bool {
+		repo, definitive := r.Lookup(context.Background(), dir)
+		return definitive && repo.URL == "https://github.com/acme/web"
+	}, 2*time.Second, 10*time.Millisecond)
 }
 
 // git refusing a repository it doesn't trust, or killed by a signal, says nothing about the
