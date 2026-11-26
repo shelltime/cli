@@ -115,6 +115,9 @@ type SocketHandler struct {
 	// configService, when set, is read again for each heartbeat message, so turning code
 	// tracking on takes effect without restarting the daemon.
 	configService model.ConfigService
+	// repos finds the git repository of a session_project message's directory. Nil sends
+	// none.
+	repos *model.GitRepositoryResolver
 }
 
 func NewSocketHandler(config *model.ShellTimeConfig, ch *GoChannel) *SocketHandler {
@@ -124,7 +127,17 @@ func NewSocketHandler(config *model.ShellTimeConfig, ch *GoChannel) *SocketHandl
 		stopChan:    make(chan struct{}),
 		ccInfoTimer: NewCCInfoTimerService(config),
 		aiCloudOnly: model.IsAICloudOnly(*config, os.Getenv),
+		repos:       socketRepositoryResolver(*config),
 	}
+}
+
+// socketRepositoryResolver is nil, so session_project messages name no repository, when
+// aiCodeOtel.sendRepository is false.
+func socketRepositoryResolver(config model.ShellTimeConfig) *model.GitRepositoryResolver {
+	if !config.SendsRepository() {
+		return nil
+	}
+	return model.NewGitRepositoryResolver(repositoryCacheTTL)
 }
 
 // SetConfigService makes heartbeat messages check the config on disk instead of the one
@@ -308,7 +321,7 @@ func (p *SocketHandler) handleConnection(conn net.Conn) {
 			sessionID, _ := payload["sessionId"].(string)
 			projectPath, _ := payload["projectPath"].(string)
 			if sessionID != "" && projectPath != "" {
-				go model.SendSessionProjectUpdate(context.Background(), *p.config, sessionID, projectPath)
+				go p.sendSessionProject(sessionID, projectPath)
 				slog.Debug("session_project update dispatched", slog.String("sessionId", sessionID))
 			}
 		}
@@ -316,6 +329,20 @@ func (p *SocketHandler) handleConnection(conn net.Conn) {
 		p.handleSessionPullRequests(msg)
 	default:
 		slog.Error("Unknown message type:", slog.String("messageType", string(msg.Type)))
+	}
+}
+
+// sendSessionProject posts a Claude Code session's working directory, with the repository it
+// belongs to, so the server can put the session in that repository's project. The statusline
+// sends the directory on every render; the resolver answers repeats from its cache.
+func (p *SocketHandler) sendSessionProject(sessionID, projectPath string) {
+	ctx := context.Background()
+	var repository string
+	if p.repos != nil {
+		repository = p.repos.Resolve(ctx, projectPath).URL
+	}
+	if err := model.SendSessionProjectUpdate(ctx, *p.config, sessionID, projectPath, repository); err != nil {
+		slog.Debug("session_project update failed", slog.String("sessionId", sessionID), slog.Any("err", err))
 	}
 }
 

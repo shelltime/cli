@@ -237,6 +237,33 @@ func TestSocketHandler_SessionProject(t *testing.T) {
 	})
 }
 
+// The daemon sends the repository the statusline's directory belongs to along with the path.
+func TestSocketHandler_SessionProjectSendsRepository(t *testing.T) {
+	dir := gitRepoWithOrigin(t, "git@github.com:acme/web.git")
+	got := make(chan map[string]interface{}, 1)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var body map[string]interface{}
+		_ = json.NewDecoder(r.Body).Decode(&body)
+		if r.URL.Path == "/api/v1/cc/session-project" {
+			got <- body
+		}
+		w.WriteHeader(http.StatusNoContent)
+	}))
+	t.Cleanup(server.Close)
+
+	_, socketPath := startHandler(t, &model.ShellTimeConfig{Token: "tok", APIEndpoint: server.URL})
+	SendSessionProject(socketPath, "sess-1", dir)
+
+	select {
+	case body := <-got:
+		assert.Equal(t, "sess-1", body["sessionId"])
+		assert.Equal(t, dir, body["projectPath"])
+		assert.Equal(t, "https://github.com/acme/web", body["repository"])
+	case <-time.After(5 * time.Second):
+		t.Fatal("daemon did not send the session project to the server")
+	}
+}
+
 func TestSocketHandler_SessionPullRequestsSendsToServer(t *testing.T) {
 	type request struct {
 		path, auth string

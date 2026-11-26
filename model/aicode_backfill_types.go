@@ -71,6 +71,10 @@ type AICodeBackfillEvent struct {
 	UserName       string `json:"userName,omitempty"`
 	MachineName    string `json:"machineName,omitempty"`
 	TeamID         string `json:"teamId,omitempty"`
+
+	// Attributes carries what has no field of its own: the session's git repository
+	// (AICodeRepositoryAttribute).
+	Attributes map[string]any `json:"attributes,omitempty"`
 }
 
 // AICodeBackfillRequest is the body of POST /api/v1/cc/backfill.

@@ -13,6 +13,7 @@ var CodexCommand = &cli.Command{
 		CodexInstallCommand,
 		CodexUninstallCommand,
 		CodexBackfillCommand,
+		AICodeProjectsCommand,
 	},
 }
 

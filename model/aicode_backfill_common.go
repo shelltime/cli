@@ -3,6 +3,7 @@ package model
 import (
 	"bufio"
 	"bytes"
+	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
@@ -46,6 +47,34 @@ type BackfillSession struct {
 	Start      time.Time
 	End        time.Time
 	Events     []AICodeBackfillEvent
+	// Repository is the canonical URL of the git repository the session ran in, when its
+	// transcript recorded one (Codex does); AttachBackfillRepositories fills the rest.
+	Repository string
+}
+
+// AttachBackfillRepositories names each session's git repository on its events, so the server
+// puts the session in the repository's project rather than its folder's. A repository the
+// transcript recorded comes first, since it was true when the session ran; otherwise the
+// session's working directory is asked, if it still exists and is a clone.
+func AttachBackfillRepositories(ctx context.Context, sessions []*BackfillSession, repos *GitRepositoryResolver) {
+	for _, s := range sessions {
+		if s.Repository == "" && repos != nil && len(s.Events) > 0 {
+			s.Repository = repos.Resolve(ctx, s.Events[0].Pwd).URL
+		}
+		if s.Repository == "" {
+			continue
+		}
+		for i := range s.Events {
+			e := &s.Events[i]
+			if _, ok := e.Attributes[AICodeRepositoryAttribute]; ok {
+				continue
+			}
+			if e.Attributes == nil {
+				e.Attributes = make(map[string]any, 1)
+			}
+			e.Attributes[AICodeRepositoryAttribute] = s.Repository
+		}
+	}
 }
 
 // BackfillParseResult is what a transcript parser found on disk.

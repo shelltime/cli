@@ -199,6 +199,12 @@ func main() {
 	// (statusline mods, the desktop app, idle sessions).
 	processor.StartAnthropicUsageSync()
 
+	// Group the sessions recorded before repositories were named by repository, not folder.
+	// A cloud VM is no machine of the user's, and its home doesn't outlive the session.
+	if !aiCloudOnly {
+		go daemon.RunProjectMigrationOnce(ctx, cfg)
+	}
+
 	// Handle shutdown gracefully
 	sigChan := make(chan os.Signal, 1)
 	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)

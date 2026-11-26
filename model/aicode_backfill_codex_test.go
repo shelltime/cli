@@ -61,7 +61,7 @@ func writeCodexFixtures(t *testing.T) string {
 	shellArgs := mustJSON(t, obj{"command": []any{"bash", "-lc", "go test ./..."}, "workdir": "/tmp/codex"})
 
 	writeJSONL(t, filepath.Join(day, "rollout-2026-09-10T10-00-00-"+codexSessionA+".jsonl"),
-		codexLine(codexTS(10, 0, 0), "session_meta", obj{"id": codexSessionA, "cwd": "/tmp/codex", "cli_version": "0.40.0", "model_provider": "openai", "originator": "codex_cli_rs"}),
+		codexLine(codexTS(10, 0, 0), "session_meta", obj{"id": codexSessionA, "cwd": "/tmp/codex", "cli_version": "0.40.0", "model_provider": "openai", "originator": "codex_cli_rs", "git": obj{"commit_hash": "abc123", "branch": "main", "repository_url": "git@github.com:acme/codex-app.git"}}),
 		codexUserItem(codexTS(10, 0, 1), "<environment_context>\n  <cwd>/tmp/codex</cwd>\n</environment_context>"),
 		codexUserItem(codexTS(10, 0, 1), "fix the tests"),
 		codexLine(codexTS(10, 0, 1), "event_msg", obj{"type": "user_message", "message": "fix the tests", "images": []any{}}),
@@ -113,6 +113,8 @@ func TestParseCodexRollouts(t *testing.T) {
 	require.Len(t, res.Sessions, 3)
 
 	a := sessionByID(t, res, codexSessionA)
+	assert.Equal(t, "https://github.com/acme/codex-app", a.Repository, "the repository Codex recorded at the start")
+	assert.Empty(t, sessionByID(t, res, codexSessionB).Repository)
 	starts := eventsOfType(a, AICodeEventConversationStarts)
 	require.Len(t, starts, 1)
 	assert.Equal(t, "gpt-5-codex", starts[0].Model)

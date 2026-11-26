@@ -271,3 +271,24 @@ func TestAICodeOtelServer_TraceExportRoundTrip(t *testing.T) {
 	assert.Equal(t, "claude-opus-5-5", got.Spans[1].Attributes["model"])
 	assert.Equal(t, int64(v2TestTimeNano)+int64(5*time.Millisecond), got.Spans[1].StartTimeUnixNano, "nanoseconds survive JSON")
 }
+
+// With aiCodeOtel.sendRepository off, spans and their events lose the repository too.
+func TestDropSpanRepository(t *testing.T) {
+	s := claudeSpan("claude_code.tool", testRootID, nil, 0, time.Second,
+		kv(model.AICodeRepositoryAttribute, strVal("https://github.com/acme/web")),
+		kv("tool_name", strVal("Bash")),
+	)
+	s.Events = []*tracev1.Span_Event{{
+		Name:       "tool.output",
+		Attributes: []*commonv1.KeyValue{kv(model.AICodeRepositoryAttribute, strVal("https://github.com/acme/web"))},
+	}}
+	span := parseTestSpan(t, claudeTestResource(), s)
+	require.NotNil(t, span)
+	require.Contains(t, span.Attributes, model.AICodeRepositoryAttribute)
+
+	dropSpanRepository(span)
+	assert.NotContains(t, span.Attributes, model.AICodeRepositoryAttribute)
+	assert.Equal(t, "Bash", span.Attributes["tool_name"])
+	require.Len(t, span.Events, 1)
+	assert.NotContains(t, span.Events[0].Attributes, model.AICodeRepositoryAttribute)
+}

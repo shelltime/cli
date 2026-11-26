@@ -150,6 +150,11 @@ func runAICodeBackfill(c *cli.Context, src aiCodeBackfillSource) error {
 		return nil
 	}
 
+	// The server groups sessions into projects by git repository when it knows it.
+	if cfg.SendsRepository() {
+		model.AttachBackfillRepositories(ctx, plan.upload, model.NewGitRepositoryResolver(time.Hour))
+	}
+
 	batches := model.PackBackfillBatches(src.clientType, plan.upload,
 		model.AICodeBackfillMaxEvents, model.AICodeBackfillMaxBatchBytes, model.AICodeBackfillMaxCompleted)
 	accepted := 0

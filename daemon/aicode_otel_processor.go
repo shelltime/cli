@@ -40,6 +40,12 @@ type AICodeOtelProcessor struct {
 	// cloudSessionID is the Claude Code cloud session the daemon runs in (from its environment),
 	// added to Claude Code records that don't carry one. Empty on a local machine.
 	cloudSessionID string
+	// repos finds the git repository of a record's working directory, so the server can group
+	// sessions by repository rather than by folder. Nil adds no repository.
+	repos *model.GitRepositoryResolver
+	// dropRepository removes vcs.repository.url.full from every record, the agent's own too
+	// (aiCodeOtel.sendRepository: false).
+	dropRepository bool
 
 	// maxRequestBytes bounds the JSON body of one backend request; larger batches are split.
 	maxRequestBytes int
@@ -55,6 +61,10 @@ func NewAICodeOtelProcessor(config model.ShellTimeConfig) *AICodeOtelProcessor {
 	}
 
 	debug := config.AICodeOtel != nil && config.AICodeOtel.Debug != nil && *config.AICodeOtel.Debug
+	var repos *model.GitRepositoryResolver
+	if config.SendsRepository() {
+		repos = model.NewGitRepositoryResolver(repositoryCacheTTL)
+	}
 
 	return &AICodeOtelProcessor{
 		config: config,
@@ -65,8 +75,76 @@ func NewAICodeOtelProcessor(config model.ShellTimeConfig) *AICodeOtelProcessor {
 		hostname:        hostname,
 		debug:           debug,
 		cloudSessionID:  model.CloudSessionIDFromEnv(os.Getenv),
+		repos:           repos,
+		dropRepository:  !config.SendsRepository(),
 		maxRequestBytes: model.AICodeOtelMaxRequestBytes,
 	}
+}
+
+// repositoryCacheTTL is how long the daemon trusts what git said about a directory. A remote
+// rarely changes; a folder that becomes a clone is picked up within this time.
+const repositoryCacheTTL = 10 * time.Minute
+
+// resolveRepository returns the canonical URL of the repository the resource's working
+// directory belongs to, or "". A resource that names its repository itself needs no lookup.
+func (p *AICodeOtelProcessor) resolveRepository(ctx context.Context, res *otelResource) string {
+	if p.repos == nil || res.attrs.Pwd == "" {
+		return ""
+	}
+	if _, ok := res.attrs.Attributes[model.AICodeRepositoryAttribute]; ok {
+		return ""
+	}
+	repo := p.repos.Resolve(ctx, res.attrs.Pwd)
+	res.repositoryRoot = repo.Root
+	return repo.URL
+}
+
+// insideDir reports whether path is root or a directory below it.
+func insideDir(path, root string) bool {
+	if root == "" {
+		return false
+	}
+	rel, err := filepath.Rel(root, filepath.Clean(path))
+	return err == nil && rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator))
+}
+
+// fillRepository adds the repository of the resource's working directory to a record that
+// doesn't name one. It is seeded before the record's own attributes, so a
+// vcs.repository.url.full that Claude Code sent on the record still wins, and it adds nothing
+// when the agent named the repository on the resource (events carry that one already; metrics
+// don't copy the resource's other attributes, and must not get a different one from the folder).
+func fillRepository(attrs map[string]any, res *otelResource) map[string]any {
+	if res.repository == "" {
+		return attrs
+	}
+	if _, ok := attrs[model.AICodeRepositoryAttribute]; ok {
+		return attrs
+	}
+	if _, ok := res.attrs.Attributes[model.AICodeRepositoryAttribute]; ok {
+		return attrs
+	}
+	return setAttribute(attrs, model.AICodeRepositoryAttribute, res.repository)
+}
+
+// unfillRepository takes back the repository fillRepository added when the record named a
+// working directory of its own outside the resource's work tree: the repository is the
+// resource's folder's, not necessarily that one's. A subfolder of the same work tree keeps it,
+// and so does a repository the record itself named.
+func unfillRepository(attrs map[string]any, res *otelResource, filled bool, pwd string) {
+	if !filled || pwd == "" || pwd == res.attrs.Pwd || insideDir(pwd, res.repositoryRoot) {
+		return
+	}
+	delete(attrs, model.AICodeRepositoryAttribute)
+}
+
+// namesRepository reports whether a record's own attributes name its repository.
+func namesRepository(attrs []*commonv1.KeyValue) bool {
+	for _, attr := range attrs {
+		if attr.GetKey() == model.AICodeRepositoryAttribute {
+			return true
+		}
+	}
+	return false
 }
 
 // fillCloudSessionID adds the daemon's cloud session id to the attributes of a Claude Code
@@ -117,6 +195,11 @@ type otelResource struct {
 	attrs  *model.AICodeOtelResourceAttributes
 	// digest identifies the resource in stable ids. It is computed once per resource.
 	digest [sha256.Size]byte
+	// repository is the canonical URL of the git repository of the resource's working
+	// directory, or "" (see resolveRepository).
+	repository string
+	// repositoryRoot is the top level of that repository's work tree.
+	repositoryRoot string
 }
 
 // deterministicMarshal encodes OTLP messages byte-for-byte reproducibly, so an exporter retry of
@@ -185,6 +268,7 @@ func (p *AICodeOtelProcessor) ProcessMetrics(ctx context.Context, req *collmetri
 
 		// Extract resource attributes once for all metrics in this resource
 		res := newOtelResource(resource, source)
+		res.repository = p.resolveRepository(ctx, res)
 		project := p.detectProject(resource, source)
 
 		var metrics []model.AICodeOtelMetric
@@ -231,6 +315,7 @@ func (p *AICodeOtelProcessor) ProcessLogs(ctx context.Context, req *collogsv1.Ex
 
 		// Extract resource attributes once for all events in this resource
 		res := newOtelResource(resource, source)
+		res.repository = p.resolveRepository(ctx, res)
 		project := p.detectProject(resource, source)
 
 		var events []model.AICodeOtelEvent
@@ -281,6 +366,9 @@ func (p *AICodeOtelProcessor) ProcessTraces(ctx context.Context, req *colltracev
 		for _, ss := range rs.GetScopeSpans() {
 			for _, s := range ss.GetSpans() {
 				if span := parseSpan(s, source, attrs); span != nil {
+					if p.dropRepository {
+						dropSpanRepository(span)
+					}
 					spans = append(spans, *span)
 				}
 			}
@@ -376,6 +464,15 @@ func parseSpan(s *tracev1.Span, source string, res *model.AICodeOtelResourceAttr
 	}
 
 	return span
+}
+
+// dropSpanRepository removes the repository from a span and its events
+// (aiCodeOtel.sendRepository: false).
+func dropSpanRepository(span *model.AICodeOtelSpan) {
+	delete(span.Attributes, model.AICodeRepositoryAttribute)
+	for i := range span.Events {
+		delete(span.Events[i].Attributes, model.AICodeRepositoryAttribute)
+	}
 }
 
 // fillSpanSessionIDs gives spans without a session id the one another span of the same trace
@@ -671,9 +768,16 @@ func (p *AICodeOtelProcessor) parseMetric(m *metricsv1.Metric, res *otelResource
 		// Seeded before the data point's attributes, so they can't crowd it out; a ccr.session.id
 		// on the data point still wins.
 		metric.Attributes = p.fillCloudSessionID(metric.Attributes, res.source)
+		_, had := metric.Attributes[model.AICodeRepositoryAttribute]
+		metric.Attributes = fillRepository(metric.Attributes, res)
+		_, has := metric.Attributes[model.AICodeRepositoryAttribute]
 		// Then extract data point attributes (can override resource attrs)
 		for _, attr := range dp.GetAttributes() {
 			applyMetricAttribute(&metric, attr, metricType)
+		}
+		unfillRepository(metric.Attributes, res, has && !had && !namesRepository(dp.GetAttributes()), metric.Pwd)
+		if p.dropRepository {
+			delete(metric.Attributes, model.AICodeRepositoryAttribute)
 		}
 		metrics = append(metrics, metric)
 	}
@@ -761,15 +865,22 @@ func (p *AICodeOtelProcessor) parseLogRecord(lr *logsv1.LogRecord, res *otelReso
 	}
 	// Seeded the same way: a ccr.session.id on the record itself still wins.
 	event.Attributes = p.fillCloudSessionID(event.Attributes, res.source)
+	_, had := event.Attributes[model.AICodeRepositoryAttribute]
+	event.Attributes = fillRepository(event.Attributes, res)
+	_, has := event.Attributes[model.AICodeRepositoryAttribute]
 
 	var fallbacks eventFallbacks
 	for _, attr := range lr.GetAttributes() {
 		applyEventAttribute(event, &fallbacks, attr.GetKey(), attr.GetValue())
 	}
 	fallbacks.apply(event, res.attrs)
+	unfillRepository(event.Attributes, res, has && !had && !namesRepository(lr.GetAttributes()), event.Pwd)
 
 	if event.SessionID == "" && event.ConversationID != "" {
 		event.SessionID = event.ConversationID
+	}
+	if p.dropRepository {
+		delete(event.Attributes, model.AICodeRepositoryAttribute)
 	}
 
 	return event

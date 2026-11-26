@@ -94,11 +94,12 @@ func TestSendSessionProjectUpdate(t *testing.T) {
 		defer server.Close()
 
 		cfg := ShellTimeConfig{Token: "t", APIEndpoint: server.URL}
-		err := SendSessionProjectUpdate(context.Background(), cfg, "sess-1", "/home/me/proj")
+		err := SendSessionProjectUpdate(context.Background(), cfg, "sess-1", "/home/me/proj", "https://github.com/me/proj")
 		require.NoError(t, err)
 		assert.Equal(t, "/api/v1/cc/session-project", gotPath)
 		assert.Equal(t, "sess-1", body.SessionID)
 		assert.Equal(t, "/home/me/proj", body.ProjectPath)
+		assert.Equal(t, "https://github.com/me/proj", body.Repository)
 	})
 
 	t.Run("error path returns error", func(t *testing.T) {
@@ -109,7 +110,7 @@ func TestSendSessionProjectUpdate(t *testing.T) {
 		defer server.Close()
 
 		cfg := ShellTimeConfig{Token: "t", APIEndpoint: server.URL}
-		err := SendSessionProjectUpdate(context.Background(), cfg, "s", "p")
+		err := SendSessionProjectUpdate(context.Background(), cfg, "s", "p", "")
 		require.Error(t, err)
 		assert.Equal(t, "boom", err.Error())
 	})
