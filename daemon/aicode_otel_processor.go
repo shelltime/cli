@@ -134,9 +134,17 @@ func unfillRepository(attrs map[string]any, res *otelResource, filled bool, pwd 
 	if !filled || pwd == "" || pwd == res.attrs.Pwd || insideDir(pwd, res.repositoryRoot) {
 		return
 	}
-	if attrs[model.AICodeRepositoryAttribute] == res.repository {
-		delete(attrs, model.AICodeRepositoryAttribute)
+	delete(attrs, model.AICodeRepositoryAttribute)
+}
+
+// namesRepository reports whether a record's own attributes name its repository.
+func namesRepository(attrs []*commonv1.KeyValue) bool {
+	for _, attr := range attrs {
+		if attr.GetKey() == model.AICodeRepositoryAttribute {
+			return true
+		}
 	}
+	return false
 }
 
 // fillCloudSessionID adds the daemon's cloud session id to the attributes of a Claude Code
@@ -767,7 +775,7 @@ func (p *AICodeOtelProcessor) parseMetric(m *metricsv1.Metric, res *otelResource
 		for _, attr := range dp.GetAttributes() {
 			applyMetricAttribute(&metric, attr, metricType)
 		}
-		unfillRepository(metric.Attributes, res, has && !had, metric.Pwd)
+		unfillRepository(metric.Attributes, res, has && !had && !namesRepository(dp.GetAttributes()), metric.Pwd)
 		if p.dropRepository {
 			delete(metric.Attributes, model.AICodeRepositoryAttribute)
 		}
@@ -866,7 +874,7 @@ func (p *AICodeOtelProcessor) parseLogRecord(lr *logsv1.LogRecord, res *otelReso
 		applyEventAttribute(event, &fallbacks, attr.GetKey(), attr.GetValue())
 	}
 	fallbacks.apply(event, res.attrs)
-	unfillRepository(event.Attributes, res, has && !had, event.Pwd)
+	unfillRepository(event.Attributes, res, has && !had && !namesRepository(lr.GetAttributes()), event.Pwd)
 
 	if event.SessionID == "" && event.ConversationID != "" {
 		event.SessionID = event.ConversationID

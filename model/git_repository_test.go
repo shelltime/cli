@@ -287,11 +287,15 @@ func TestGitRepositoryResolverCallerGivesUp(t *testing.T) {
 	_, definitive := r.Lookup(ctx, dir)
 	assert.False(t, definitive)
 
+	// Another caller still gets the answer once the lookup returns.
+	other := make(chan GitRepository, 1)
+	go func() { other <- r.Resolve(context.Background(), dir) }()
+
 	close(release)
-	assert.Eventually(t, func() bool {
-		repo, definitive := r.Lookup(context.Background(), dir)
-		return definitive && repo.URL == "https://github.com/acme/web"
-	}, 2*time.Second, 10*time.Millisecond)
+	assert.Equal(t, "https://github.com/acme/web", (<-other).URL)
+	repo, definitive := r.Lookup(context.Background(), dir)
+	assert.True(t, definitive)
+	assert.Equal(t, "https://github.com/acme/web", repo.URL)
 }
 
 // git refusing a repository it doesn't trust, or killed by a signal, says nothing about the

@@ -262,21 +262,27 @@ func (r *GitRepositoryResolver) Lookup(ctx context.Context, dir string) (GitRepo
 	r.inflight[dir] = call
 	r.mu.Unlock()
 
-	var repo GitRepository
-	var definitive bool
-	// Every waiter is released however this ends.
-	defer func() {
-		r.finish(dir, call, repo, definitive)
-		close(call.done)
-	}()
+	// The lookup belongs to no caller: one that gives up (its exporter went away) leaves it
+	// running for the others, and the budget bounds it instead.
+	go r.run(context.WithoutCancel(ctx), dir, call)
+	select {
+	case <-call.done:
+		return call.repo, call.definitive
+	case <-ctx.Done():
+		return GitRepository{}, false
+	}
+}
 
-	// The lookup isn't tied to this caller's context, so a caller that gives up doesn't spoil
-	// the answer for the others waiting on it; the budget bounds it instead. It runs on its own
-	// goroutine because the budget can't interrupt a stat or a git run blocked in the kernel.
+// run looks dir up and publishes the answer to call. The lookup has its own goroutine because
+// the budget can't interrupt a stat or a git run blocked in the kernel; past the budget (plus
+// gitRepositoryGrace) the callers get "unknown" and the directory counts as stuck until the
+// lookup returns.
+func (r *GitRepositoryResolver) run(ctx context.Context, dir string, call *gitRepositoryCall) {
+	defer close(call.done)
 	answers := make(chan gitRepositoryAnswer, 1)
 	timeout := r.timeout
 	go func() {
-		lookupCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), timeout)
+		lookupCtx, cancel := context.WithTimeout(ctx, timeout)
 		defer cancel()
 		a := gitRepositoryAnswer{}
 		a.repo, a.definitive = r.lookup(lookupCtx, dir)
@@ -286,22 +292,19 @@ func (r *GitRepositoryResolver) Lookup(ctx context.Context, dir string) (GitRepo
 	defer timer.Stop()
 	select {
 	case a := <-answers:
-		repo, definitive = a.repo, a.definitive
-	case <-ctx.Done():
-		// This caller gave up (its exporter went away, the daemon is stopping).
-		r.abandon(dir, answers)
+		r.finish(dir, call, a.repo, a.definitive)
 	case <-timer.C:
+		r.mu.Lock()
+		r.stuck[dir] = struct{}{}
+		r.mu.Unlock()
+		r.finish(dir, call, GitRepository{}, false)
 		r.abandon(dir, answers)
 	}
-	return repo, definitive
 }
 
-// abandon stops waiting for a lookup that is still running: the directory gets no other lookup
-// until this one returns, and its answer is kept then for whoever asks next.
+// abandon keeps the answer of a lookup that outlived its budget for whoever asks next, and
+// clears the directory's stuck mark then.
 func (r *GitRepositoryResolver) abandon(dir string, answers <-chan gitRepositoryAnswer) {
-	r.mu.Lock()
-	r.stuck[dir] = struct{}{}
-	r.mu.Unlock()
 	go func() {
 		a := <-answers
 		r.mu.Lock()

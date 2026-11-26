@@ -142,6 +142,10 @@ func TestRepositoryNotFilledForAnotherWorkingDirectory(t *testing.T) {
 	assert.Equal(t, "https://github.com/acme/web", event.Attributes[model.AICodeRepositoryAttribute], "a subfolder of the work tree keeps it")
 	assert.False(t, insideDir(dir+"-other", dir), "a sibling with a longer name is outside")
 
+	event = p.parseLogRecord(codexRecord("user_prompt", kv("pwd", strVal("/elsewhere")), kv("vcs.repository.url.full", strVal("https://github.com/acme/web"))), codex, "test-scope")
+	require.NotNil(t, event)
+	assert.Equal(t, "https://github.com/acme/web", event.Attributes[model.AICodeRepositoryAttribute], "the record named the same repository itself")
+
 	event = p.parseLogRecord(codexRecord("user_prompt", kv("pwd", strVal("/elsewhere")), kv("vcs.repository.url.full", strVal("https://github.com/acme/other"))), codex, "test-scope")
 	require.NotNil(t, event)
 	assert.Equal(t, "https://github.com/acme/other", event.Attributes[model.AICodeRepositoryAttribute], "the record's own repository stays")
