@@ -1099,14 +1099,17 @@ func doctorCheckProjectHooks(a doctorAgentHooks, file agentHooksFile) []doctorRe
 			AutoFix: a.fix,
 		})
 	}
+	var missing []string
 	for _, bin := range []string{model.ProjectHookCLI, model.ProjectHookDaemon} {
-		if projectHookToolFound(bin) {
-			continue
+		if !projectHookToolFound(bin) {
+			missing = append(missing, bin)
 		}
+	}
+	if len(missing) > 0 {
 		results = append(results, doctorResult{
 			ID:      a.id + ".hook_tools",
 			Status:  doctorWarn,
-			Message: fmt.Sprintf("The %s hooks find %s neither on PATH nor in ~/.shelltime/bin, /opt/homebrew/bin or /usr/local/bin, so they skip every event on this machine.", a.name, bin),
+			Message: fmt.Sprintf("The %s hooks find %s neither on PATH nor in ~/.shelltime/bin, /opt/homebrew/bin or /usr/local/bin, so they skip every event on this machine.", a.name, joinWithAnd(missing)),
 			Fix:     "Reinstall ShellTime, or add the folder that holds shelltime and shelltime-daemon to PATH.",
 		})
 	}

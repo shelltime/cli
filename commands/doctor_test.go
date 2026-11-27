@@ -690,6 +690,23 @@ func TestDoctorCheckCursor(t *testing.T) {
 	assert.Contains(t, tools.Message, "shelltime-daemon")
 	assert.Contains(t, tools.Message, "skip every event")
 
+	// Both missing: one result naming both
+	doctorLookPath = func(string) (string, error) { return "", exec.ErrNotFound }
+	var toolResults []doctorResult
+	for _, r := range doctorCheckCursor(env) {
+		if r.ID == "cursor.hook_tools" {
+			toolResults = append(toolResults, r)
+		}
+	}
+	require.Len(t, toolResults, 1)
+	assert.Contains(t, toolResults[0].Message, "shelltime and shelltime-daemon")
+	doctorLookPath = func(name string) (string, error) {
+		if name == "shelltime" {
+			return "/usr/local/bin/shelltime", nil
+		}
+		return "", exec.ErrNotFound
+	}
+
 	// The daemon where the install script puts it
 	daemonBin := filepath.Join(home, ".shelltime", "bin", "shelltime-daemon")
 	require.NoError(t, os.MkdirAll(filepath.Dir(daemonBin), 0755))
