@@ -1171,7 +1171,7 @@ func doctorCheckUserHooks(a doctorAgentHooks) []doctorResult {
 	return []doctorResult{{
 		ID:      a.id + ".user_hooks",
 		Status:  doctorInfo,
-		Message: fmt.Sprintf("%s still has the ShellTime hooks of an older version; they record %s in every project. ShellTime installs them into each project now, and `%s` there removes these.", user.Path(), a.name, a.command),
+		Message: fmt.Sprintf("%s still has the ShellTime hooks of an older version; they record %s in every folder, and projects with their own hooks leave events to them. ShellTime installs hooks into each project now (`%s`); `%s uninstall` removes these.", user.Path(), a.name, a.command, strings.TrimSuffix(a.command, " install")),
 	}}
 }
 

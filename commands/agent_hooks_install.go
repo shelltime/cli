@@ -4,6 +4,7 @@ import (
 	"errors"
 	"os"
 	"runtime"
+	"strings"
 
 	"github.com/gookit/color"
 	"github.com/malamtime/cli/model"
@@ -55,9 +56,10 @@ var antigravityHooks = agentHooks{
 }
 
 // installAgentHooks registers ShellTime in the hook file of the project the working directory
-// is in, then removes the hooks an older version installed in the agent's user-level file, so
-// the project's are the only ones. Windows is refused: the hook command is POSIX sh, and the
-// daemon it records through doesn't run there.
+// is in. Hooks an older version installed in the agent's user-level file are left in place: they
+// still record every other folder on this machine, and the project's hooks leave events to them,
+// so nothing is counted twice. Windows is refused: the hook command is POSIX sh, and the daemon
+// it records through doesn't run there.
 func installAgentHooks(a agentHooks) error {
 	color.Yellow.Printf("Installing %s hooks...\n", a.name)
 
@@ -76,8 +78,10 @@ func installAgentHooks(a agentHooks) error {
 		return err
 	}
 	color.Green.Printf("%s hooks installed in %s\n", a.name, svc.Path())
-	// Reported inside; the project's hooks don't depend on it
-	_ = removeUserAgentHooks(a)
+	if status, err := a.user().Status(); err == nil && status.Installed {
+		color.Gray.Printf("The ShellTime hooks an older version put in %s stay and keep recording your other folders;\n", a.user().Path())
+		color.Gray.Printf("this project's hooks leave events to them. `%s uninstall` removes both.\n", strings.TrimSuffix(a.command, " install"))
+	}
 
 	color.Yellow.Println(a.commit)
 	color.Yellow.Println(a.restart)
@@ -86,8 +90,8 @@ func installAgentHooks(a agentHooks) error {
 }
 
 // removeUserAgentHooks removes the ShellTime hooks an older version installed in the agent's
-// user-level file. A file it can't read is reported and left alone: the project's hooks leave
-// events to working ones there, so nothing is counted twice.
+// user-level file (doctor's fix for ones whose binary is gone). A file it can't read is reported
+// and left alone.
 func removeUserAgentHooks(a agentHooks) error {
 	user := a.user()
 	status, err := user.Status()
@@ -102,7 +106,6 @@ func removeUserAgentHooks(a agentHooks) error {
 		return err
 	}
 	color.Green.Printf("Removed the ShellTime hooks an older version put in %s\n", user.Path())
-	color.Yellow.Printf("They tracked %s in every folder. Now each repository needs its own install: run `%s` in the others too.\n", a.name, a.command)
 	return nil
 }
 

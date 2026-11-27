@@ -42,8 +42,8 @@ func TestCursorInstallAndUninstallCommands(t *testing.T) {
 	require.NoError(t, app.Run([]string{"t", "cursor", "install"}))
 	text := stripANSI(out.String())
 	assert.Contains(t, text, "Cursor hooks installed in "+path)
-	assert.Contains(t, text, "Removed the ShellTime hooks an older version put in "+userPath)
-	assert.Contains(t, text, "Now each repository needs its own install: run `shelltime cursor install` in the others too.")
+	assert.Contains(t, text, "The ShellTime hooks an older version put in "+userPath+" stay and keep recording your other folders")
+	assert.Contains(t, text, "`shelltime cursor uninstall` removes both.")
 	assert.Contains(t, text, "Commit it: Cursor Cloud Agents run only the hooks in the repository.")
 	assert.Contains(t, text, "Restart Cursor")
 	assert.Contains(t, text, "SHELLTIME_CLOUD=true")
@@ -57,9 +57,12 @@ func TestCursorInstallAndUninstallCommands(t *testing.T) {
 	assert.Equal(t, []string{model.ProjectHookCLI}, status.Binaries)
 	userStatus, err := model.NewCursorHooksService().Status()
 	require.NoError(t, err)
-	assert.False(t, userStatus.Installed, "the older version's hooks are gone")
+	assert.True(t, userStatus.Installed, "the older version's hooks still record the other folders")
 
 	require.NoError(t, app.Run([]string{"t", "cursor", "u"}))
+	userStatus, err = model.NewCursorHooksService().Status()
+	require.NoError(t, err)
+	assert.False(t, userStatus.Installed, "uninstall removes them too")
 	data, err := os.ReadFile(path)
 	require.NoError(t, err)
 	assert.JSONEq(t, `{"version":1,"hooks":{"stop":[{"command":"say done"}]}}`, string(data))
@@ -176,7 +179,7 @@ func TestAgyInstallAndUninstallCommands(t *testing.T) {
 	assert.JSONEq(t, `{}`, string(data))
 }
 
-func TestAgyInstallCommand_KeepsGoingWhenTheGlobalFileIsInvalid(t *testing.T) {
+func TestAgyInstallCommand_LeavesAnInvalidGlobalFileAlone(t *testing.T) {
 	home, repo := setupAgentHooksCommand(t)
 	userPath := filepath.Join(home, ".gemini", "config", "hooks.json")
 	require.NoError(t, os.MkdirAll(filepath.Dir(userPath), 0755))
@@ -185,7 +188,7 @@ func TestAgyInstallCommand_KeepsGoingWhenTheGlobalFileIsInvalid(t *testing.T) {
 
 	out := captureColor(t)
 	require.NoError(t, app.Run([]string{"t", "agy", "install"}))
-	assert.Contains(t, stripANSI(out.String()), "Couldn't remove the ShellTime hooks an older version put in "+userPath)
+	assert.NotContains(t, stripANSI(out.String()), "older version")
 	status, err := model.NewAntigravityProjectHooksService(repo).Status()
 	require.NoError(t, err)
 	assert.True(t, status.Installed)
