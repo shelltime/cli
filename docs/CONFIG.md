@@ -341,11 +341,11 @@ You don't need to set it in a Claude Code cloud environment ([cloud.bash](https:
 
 ## Cursor and Antigravity Hooks
 
-`shelltime cursor install` and `shelltime agy install` register ShellTime in the native hooks of Cursor (`.cursor/hooks.json`) and Google Antigravity (`.agents/hooks.json`) of the current repository, which is committed: the hooks record only on machines where `shelltime` and `shelltime-daemon` are installed. Each event goes to the daemon, which applies data masking and your exclude patterns before sending it. An event whose shell command matches an exclude pattern is sent without the command, its prompt, tool input, response or error.
+`shelltime cursor install` and `shelltime agy install` register ShellTime in the native hooks of Cursor (`.cursor/hooks.json`) and Google Antigravity (`.agents/hooks.json`) of the current repository, which is committed: the hooks record only on machines where `shelltime` and `shelltime-daemon` are installed. Each event goes to the daemon, which applies data masking and your exclude patterns before sending it. An event whose shell command matches an exclude pattern is sent without the command, its prompt, tool input, response or error. Cursor reports per-turn token counts on its `stop` hook; Antigravity's `PostInvocation` hook reads completed model steps from the local `.jsonl` transcript file referenced by `transcriptPath` (silently falling back to activity-only tracking if the file is unavailable or has no matching completed step).
 
 | Option | Type | Default | Description |
 |--------|------|---------|-------------|
-| `agentHooks.sendContent` | boolean | `true` | Send the text of prompts, agent responses, tool input and errors, and the paths of files attached to prompts. Off, only the activity is sent: event types, tool names, shell commands, the files tools worked on, the workspace and timing |
+| `agentHooks.sendContent` | boolean | `true` | Send the text of prompts, agent responses, tool input and errors, and the paths of files attached to prompts. Off, only the activity and token usage are sent: event types, tool names, shell commands, the files tools worked on, token counts, the workspace and timing |
 
 ```yaml
 agentHooks:

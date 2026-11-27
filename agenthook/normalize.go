@@ -227,31 +227,42 @@ func (p payload) nonNegInt(key string) (int, bool) {
 		if err := json.Unmarshal(raw, &s); err != nil {
 			return 0, false
 		}
-		if s == "" {
-			return 0, false
+		return parseNonNegIntBytes([]byte(strings.TrimSpace(s)))
+	}
+	return parseNonNegIntBytes(raw)
+}
+
+func parseNonNegIntBytes(raw []byte) (int, bool) {
+	if len(raw) == 0 {
+		return 0, false
+	}
+	// Fast path: plain ASCII digits.
+	allDigits := true
+	for i := 0; i < len(raw); i++ {
+		if raw[i] < '0' || raw[i] > '9' {
+			allDigits = false
+			break
 		}
-		for i := 0; i < len(s); i++ {
-			if s[i] < '0' || s[i] > '9' {
-				return 0, false
-			}
-		}
-		v, err := strconv.Atoi(s)
+	}
+	if allDigits {
+		v, err := strconv.Atoi(string(raw))
 		if err != nil || v < 0 {
 			return 0, false
 		}
 		return v, true
 	}
-	// Reject booleans, objects, arrays, null and decimals
-	for i := 0; i < len(raw); i++ {
-		if raw[i] < '0' || raw[i] > '9' {
-			return 0, false
-		}
-	}
-	v, err := strconv.Atoi(string(raw))
-	if err != nil || v < 0 {
+	// Reject booleans, objects, arrays, null, and leading non-numeric tokens before float fallback.
+	if raw[0] < '0' || raw[0] > '9' {
 		return 0, false
 	}
-	return v, true
+	f, err := strconv.ParseFloat(string(raw), 64)
+	if err != nil || math.IsNaN(f) || math.IsInf(f, 0) || f < 0 || f >= float64(1<<53) || f != math.Trunc(f) {
+		return 0, false
+	}
+	if f > float64(math.MaxInt) {
+		return 0, false
+	}
+	return int(f), true
 }
 
 func intPtr(v int) *int {
