@@ -764,6 +764,16 @@ func TestDoctorCheckCursor(t *testing.T) {
 	assert.Equal(t, doctorSkip, hooks.Status)
 	assert.Nil(t, hooks.AutoFix)
 
+	// Windows has no daemon, so nothing to check or fix
+	orig := agentHooksGOOS
+	agentHooksGOOS = "windows"
+	t.Chdir(repo)
+	windows := doctorCheckCursor(env)
+	agentHooksGOOS = orig
+	require.Len(t, windows, 1)
+	assert.Equal(t, doctorSkip, windows[0].Status)
+	assert.Nil(t, windows[0].AutoFix)
+
 	// Detected through PATH too
 	t.Chdir(repo)
 	require.NoError(t, os.RemoveAll(filepath.Join(home, ".cursor")))

@@ -56,7 +56,8 @@ func TestAntigravityHooks_InstallCreatesFile(t *testing.T) {
 
 	assertAntigravityGroup(t, path)
 	text := string(mustRead(t, path))
-	assert.Contains(t, text, `exec shelltime hook-ingest --agent agy --event Stop --project; echo '{\"decision\":\"allow\"}'"`)
+	assert.Contains(t, text, `out=$(shelltime hook-ingest --agent agy --event Stop --project)`)
+	assert.Contains(t, text, `|| echo '{\"decision\":\"allow\"}'"`)
 	assert.Less(t, strings.Index(text, `"SessionStart"`), strings.Index(text, `"PreInvocation"`))
 	assert.Less(t, strings.Index(text, `"PostInvocation"`), strings.Index(text, `"Stop"`))
 	info, err := os.Stat(path)

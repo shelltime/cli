@@ -1044,6 +1044,9 @@ func doctorCheckAntigravity(env *doctorEnv) []doctorResult {
 // there is nothing to check, so doctor never offers to write a hook file into whatever folder it
 // was run from.
 func doctorCheckAgentHooks(a doctorAgentHooks) []doctorResult {
+	if agentHooksGOOS == "windows" {
+		return []doctorResult{{ID: a.id + ".hooks", Status: doctorSkip, Message: fmt.Sprintf("%s's hooks need shelltime-daemon, which runs on macOS and Linux only.", a.name)}}
+	}
 	var results []doctorResult
 	root, err := currentProjectRoot()
 	if err == nil {

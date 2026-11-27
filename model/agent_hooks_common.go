@@ -50,9 +50,11 @@ var ErrHomeIsNotAProject = errors.New("the home folder isn't a project; run this
 // repository out, a cloud agent's VM included, and the agents disagree on the folder a hook
 // runs in, so the command is self-contained POSIX sh: where the shelltime CLI and its daemon are
 // installed (on PATH, or in ProjectHookSearchDirs) it hands the event to hook-ingest; anywhere
-// else it answers with the reply that lets the agent carry on, so the hook never fails.
+// else it answers with the reply that lets the agent carry on, so the hook never fails. A
+// shelltime from before hook-ingest exits non-zero with its error on stderr; its stdout is
+// dropped and the reply answers instead.
 func projectHookCommand(agent, event string) string {
-	return fmt.Sprintf("PATH=$PATH:%s; command -v %s >/dev/null 2>&1 && command -v %s >/dev/null 2>&1 && exec %s %s --agent %s --event %s %s; echo '%s'",
+	return fmt.Sprintf("PATH=$PATH:%s; command -v %s >/dev/null 2>&1 && command -v %s >/dev/null 2>&1 && out=$(%s %s --agent %s --event %s %s) && printf '%%s\\n' \"$out\" || echo '%s'",
 		projectHookPath, ProjectHookCLI, ProjectHookDaemon,
 		ProjectHookCLI, HookIngestSubcommand, agent, event, ProjectHookFlag,
 		agenthook.PassThrough(agent, event))
@@ -124,16 +126,19 @@ func containsString(values []string, s string) bool {
 }
 
 // hookCommandBinary returns the binary a hook command runs hook-ingest with: the text before
-// " hook-ingest" (after "&& exec " in a project hook command), unquoted. Empty when the command
-// doesn't run hook-ingest. Older versions wrote `<absolute path> hook-ingest …`, quoted when
-// the shell would split the path.
+// " hook-ingest" (after "out=$(" or "&& exec " in a project hook command), unquoted. Empty when
+// the command doesn't run hook-ingest. Older versions wrote `<absolute path> hook-ingest …`,
+// quoted when the shell would split the path.
 func hookCommandBinary(command string) string {
 	before, _, ok := strings.Cut(command, " "+HookIngestSubcommand)
 	if !ok {
 		return ""
 	}
-	if i := strings.LastIndex(before, "&& exec "); i >= 0 {
-		before = before[i+len("&& exec "):]
+	for _, prefix := range []string{"out=$(", "&& exec "} {
+		if i := strings.LastIndex(before, prefix); i >= 0 {
+			before = before[i+len(prefix):]
+			break
+		}
 	}
 	bin := strings.TrimSpace(before)
 	switch {

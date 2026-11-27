@@ -85,11 +85,11 @@ func TestProjectHooksRoot(t *testing.T) {
 
 func TestProjectHookCommand(t *testing.T) {
 	assert.Equal(t,
-		`PATH=$PATH:$HOME/.shelltime/bin:/opt/homebrew/bin:/usr/local/bin; command -v shelltime >/dev/null 2>&1 && command -v shelltime-daemon >/dev/null 2>&1 && exec shelltime hook-ingest --agent cursor --event beforeSubmitPrompt --project; echo '{"continue":true}'`,
+		`PATH=$PATH:$HOME/.shelltime/bin:/opt/homebrew/bin:/usr/local/bin; command -v shelltime >/dev/null 2>&1 && command -v shelltime-daemon >/dev/null 2>&1 && out=$(shelltime hook-ingest --agent cursor --event beforeSubmitPrompt --project) && printf '%s\n' "$out" || echo '{"continue":true}'`,
 		CursorProjectHookCommand("beforeSubmitPrompt"))
-	assert.True(t, strings.HasSuffix(CursorProjectHookCommand("stop"), `--event stop --project; echo '{}'`))
-	assert.True(t, strings.HasSuffix(AntigravityProjectHookCommand("Stop"), `--agent agy --event Stop --project; echo '{"decision":"allow"}'`))
-	assert.True(t, strings.HasSuffix(AntigravityProjectHookCommand("PostToolUse"), `--event PostToolUse --project; echo '{}'`))
+	assert.True(t, strings.HasSuffix(CursorProjectHookCommand("stop"), `--event stop --project) && printf '%s\n' "$out" || echo '{}'`))
+	assert.True(t, strings.HasSuffix(AntigravityProjectHookCommand("Stop"), `--agent agy --event Stop --project) && printf '%s\n' "$out" || echo '{"decision":"allow"}'`))
+	assert.True(t, strings.HasSuffix(AntigravityProjectHookCommand("PostToolUse"), `--event PostToolUse --project) && printf '%s\n' "$out" || echo '{}'`))
 }
 
 // runProjectHookCommand runs a project hook command in sh the way the agents do, with PATH and
@@ -126,6 +126,13 @@ func TestProjectHookCommand_RunsHookIngestOnlyWithTheCLIAndDaemon(t *testing.T) 
 
 	fake(bin, "shelltime-daemon", "")
 	assert.Equal(t, "ran hook-ingest --agent cursor --event beforeSubmitPrompt --project\n", runProjectHookCommand(t, command, bin+":"+sysPath, home, "{}"))
+
+	// A shelltime from before hook-ingest: an error on stderr and a non-zero exit, so only the
+	// reply reaches the agent
+	old := t.TempDir()
+	fake(old, "shelltime", `echo "No help topic for 'hook-ingest'" >&2; exit 3`+"\n")
+	fake(old, "shelltime-daemon", "")
+	assert.Equal(t, "{\"continue\":true}\n", runProjectHookCommand(t, command, old+":"+sysPath, home, "{}"))
 
 	// Not on PATH, but where the install script puts them
 	shelltimeBin := filepath.Join(home, ".shelltime", "bin")
