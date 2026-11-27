@@ -260,6 +260,38 @@ func TestAgentDetection(t *testing.T) {
 	assert.True(t, cursorDetected(notFound))
 }
 
+func TestPrintProjectAgentHooksHint(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	notFound := func(string) (string, error) { return "", exec.ErrNotFound }
+	found := func(names ...string) func(string) (string, error) {
+		return func(name string) (string, error) {
+			for _, n := range names {
+				if name == n {
+					return "/usr/local/bin/" + name, nil
+				}
+			}
+			return "", exec.ErrNotFound
+		}
+	}
+
+	out := captureColor(t)
+	printProjectAgentHooksHint(notFound)
+	assert.Empty(t, out.String(), "nothing to say without the agents")
+
+	printProjectAgentHooksHint(found("cursor-agent"))
+	assert.Equal(t, "To track Cursor, run `shelltime cursor install` in each project's repository and commit the hook file.", stripANSI(out.String()))
+
+	out.Reset()
+	orig := agentHooksGOOS
+	agentHooksGOOS = "windows"
+	printProjectAgentHooksHint(found("cursor", "agy"))
+	agentHooksGOOS = orig
+	assert.Empty(t, out.String(), "Windows can't install them")
+
+	printProjectAgentHooksHint(found("cursor", "agy"))
+	assert.Equal(t, "To track Cursor and Antigravity, run `shelltime cursor install` and `shelltime agy install` in each project's repository and commit the hook file.", stripANSI(out.String()))
+}
+
 // --- gc ----------------------------------------------------------------------------
 
 func TestCommandGC_SetupHint(t *testing.T) {

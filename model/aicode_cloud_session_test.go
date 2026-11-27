@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/malamtime/cli/agenthook"
 	"github.com/stretchr/testify/require"
 	"gopkg.in/yaml.v3"
 )
@@ -44,14 +45,29 @@ func TestIsAICloudOnly(t *testing.T) {
 		{name: "local machine", env: map[string]string{"TERM_PROGRAM": "ghostty"}, want: false},
 		{name: "cloud environment", env: cloud, want: true},
 		{name: "remote flag off", env: map[string]string{"CLAUDE_CODE_REMOTE": "false"}, want: false},
+		{name: "SHELLTIME_CLOUD marks another agent's cloud VM", env: map[string]string{"SHELLTIME_CLOUD": "true"}, want: true},
+		{name: "SHELLTIME_CLOUD off", env: map[string]string{"SHELLTIME_CLOUD": "false"}, want: false},
 		{name: "on in the config", cfg: ShellTimeConfig{AICloudOnly: &on}, want: true},
 		{name: "off in the config wins in the cloud", cfg: ShellTimeConfig{AICloudOnly: &off}, env: cloud, want: false},
+		{name: "off in the config wins over SHELLTIME_CLOUD", cfg: ShellTimeConfig{AICloudOnly: &off}, env: map[string]string{"SHELLTIME_CLOUD": "true"}, want: false},
+		{name: "SHELLTIME_CLOUD=false wins over the Claude Code cloud flag", env: map[string]string{"SHELLTIME_CLOUD": "false", "CLAUDE_CODE_REMOTE": "true"}, want: false},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			require.Equal(t, tt.want, IsAICloudOnly(tt.cfg, func(k string) string { return tt.env[k] }))
 		})
 	}
+}
+
+// The Antigravity sandbox's OS user marks Antigravity events as cloud, never the machine: a user
+// name is no reason to stop collecting its commands.
+func TestIsAICloudOnly_IgnoresTheSandboxUser(t *testing.T) {
+	orig := agenthook.OSUserLookup
+	agenthook.OSUserLookup = func() (string, error) { return agenthook.AntigravitySandboxUser, nil }
+	t.Cleanup(func() { agenthook.OSUserLookup = orig })
+
+	require.False(t, IsAICloudOnly(ShellTimeConfig{}, func(string) string { return "" }))
+	require.True(t, IsAICloudOnly(ShellTimeConfig{}, func(k string) string { return map[string]string{"SHELLTIME_CLOUD": "true"}[k] }))
 }
 
 // aiCloudOnly is read from either config file, and `shelltime auth` never writes it, so an

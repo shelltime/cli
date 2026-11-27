@@ -50,6 +50,9 @@ type Event struct {
 	ID      string `json:"id,omitempty"`
 	Agent   string `json:"agent,omitempty"`
 	Surface string `json:"surface,omitempty"`
+	// Cloud is set when the hook ran in a cloud agent's VM rather than on one of the user's
+	// machines, to the signal that showed it (CloudSignal*).
+	Cloud string `json:"cloud,omitempty"`
 	// SessionID is the agent's conversation id.
 	SessionID     string `json:"session_id,omitempty"`
 	EventType     string `json:"event_type,omitempty"`
@@ -75,6 +78,12 @@ type Event struct {
 	ToolInput string `json:"tool_input,omitempty"`
 
 	Metadata map[string]any `json:"metadata,omitempty"`
+
+	// YieldToUserHooks travels from hook-ingest to the daemon only, never to the server: the
+	// event came from a project's hook while an older version's user-level hook records it too,
+	// so the daemon drops it unless the session is a cloud run (whose agent runs no user-level
+	// hooks), which only the daemon remembers across events.
+	YieldToUserHooks bool `json:"yield_to_user_hooks,omitempty"`
 }
 
 // SetMetadata sets one metadata key, creating the map when needed.

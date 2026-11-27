@@ -18,6 +18,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/malamtime/cli/agenthook"
 	"github.com/malamtime/cli/daemon"
 	"github.com/malamtime/cli/model"
 	"github.com/stretchr/testify/assert"
@@ -646,57 +647,135 @@ func TestDoctorCheckCodex(t *testing.T) {
 
 // --- Cursor and Antigravity ---------------------------------------------------
 
+// chdirToTestRepo runs the test in a new repository and returns its root.
+func chdirToTestRepo(t *testing.T) string {
+	t.Helper()
+	repo := t.TempDir()
+	require.NoError(t, os.Mkdir(filepath.Join(repo, ".git"), 0755))
+	t.Chdir(repo)
+	return repo
+}
+
 func TestDoctorCheckCursor(t *testing.T) {
 	home, _ := setupDoctorTest(t)
 	env := newTestDoctorEnv(doctorTestConfig(t))
-	hooksPath := filepath.Join(home, ".cursor", "hooks.json")
+	repo := chdirToTestRepo(t)
+	hooksPath := filepath.Join(repo, ".cursor", "hooks.json")
 
 	assert.Equal(t, doctorSkip, findDoctorResult(t, doctorCheckCursor(env), "cursor.detected").Status)
 
-	require.NoError(t, os.MkdirAll(filepath.Dir(hooksPath), 0755))
+	require.NoError(t, os.MkdirAll(filepath.Join(home, ".cursor"), 0755))
 	hooks := findDoctorResult(t, doctorCheckCursor(env), "cursor.hooks")
-	assert.Equal(t, doctorWarn, hooks.Status, "not installed")
+	assert.Equal(t, doctorWarn, hooks.Status, "not installed in this project")
 	assert.Contains(t, hooks.Fix, "shelltime cursor install")
+	assert.Contains(t, hooks.Fix, "commit "+hooksPath)
 	require.NotNil(t, hooks.AutoFix)
 	assert.Equal(t, "cursor.install", hooks.AutoFix.Key)
 
+	require.NoError(t, os.MkdirAll(filepath.Dir(hooksPath), 0755))
 	require.NoError(t, os.WriteFile(hooksPath, []byte("{\n// mine\n}"), 0644))
 	hooks = findDoctorResult(t, doctorCheckCursor(env), "cursor.hooks")
 	assert.Equal(t, doctorFail, hooks.Status)
 	assert.Nil(t, hooks.AutoFix, "install can't fix invalid JSON")
 	assert.Contains(t, hooks.Fix, "Fix the JSON")
 
-	// Installed with a binary that exists and runs
-	bin := filepath.Join(home, "bin", "shelltime")
-	require.NoError(t, os.MkdirAll(filepath.Dir(bin), 0755))
-	require.NoError(t, os.WriteFile(bin, []byte("#!/bin/sh\n"), 0755))
+	// Installed; the hooks find shelltime on PATH but no daemon
 	require.NoError(t, os.Remove(hooksPath))
-	require.NoError(t, model.NewCursorHooksService().Install(bin))
+	require.NoError(t, model.NewCursorProjectHooksService(repo).Install())
 	results := doctorCheckCursor(env)
 	assert.Equal(t, doctorOK, findDoctorResult(t, results, "cursor.hooks").Status)
 	assert.False(t, hasDoctorResult(results, "cursor.hook_events"))
-	assert.False(t, hasDoctorResult(results, "cursor.hook_binary"))
+	tools := findDoctorResult(t, results, "cursor.hook_tools")
+	assert.Equal(t, doctorWarn, tools.Status)
+	assert.Contains(t, tools.Message, "shelltime-daemon")
+	assert.Contains(t, tools.Message, "skip every event")
 
-	// The binary isn't executable any more
-	require.NoError(t, os.Chmod(bin, 0644))
-	binary := findDoctorResult(t, doctorCheckCursor(env), "cursor.hook_binary")
-	assert.Equal(t, doctorFail, binary.Status)
-	assert.Contains(t, binary.Message, "isn't executable")
-	require.NotNil(t, binary.AutoFix)
+	// Both missing: one result naming both
+	doctorLookPath = func(string) (string, error) { return "", exec.ErrNotFound }
+	var toolResults []doctorResult
+	for _, r := range doctorCheckCursor(env) {
+		if r.ID == "cursor.hook_tools" {
+			toolResults = append(toolResults, r)
+		}
+	}
+	require.Len(t, toolResults, 1)
+	assert.Contains(t, toolResults[0].Message, "shelltime and shelltime-daemon")
+	doctorLookPath = func(name string) (string, error) {
+		if name == "shelltime" {
+			return "/usr/local/bin/shelltime", nil
+		}
+		return "", exec.ErrNotFound
+	}
 
-	// An older install: some events and a binary that's gone
-	require.NoError(t, os.WriteFile(hooksPath, []byte(`{"version":1,"hooks":{"stop":[{"command":"/gone/shelltime hook-ingest --agent cursor --event stop"}]}}`), 0644))
+	// The daemon where the install script puts it
+	daemonBin := filepath.Join(home, ".shelltime", "bin", "shelltime-daemon")
+	require.NoError(t, os.MkdirAll(filepath.Dir(daemonBin), 0755))
+	require.NoError(t, os.WriteFile(daemonBin, []byte("#!/bin/sh\n"), 0755))
 	results = doctorCheckCursor(env)
-	assert.Equal(t, doctorOK, findDoctorResult(t, results, "cursor.hooks").Status)
-	events := findDoctorResult(t, results, "cursor.hook_events")
+	assert.False(t, hasDoctorResult(results, "cursor.hook_tools"))
+	assert.False(t, hasDoctorResult(results, "cursor.user_hooks"))
+	assert.Len(t, results, 1)
+
+	// An older install of this project's hooks, without some events
+	require.NoError(t, os.WriteFile(hooksPath, []byte(`{"version":1,"hooks":{"stop":[{"command":"/gone/shelltime hook-ingest --agent cursor --event stop --project"}]}}`), 0644))
+	events := findDoctorResult(t, doctorCheckCursor(env), "cursor.hook_events")
 	assert.Equal(t, doctorWarn, events.Status)
 	assert.Contains(t, events.Message, "beforeSubmitPrompt")
-	binary = findDoctorResult(t, results, "cursor.hook_binary")
-	assert.Equal(t, doctorFail, binary.Status)
-	assert.Contains(t, binary.Message, "/gone/shelltime")
-	assert.Contains(t, binary.Message, "doesn't exist")
+	require.NoError(t, model.NewCursorProjectHooksService(repo).Install())
+
+	// What an older version left in ~/.cursor/hooks.json: working, then with its binary gone
+	exe, err := os.Executable()
+	require.NoError(t, err)
+	installUserHooksFor(t, model.NewCursorHooksService().Path(), "cursor", agenthook.CursorEvents, exe)
+	user := findDoctorResult(t, doctorCheckCursor(env), "cursor.user_hooks")
+	assert.Equal(t, doctorInfo, user.Status)
+	assert.Contains(t, user.Message, "older version")
+	assert.Nil(t, user.AutoFix, "working hooks aren't taken away")
+
+	installUserHooksFor(t, model.NewCursorHooksService().Path(), "cursor", agenthook.CursorEvents, "/gone/shelltime")
+	user = findDoctorResult(t, doctorCheckCursor(env), "cursor.user_hooks")
+	assert.Equal(t, doctorFail, user.Status)
+	assert.Contains(t, user.Message, "/gone/shelltime")
+	assert.Contains(t, user.Message, "doesn't exist")
+	require.NotNil(t, user.AutoFix)
+	assert.Equal(t, "cursor.user_hooks", user.AutoFix.Key)
+	captureColor(t)
+	require.NoError(t, user.AutoFix.Run(nil))
+	assert.False(t, hasDoctorResult(doctorCheckCursor(env), "cursor.user_hooks"), "the fix removed them")
+
+	// A project's command copied into the user file isn't an older version's hook
+	userPath := model.NewCursorHooksService().Path()
+	copied, err := json.Marshal(map[string]any{"version": 1, "hooks": map[string]any{
+		"stop": []any{map[string]any{"command": model.CursorProjectHookCommand("stop")}},
+	}})
+	require.NoError(t, err)
+	require.NoError(t, os.WriteFile(userPath, copied, 0644))
+	assert.False(t, hasDoctorResult(doctorCheckCursor(env), "cursor.user_hooks"))
+
+	// Outside a project there is no project file to check
+	t.Chdir(home)
+	hooks = findDoctorResult(t, doctorCheckCursor(env), "cursor.hooks")
+	assert.Equal(t, doctorSkip, hooks.Status)
+	assert.Contains(t, hooks.Message, "run `shelltime doctor` in a project's repository")
+
+	// Nor in a folder outside a repository: doctor never offers to write a hook file there
+	t.Chdir(t.TempDir())
+	hooks = findDoctorResult(t, doctorCheckCursor(env), "cursor.hooks")
+	assert.Equal(t, doctorSkip, hooks.Status)
+	assert.Nil(t, hooks.AutoFix)
+
+	// Windows has no daemon, so nothing to check or fix
+	orig := agentHooksGOOS
+	agentHooksGOOS = "windows"
+	t.Chdir(repo)
+	windows := doctorCheckCursor(env)
+	agentHooksGOOS = orig
+	require.Len(t, windows, 1)
+	assert.Equal(t, doctorSkip, windows[0].Status)
+	assert.Nil(t, windows[0].AutoFix)
 
 	// Detected through PATH too
+	t.Chdir(repo)
 	require.NoError(t, os.RemoveAll(filepath.Join(home, ".cursor")))
 	doctorLookPath = func(name string) (string, error) {
 		if name == "cursor-agent" {
@@ -704,12 +783,13 @@ func TestDoctorCheckCursor(t *testing.T) {
 		}
 		return "", exec.ErrNotFound
 	}
-	assert.Equal(t, doctorWarn, findDoctorResult(t, doctorCheckCursor(env), "cursor.hooks").Status)
+	assert.Equal(t, doctorOK, findDoctorResult(t, doctorCheckCursor(env), "cursor.hooks").Status)
 }
 
 func TestDoctorCheckAntigravity(t *testing.T) {
 	home, _ := setupDoctorTest(t)
 	env := newTestDoctorEnv(doctorTestConfig(t))
+	repo := chdirToTestRepo(t)
 
 	assert.Equal(t, doctorSkip, findDoctorResult(t, doctorCheckAntigravity(env), "antigravity.detected").Status)
 
@@ -720,20 +800,29 @@ func TestDoctorCheckAntigravity(t *testing.T) {
 	assert.Equal(t, "antigravity.install", hooks.AutoFix.Key)
 	assert.Contains(t, hooks.Fix, "shelltime agy install")
 
-	hooksPath := model.NewAntigravityHooksService().Path()
+	hooksPath := model.NewAntigravityProjectHooksService(repo).Path()
 	require.NoError(t, os.MkdirAll(filepath.Dir(hooksPath), 0755))
 	require.NoError(t, os.WriteFile(hooksPath, []byte("\xEF\xBB\xBF{}"), 0644))
 	hooks = findDoctorResult(t, doctorCheckAntigravity(env), "antigravity.hooks")
 	assert.Equal(t, doctorFail, hooks.Status)
 	assert.Contains(t, hooks.Message, "byte order mark")
 
-	bin := filepath.Join(home, "shelltime")
-	require.NoError(t, os.WriteFile(bin, []byte("#!/bin/sh\n"), 0755))
 	require.NoError(t, os.Remove(hooksPath))
-	require.NoError(t, model.NewAntigravityHooksService().Install(bin))
+	require.NoError(t, model.NewAntigravityProjectHooksService(repo).Install())
+	doctorLookPath = func(name string) (string, error) {
+		if name == "shelltime" || name == "shelltime-daemon" || name == "agy" {
+			return "/usr/local/bin/" + name, nil
+		}
+		return "", exec.ErrNotFound
+	}
 	results := doctorCheckAntigravity(env)
 	assert.Equal(t, doctorOK, findDoctorResult(t, results, "antigravity.hooks").Status)
 	assert.Len(t, results, 1)
+
+	// An invalid global file is the user's own business now
+	require.NoError(t, os.MkdirAll(filepath.Join(home, ".gemini", "config"), 0755))
+	require.NoError(t, os.WriteFile(model.NewAntigravityHooksService().Path(), []byte("{,"), 0644))
+	assert.Len(t, doctorCheckAntigravity(env), 1)
 }
 
 func TestCommandDoctor_FixInstallsAgentHooks(t *testing.T) {
@@ -743,6 +832,7 @@ func TestCommandDoctor_FixInstallsAgentHooks(t *testing.T) {
 	require.NoError(t, os.WriteFile(filepath.Join(home, ".zshrc"), nil, 0644))
 	require.NoError(t, os.MkdirAll(filepath.Join(home, ".cursor"), 0755))
 	require.NoError(t, os.MkdirAll(filepath.Join(home, ".gemini", "antigravity-cli"), 0755))
+	chdirToTestRepo(t)
 
 	var ran []string
 	doctorRunCursorInstall = func(*cli.Context) error {

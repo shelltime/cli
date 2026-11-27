@@ -2,7 +2,7 @@ package agenthook
 
 import "strings"
 
-// Antigravity's hook events (~/.gemini/config/hooks.json), as registered by
+// Antigravity's hook events (a project's .agents/hooks.json), as registered by
 // `shelltime agy install`. PreToolUse is left out on purpose: a reply without a decision
 // denies the tool call, and an "allow" may approve calls the user would have been asked about.
 const (

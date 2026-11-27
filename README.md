@@ -43,7 +43,7 @@ The fastest way to get set up is a single command:
 shelltime init
 ```
 
-`shelltime init` authenticates the CLI (in the browser, with `--email` to approve on your iPhone in the ShellTime iOS app, or with `--token`), installs the shell hooks and the daemon, and tries to wire up Claude Code and Codex OTEL integration for you, plus the Cursor and Antigravity hooks when those are installed. It prints one line per step; `shelltime init --verbose` shows each step's details.
+`shelltime init` authenticates the CLI (in the browser, with `--email` to approve on your iPhone in the ShellTime iOS app, or with `--token`), installs the shell hooks and the daemon, and tries to wire up Claude Code and Codex OTEL integration for you. Cursor and Antigravity take their hooks in each project's repository, so it only says how to add them when those are installed. It prints one line per step; `shelltime init --verbose` shows each step's details.
 
 Shell hooks go to the shells you use: zsh, bash or fish when its config file (`~/.zshrc`, `~/.bashrc`, `~/.config/fish/config.fish`) exists, and your login shell (`$SHELL`), whose config file is created if missing. To add a shell later, create its config file and run `shelltime hooks install`.
 
@@ -55,8 +55,8 @@ shelltime hooks install
 shelltime daemon install
 shelltime cc install
 shelltime codex install
-shelltime cursor install   # if you use Cursor
-shelltime agy install      # if you use Google Antigravity
+shelltime cursor install   # in each repository you use Cursor in
+shelltime agy install      # in each repository you use Google Antigravity in
 ```
 
 ## What ShellTime Does
@@ -108,10 +108,10 @@ shelltime agy install      # if you use Google Antigravity
 | `shelltime codex uninstall` | Remove ShellTime OTEL config from `~/.codex/config.toml` |
 | `shelltime codex backfill` | Upload past Codex usage from local session files |
 | `shelltime codex projects` | Same as `shelltime cc projects`: the projects of both agents are grouped together |
-| `shelltime cursor install` | Add the ShellTime hooks to `~/.cursor/hooks.json` (Cursor IDE and `cursor-agent`) |
-| `shelltime cursor uninstall` | Remove the ShellTime hooks from `~/.cursor/hooks.json` |
-| `shelltime agy install` | Add the ShellTime hook group to `~/.gemini/config/hooks.json` (Antigravity app and `agy` CLI); `shelltime antigravity` works too |
-| `shelltime agy uninstall` | Remove the ShellTime hook group from `~/.gemini/config/hooks.json` |
+| `shelltime cursor install` | Add the ShellTime hooks to the current repository's `.cursor/hooks.json` (Cursor IDE, `cursor-agent` and Cloud Agents) |
+| `shelltime cursor uninstall` | Remove the ShellTime hooks from the current repository's `.cursor/hooks.json` and `~/.cursor/hooks.json` |
+| `shelltime agy install` | Add the ShellTime hook group to the current repository's `.agents/hooks.json` (Antigravity app, `agy` CLI and the Antigravity agent's Gemini API sandbox); `shelltime antigravity` works too |
+| `shelltime agy uninstall` | Remove the ShellTime hook group from the current repository's `.agents/hooks.json` and `~/.gemini/config/hooks.json` |
 
 ### Environment helpers
 
@@ -211,10 +211,18 @@ Besides tokens and cost, both tools then send your prompts, tool details (shell 
 
 Cursor and Google Antigravity have no OpenTelemetry export, so ShellTime reads their native hooks instead: the agent runs `shelltime hook-ingest` for each event with the event's JSON on stdin, and ShellTime answers with the reply that lets the agent carry on. It never blocks, denies or changes anything the agent does.
 
-- **Cursor**: `shelltime cursor install` registers `beforeSubmitPrompt`, `postToolUse`, `postToolUseFailure`, `afterAgentResponse`, `stop`, `sessionStart` and `sessionEnd` in `~/.cursor/hooks.json`, which the IDE and `cursor-agent` both read. Your other hooks stay as they are.
-- **Antigravity**: `shelltime agy install` adds a `shelltime` hook group (`SessionStart`, `PreInvocation`, `PostToolUse`, `PostInvocation`, `Stop`) to `~/.gemini/config/hooks.json`, shared by the app and the `agy` CLI. Antigravity ignores the whole file when it isn't strict JSON, so a file with comments, trailing commas or a byte order mark is left alone with an error, never rewritten.
+The hooks go into each project's repository, the only place the agents' cloud runs read them from (Cursor Cloud Agents never read `~/.cursor/hooks.json`, and Antigravity runs a workspace's hooks ahead of its global file). Run the install in the repository, then commit the file:
 
-Restart the agent after installing. Events go to the daemon, which sends them in batches; without a running daemon they wait in `~/.shelltime/agent-hooks.pending.jsonl` until it sends them. The hooks send your prompts, the agent's responses, tool names and inputs (shell commands, file paths) and the workspace folder; tool output is never read. Data masking and your exclude patterns apply (an event whose shell command matches one is sent without the command, prompt, response, tool input or error), and `shelltime config disable agentHooks.sendContent` keeps the text of prompts, responses, tool input and errors, and the paths of files attached to prompts, out, so only the activity is sent. `shelltime doctor` checks both files and that the binary they run still exists; re-run the install after moving `shelltime`.
+- **Cursor**: `shelltime cursor install` registers `beforeSubmitPrompt`, `postToolUse`, `postToolUseFailure`, `afterAgentResponse`, `stop`, `sessionStart` and `sessionEnd` in `.cursor/hooks.json` at the repository's root. Your other hooks stay as they are.
+- **Antigravity**: `shelltime agy install` adds a `shelltime` hook group (`SessionStart`, `PreInvocation`, `PostToolUse`, `PostInvocation`, `Stop`) to `.agents/hooks.json` at the repository's root. Antigravity ignores the whole file when it isn't strict JSON, so a file with comments, trailing commas or a byte order mark is left alone with an error, never rewritten.
+
+Outside a repository the current folder counts as the project, but never your home folder. Hooks older versions put in `~/.cursor/hooks.json` or `~/.gemini/config/hooks.json` stay and keep tracking your other folders; a repository's own hooks leave events to them, so nothing is counted twice. `uninstall` takes ShellTime out of the repository's file and those. Restart the agent after installing. The hooks need macOS or Linux: `shelltime-daemon` doesn't run on Windows, and the install refuses there (a committed hook file fails on a Windows collaborator's machine, which Cursor logs and carries on from).
+
+Each hook is one self-contained shell command, the same on every machine that checks the repository out: it records the event only where `shelltime` and `shelltime-daemon` are installed (on `PATH`, or in `~/.shelltime/bin`, `/opt/homebrew/bin` or `/usr/local/bin`, which an app started from the Dock may not have on its `PATH`), each to that machine's ShellTime account, and anywhere else just lets the agent carry on, so collaborators without ShellTime see no failing hooks. Events go to the daemon, which sends them in batches; while it isn't running they wait in `~/.shelltime/agent-hooks.pending.jsonl` until it sends them. The hooks send your prompts, the agent's responses, tool names and inputs (shell commands, file paths) and the workspace folder; tool output is never read. Data masking and your exclude patterns apply (an event whose shell command matches one is sent without the command, prompt, response, tool input or error), and `shelltime config disable agentHooks.sendContent` keeps the text of prompts, responses, tool input and errors, and the paths of files attached to prompts, out, so only the activity is sent. `shelltime doctor`, run in a repository, checks its hook file and that the hooks can find both binaries.
+
+### Cloud agents
+
+In a Cursor Cloud Agent's environment, install ShellTime, sign it in (`shelltime auth --token …`), keep `shelltime-daemon` running and set `SHELLTIME_CLOUD=true` in the environment's variables or secrets; the committed hooks do the rest. Cursor marks a cloud run only in `sessionStart` (`is_background_agent`), which the daemon passes on to the session's later events, so the variable is what marks every event. The Antigravity agent's Gemini API sandbox needs the same setup (its environment takes variables too); its hooks are marked as cloud by the sandbox's OS user, `antigravity`, even without the variable. With the variable the machine collects AI coding agent usage only (see `aiCloudOnly` in [CONFIG.md](docs/CONFIG.md)). Claude Code cloud environments (`CLAUDE_CODE_REMOTE=true`) count as cloud too.
 
 ## Projects
 

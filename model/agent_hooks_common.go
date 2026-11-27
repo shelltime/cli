@@ -3,16 +3,90 @@ package model
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
-	"runtime"
 	"strings"
+
+	"github.com/malamtime/cli/agenthook"
 )
 
-// HookIngestSubcommand is what every agent hook command runs: `<bin> hook-ingest --agent …`.
+// HookIngestSubcommand is what every agent hook command runs: `… shelltime hook-ingest --agent …`.
 const HookIngestSubcommand = "hook-ingest"
+
+// The binaries a project hook command looks for before it records anything.
+const (
+	ProjectHookCLI    = "shelltime"
+	ProjectHookDaemon = "shelltime-daemon"
+)
+
+const (
+	// ProjectHookFlag marks the hook-ingest runs of a project's hook file. An older version may
+	// have left its hooks in the user's own hook file, which the agent runs next to the
+	// project's, so such a run leaves the event to those when they record it too.
+	ProjectHookFlag = "--project"
+	// projectHookPath is added to the PATH a project hook command searches: where the install
+	// script puts shelltime and shelltime-daemon when it doesn't use Homebrew, then Homebrew's
+	// folders, which an app started from the Dock may not have on its PATH.
+	projectHookPath = "$HOME/.shelltime/bin:/opt/homebrew/bin:/usr/local/bin"
+)
+
+// ProjectHookSearchDirs are the folders a project hook command searches after PATH, for home.
+func ProjectHookSearchDirs(home string) []string {
+	return []string{filepath.Join(home, COMMAND_BASE_STORAGE_FOLDER, "bin"), "/opt/homebrew/bin", "/usr/local/bin"}
+}
+
+// ErrProjectHooksUnsupported is returned for installing project hooks on Windows: their command
+// is POSIX sh, and shelltime-daemon, which they record through, runs on macOS and Linux only.
+var ErrProjectHooksUnsupported = errors.New("the Cursor and Antigravity hooks need shelltime-daemon, which runs on macOS and Linux only")
+
+// ErrHomeIsNotAProject is returned for a project root that is the user's home folder, whose
+// .cursor/hooks.json is Cursor's user-level hook file, not a project's.
+var ErrHomeIsNotAProject = errors.New("the home folder isn't a project; run this inside the project's repository")
+
+// projectHookCommand is the command a project's hook file runs for an agent's event (agent is
+// the --agent value). The file is committed and runs on every machine that checks the
+// repository out, a cloud agent's VM included, and the agents disagree on the folder a hook
+// runs in, so the command is self-contained POSIX sh: where the shelltime CLI and its daemon are
+// installed (on PATH, or in ProjectHookSearchDirs) it hands the event to hook-ingest; anywhere
+// else it answers with the reply that lets the agent carry on, so the hook never fails. A
+// shelltime from before hook-ingest exits non-zero with its error on stderr; its stdout is
+// dropped and the reply answers instead.
+func projectHookCommand(agent, event string) string {
+	return fmt.Sprintf("PATH=$PATH:%s; command -v %s >/dev/null 2>&1 && command -v %s >/dev/null 2>&1 && out=$(%s %s --agent %s --event %s %s) && printf '%%s\\n' \"$out\" || echo '%s'",
+		projectHookPath, ProjectHookCLI, ProjectHookDaemon,
+		ProjectHookCLI, HookIngestSubcommand, agent, event, ProjectHookFlag,
+		agenthook.PassThrough(agent, event))
+}
+
+// ProjectHooksRoot returns the root of the project dir is in, where its agents look for project
+// hook files: the nearest folder up from dir that holds .git (a folder, or a file in a worktree
+// or submodule), else dir itself. The user's home folder is no project (ErrHomeIsNotAProject),
+// and the walk stops below it: a dotfiles repository in ~/.git makes no folder in home part of
+// one.
+func ProjectHooksRoot(dir string) (string, error) {
+	dir, err := filepath.Abs(dir)
+	if err != nil {
+		return "", err
+	}
+	home, homeErr := os.UserHomeDir()
+	isHome := func(d string) bool { return homeErr == nil && sameFile(d, home) }
+	if isHome(dir) {
+		return "", ErrHomeIsNotAProject
+	}
+	for d := dir; !isHome(d); {
+		if _, err := os.Stat(filepath.Join(d, ".git")); err == nil {
+			return d, nil
+		}
+		parent := filepath.Dir(d)
+		if parent == d {
+			break
+		}
+		d = parent
+	}
+	return dir, nil
+}
 
 // AgentHooksStatus is what an agent's hook file says about the ShellTime hooks in it.
 type AgentHooksStatus struct {
@@ -22,74 +96,49 @@ type AgentHooksStatus struct {
 	MissingEvents []string
 	// Binaries are the shelltime binaries the registered commands run, each once.
 	Binaries []string
+	// EventBinaries are the binaries each managed event's commands run, by event.
+	EventBinaries map[string][]string
 }
 
-func (s *AgentHooksStatus) addBinary(bin string) {
+// addBinary records bin as run by event's commands.
+func (s *AgentHooksStatus) addBinary(event, bin string) {
 	if bin == "" {
 		return
 	}
-	for _, b := range s.Binaries {
-		if b == bin {
-			return
+	if s.EventBinaries == nil {
+		s.EventBinaries = map[string][]string{}
+	}
+	if !containsString(s.EventBinaries[event], bin) {
+		s.EventBinaries[event] = append(s.EventBinaries[event], bin)
+	}
+	if !containsString(s.Binaries, bin) {
+		s.Binaries = append(s.Binaries, bin)
+	}
+}
+
+func containsString(values []string, s string) bool {
+	for _, v := range values {
+		if v == s {
+			return true
 		}
 	}
-	s.Binaries = append(s.Binaries, bin)
+	return false
 }
 
-// Seams for HookBinaryPath; tests replace them.
-var (
-	hookExecutable = os.Executable
-	hookLookPath   = exec.LookPath
-)
-
-// HookBinaryPath returns the shelltime binary agent hooks should run: the running one, under
-// the name PATH finds it by when that is the same file, so Homebrew's stable bin/shelltime is
-// written rather than a versioned Cellar path that the next upgrade removes.
-func HookBinaryPath() (string, error) {
-	exe, err := hookExecutable()
-	if err != nil {
-		return "", err
-	}
-	if p, err := hookLookPath("shelltime"); err == nil {
-		if abs, err := filepath.Abs(p); err == nil && sameFile(abs, exe) {
-			return abs, nil
-		}
-	}
-	return exe, nil
-}
-
-// hookCommand returns the hook command line that runs bin with args, quoting bin when the
-// shell would split or expand it.
-func hookCommand(bin string, args ...string) string {
-	return strings.Join(append([]string{quoteHookBinary(bin)}, args...), " ")
-}
-
-func quoteHookBinary(bin string) string {
-	safe := true
-	for _, r := range bin {
-		switch {
-		case r >= 'a' && r <= 'z', r >= 'A' && r <= 'Z', r >= '0' && r <= '9':
-		case strings.ContainsRune("/._-+:@%,=", r):
-		case r == '\\' && runtime.GOOS == "windows":
-		default:
-			safe = false
-		}
-	}
-	if safe && bin != "" {
-		return bin
-	}
-	if runtime.GOOS == "windows" {
-		return `"` + bin + `"`
-	}
-	return "'" + strings.ReplaceAll(bin, "'", `'\''`) + "'"
-}
-
-// hookCommandBinary returns the binary of a hook command written by hookCommand: the text
-// before " hook-ingest", unquoted. Empty when the command doesn't run hook-ingest.
+// hookCommandBinary returns the binary a hook command runs hook-ingest with: the text before
+// " hook-ingest" (after "out=$(" or "&& exec " in a project hook command), unquoted. Empty when
+// the command doesn't run hook-ingest. Older versions wrote `<absolute path> hook-ingest …`,
+// quoted when the shell would split the path.
 func hookCommandBinary(command string) string {
 	before, _, ok := strings.Cut(command, " "+HookIngestSubcommand)
 	if !ok {
 		return ""
+	}
+	for _, prefix := range []string{"out=$(", "&& exec "} {
+		if i := strings.LastIndex(before, prefix); i >= 0 {
+			before = before[i+len(prefix):]
+			break
+		}
 	}
 	bin := strings.TrimSpace(before)
 	switch {

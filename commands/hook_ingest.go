@@ -6,6 +6,8 @@ import (
 	"io"
 	"log/slog"
 	"os"
+	"path/filepath"
+	"runtime"
 	"strings"
 	"time"
 
@@ -47,15 +49,16 @@ var HookIngestCommand = &cli.Command{
 	Flags: []cli.Flag{
 		&cli.StringFlag{Name: "agent", Usage: "the agent that runs the hook: cursor, or agy (antigravity)"},
 		&cli.StringFlag{Name: "event", Usage: "the hook event"},
+		&cli.BoolFlag{Name: "project", Usage: "run from a project's hook file (cursor/agy install)"},
 	},
 	Action: func(c *cli.Context) error {
-		runHookIngest(c.Context, c.String("agent"), c.String("event"))
+		runHookIngest(c.Context, c.String("agent"), c.String("event"), c.Bool("project"))
 		return nil
 	},
 	OnUsageError: func(c *cli.Context, err error, isSubcommand bool) error {
-		// The hook still answers. Read --agent and --event from the arguments as they are.
-		agent, event := hookIngestFlagsFromArgs(hookIngestRawArgs())
-		runHookIngest(c.Context, agent, event)
+		// The hook still answers. Read the flags from the arguments as they are.
+		agent, event, project := hookIngestFlagsFromArgs(hookIngestRawArgs())
+		runHookIngest(c.Context, agent, event, project)
 		return nil
 	},
 }
@@ -63,7 +66,14 @@ var HookIngestCommand = &cli.Command{
 // runHookIngest answers the hook on stdout, then records its event: through the daemon when
 // one takes it, else in the pending file the daemon resends from. Nothing else ever reaches
 // stdout, and a panic still answers.
-func runHookIngest(ctx context.Context, agent, event string) {
+//
+// project is set when a project's hook file runs it. An older version may have left its hooks
+// in the agent's user-level file, which the agent runs next to the project's, so the event is
+// left to those when they record it too, unless it ran in a cloud VM: Cursor Cloud Agents never
+// run the user's hooks, even where a setup script wrote some. Cursor names a cloud run only in
+// sessionStart, which the daemon remembers for the session's later events, so a daemon makes
+// that call (YieldToUserHooks); without one the event is left to the user's hook.
+func runHookIngest(ctx context.Context, agent, event string, project bool) {
 	if ctx == nil {
 		ctx = context.Background()
 	}
@@ -108,6 +118,7 @@ func runHookIngest(ctx context.Context, agent, event string) {
 		slog.Warn("hook-ingest: no event recorded", slog.String("agent", agent), slog.String("event", event), slog.Any("err", err))
 		return
 	}
+	ev.YieldToUserHooks = project && ev.Cloud == "" && userHooksRecord(ev.Agent, ev.HookEventName)
 	ev.Hostname, _ = os.Hostname()
 
 	// Fast path, before any config is read: the daemon applies the privacy settings, adds the
@@ -129,6 +140,10 @@ func runHookIngest(ctx context.Context, agent, event string) {
 		}
 	}
 
+	if ev.YieldToUserHooks {
+		slog.Debug("hook-ingest: no daemon, event left to the user-level hook", slog.String("agent", ev.Agent), slog.String("event", ev.HookEventName))
+		return
+	}
 	// No daemon: keep the event, with the privacy settings applied, for the daemon to send
 	model.ApplyAgentHookPrivacy(&ev, config)
 	if err := model.AppendAgentHookPending(ev); err != nil {
@@ -154,11 +169,19 @@ func sendHookEventToDaemon(socketPath string, ev agenthook.Event) bool {
 	return true
 }
 
-// hookIngestFlagsFromArgs finds --agent and --event (or -agent, --agent=x) in raw arguments.
-func hookIngestFlagsFromArgs(args []string) (agent, event string) {
+// hookIngestFlagsFromArgs finds --agent, --event (or -agent, --agent=x) and --project (or
+// --project=bool) in raw arguments.
+func hookIngestFlagsFromArgs(args []string) (agent, event string, project bool) {
 	for i := 0; i < len(args); i++ {
 		name, value, hasValue := strings.Cut(strings.TrimLeft(args[i], "-"), "=")
-		if !strings.HasPrefix(args[i], "-") || (name != "agent" && name != "event") {
+		if !strings.HasPrefix(args[i], "-") {
+			continue
+		}
+		if name == "project" {
+			project = !hasValue || strings.EqualFold(value, "true") || value == "1"
+			continue
+		}
+		if name != "agent" && name != "event" {
 			continue
 		}
 		if !hasValue {
@@ -174,5 +197,51 @@ func hookIngestFlagsFromArgs(args []string) (agent, event string) {
 			event = value
 		}
 	}
-	return agent, event
+	return agent, event, project
+}
+
+// userHooksRecord reports whether the agent's user-level hook file still holds a ShellTime hook
+// an older version installed for event, with a binary that is still there, so the agent records
+// the event through it. Those name the binary by its absolute path; a project's commands name
+// it by PATH, and one copied into the user file counts as not recording, like anything this
+// can't read, so the project hook records the event instead.
+func userHooksRecord(agent, event string) bool {
+	var events []string
+	var status model.AgentHooksStatus
+	var err error
+	switch agent {
+	case agenthook.AgentCursor:
+		events = agenthook.CursorEvents
+		status, err = model.NewCursorHooksService().Status()
+	case agenthook.AgentAntigravity:
+		events = agenthook.AntigravityEvents
+		status, err = model.NewAntigravityHooksService().Status()
+	default:
+		return false
+	}
+	if err != nil || !status.Installed {
+		return false
+	}
+	// The binaries of this event's commands: another event's binary says nothing about it
+	for _, managed := range events {
+		if !strings.EqualFold(managed, event) {
+			continue
+		}
+		for _, bin := range status.EventBinaries[managed] {
+			if hookBinaryExists(bin) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// hookBinaryExists reports whether an older version's hook command runs a binary that is still
+// there: an absolute path to a file the agent can execute.
+func hookBinaryExists(bin string) bool {
+	if !filepath.IsAbs(bin) {
+		return false
+	}
+	info, err := os.Stat(bin)
+	return err == nil && !info.IsDir() && (runtime.GOOS == "windows" || info.Mode().Perm()&0o111 != 0)
 }

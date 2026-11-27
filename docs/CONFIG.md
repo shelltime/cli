@@ -324,7 +324,7 @@ Collect only AI coding agent usage (the AICodeOtel data above) on a machine that
 
 | Option | Type | Default | Description |
 |--------|------|---------|-------------|
-| `aiCloudOnly` | boolean | on in a Claude Code cloud environment, else off | Collect AI coding agent usage only |
+| `aiCloudOnly` | boolean | on in a Claude Code cloud environment or where `SHELLTIME_CLOUD=true`, else off | Collect AI coding agent usage only |
 
 ```yaml
 # Collect only AI coding agent usage on this machine
@@ -337,11 +337,11 @@ In this mode ShellTime records nothing about the machine, so it never shows up a
 - `shelltime track` without a daemon stores nothing, and `shelltime sync`, `alias import`, `dotfiles push` and `hooks install` say so and do nothing.
 - Claude Code and Codex sessions, prompts, tokens, cost and the pull requests they open are collected as usual.
 
-You don't need to set it in a Claude Code cloud environment ([cloud.bash](https://github.com/shelltime/installation/blob/main/cloud.bash)): when `aiCloudOnly` is unset, the mode is on wherever `CLAUDE_CODE_REMOTE=true`, which cloud environments set and your own machines never do. To track a cloud VM's commands anyway, set `aiCloudOnly: false`. `shelltime doctor` shows whether the mode is on and why.
+You don't need to set it in a Claude Code cloud environment ([cloud.bash](https://github.com/shelltime/installation/blob/main/cloud.bash)): when `aiCloudOnly` is unset, the mode is on wherever `CLAUDE_CODE_REMOTE=true`, which cloud environments set and your own machines never do. Other agents' cloud environments (Cursor Cloud Agents) set nothing like it, so set `SHELLTIME_CLOUD=true` in their variables or secrets: it turns the mode on the same way and marks the Cursor and Antigravity hook events as cloud sessions (`SHELLTIME_CLOUD=false` says the machine isn't one, over every other sign: `CLAUDE_CODE_REMOTE=true`, the Antigravity sandbox's user, Cursor's background agent flag) (see [Cloud agents](../README.md#cloud-agents)). In the Antigravity agent's Gemini API sandbox, its OS user, `antigravity`, marks the Antigravity events as cloud sessions but doesn't turn the mode on; set the variable there too. To track a cloud VM's commands anyway, set `aiCloudOnly: false`. `shelltime doctor` shows whether the mode is on and why.
 
 ## Cursor and Antigravity Hooks
 
-`shelltime cursor install` and `shelltime agy install` register ShellTime in the native hooks of Cursor (`~/.cursor/hooks.json`) and Google Antigravity (`~/.gemini/config/hooks.json`). Each event goes to the daemon, which applies data masking and your exclude patterns before sending it. An event whose shell command matches an exclude pattern is sent without the command, its prompt, tool input, response or error.
+`shelltime cursor install` and `shelltime agy install` register ShellTime in the native hooks of Cursor (`.cursor/hooks.json`) and Google Antigravity (`.agents/hooks.json`) of the current repository, which is committed: the hooks record only on machines where `shelltime` and `shelltime-daemon` are installed. Each event goes to the daemon, which applies data masking and your exclude patterns before sending it. An event whose shell command matches an exclude pattern is sent without the command, its prompt, tool input, response or error.
 
 | Option | Type | Default | Description |
 |--------|------|---------|-------------|

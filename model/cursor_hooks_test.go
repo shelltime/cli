@@ -12,18 +12,22 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-const testHookBin = "/usr/local/bin/shelltime"
+// legacyHookCommand is the command older versions registered in the user-level hook files.
+func legacyHookCommand(bin, agent, event string) string {
+	return bin + " hook-ingest --agent " + agent + " --event " + event
+}
 
+// newTestCursorHooks returns the hook service of a project under a temp HOME.
 func newTestCursorHooks(t *testing.T) (*CursorHooksService, string) {
 	t.Helper()
-	home := t.TempDir()
-	t.Setenv("HOME", home)
-	svc := NewCursorHooksService()
-	require.Equal(t, filepath.Join(home, ".cursor", "hooks.json"), svc.Path())
+	t.Setenv("HOME", t.TempDir())
+	root := t.TempDir()
+	svc := NewCursorProjectHooksService(root)
+	require.Equal(t, filepath.Join(root, ".cursor", "hooks.json"), svc.Path())
 	return svc, svc.Path()
 }
 
-// cursorHooksFile is the parts of ~/.cursor/hooks.json the tests read.
+// cursorHooksFile is the parts of a .cursor/hooks.json the tests read.
 type cursorHooksFile struct {
 	Version int                         `json:"version"`
 	Hooks   map[string][]map[string]any `json:"hooks"`
@@ -45,7 +49,7 @@ func writeFile(t *testing.T, path, content string, mode os.FileMode) {
 	require.NoError(t, os.Chmod(path, mode))
 }
 
-func assertCursorInstalled(t *testing.T, path, bin string) cursorHooksFile {
+func assertCursorInstalled(t *testing.T, path string) cursorHooksFile {
 	t.Helper()
 	f := readCursorHooks(t, path)
 	assert.Equal(t, 1, f.Version)
@@ -56,7 +60,7 @@ func assertCursorInstalled(t *testing.T, path, bin string) cursorHooksFile {
 				ours = append(ours, cmd)
 			}
 		}
-		assert.Equal(t, []string{CursorHookCommand(bin, event)}, ours, event)
+		assert.Equal(t, []string{CursorProjectHookCommand(event)}, ours, event)
 	}
 	return f
 }
@@ -64,13 +68,14 @@ func assertCursorInstalled(t *testing.T, path, bin string) cursorHooksFile {
 func TestCursorHooks_InstallCreatesFile(t *testing.T) {
 	svc, path := newTestCursorHooks(t)
 
-	require.NoError(t, svc.Install(testHookBin))
+	require.NoError(t, svc.Install())
 
-	assertCursorInstalled(t, path, testHookBin)
+	assertCursorInstalled(t, path)
 	data, err := os.ReadFile(path)
 	require.NoError(t, err)
 	assert.True(t, strings.HasPrefix(string(data), "{\n  \"version\": 1,\n  \"hooks\": {\n    \"beforeSubmitPrompt\""), string(data))
-	assert.Contains(t, string(data), `"command": "/usr/local/bin/shelltime hook-ingest --agent cursor --event beforeSubmitPrompt"`)
+	assert.Contains(t, string(data), `out=$(shelltime hook-ingest --agent cursor --event beforeSubmitPrompt --project)`)
+	assert.Contains(t, string(data), `|| echo '{\"continue\":true}'"`)
 	info, err := os.Stat(path)
 	require.NoError(t, err)
 	assert.Equal(t, os.FileMode(0644), info.Mode().Perm())
@@ -81,8 +86,8 @@ func TestCursorHooks_InstallIntoEmptyAndBareFiles(t *testing.T) {
 		t.Run(content, func(t *testing.T) {
 			svc, path := newTestCursorHooks(t)
 			writeFile(t, path, content, 0644)
-			require.NoError(t, svc.Install(testHookBin))
-			assertCursorInstalled(t, path, testHookBin)
+			require.NoError(t, svc.Install())
+			assertCursorInstalled(t, path)
 		})
 	}
 }
@@ -100,9 +105,9 @@ func TestCursorHooks_InstallKeepsUserHooksAndOrder(t *testing.T) {
 }
 `, 0600)
 
-	require.NoError(t, svc.Install(testHookBin))
+	require.NoError(t, svc.Install())
 
-	f := assertCursorInstalled(t, path, testHookBin)
+	f := assertCursorInstalled(t, path)
 	assert.Equal(t, []map[string]any{{"command": "./audit.sh"}}, f.Hooks["beforeShellExecution"])
 	assert.Equal(t, []map[string]any{{"command": "prettier --write"}}, f.Hooks["afterFileEdit"])
 	require.Len(t, f.Hooks["stop"], 2)
@@ -123,31 +128,27 @@ func TestCursorHooks_InstallKeepsUserHooksAndOrder(t *testing.T) {
 	assert.Equal(t, os.FileMode(0600), info.Mode().Perm(), "the file keeps its mode")
 }
 
-func TestCursorHooks_InstallIsIdempotentAndUpdatesTheBinary(t *testing.T) {
+func TestCursorHooks_InstallIsIdempotentAndReplacesOlderCommands(t *testing.T) {
 	svc, path := newTestCursorHooks(t)
 	writeFile(t, path, `{"version":1,"hooks":{"stop":[{"command":"say done"}]}}`, 0644)
 
-	require.NoError(t, svc.Install(testHookBin))
+	require.NoError(t, svc.Install())
 	first, err := os.ReadFile(path)
 	require.NoError(t, err)
-	require.NoError(t, svc.Install(testHookBin))
+	require.NoError(t, svc.Install())
 	second, err := os.ReadFile(path)
 	require.NoError(t, err)
 	assert.Equal(t, string(first), string(second))
 
-	// A new binary replaces the old one in place, keeping keys the user added to our entry
-	edited := strings.Replace(string(second),
-		`"command": "/usr/local/bin/shelltime hook-ingest --agent cursor --event stop"`,
-		`"command": "/usr/local/bin/shelltime hook-ingest --agent cursor --event stop", "timeout": 3`, 1)
-	writeFile(t, path, edited, 0644)
-	newBin := "/opt/homebrew/bin/shelltime"
-	require.NoError(t, svc.Install(newBin))
+	// An older form of the command is replaced in place, keeping keys the user added to it
+	writeFile(t, path, `{"version":1,"hooks":{"stop":[{"command":"say done"},{"command":"/usr/local/bin/shelltime hook-ingest --agent cursor --event stop","timeout":3}]}}`, 0644)
+	require.NoError(t, svc.Install())
 
-	f := assertCursorInstalled(t, path, newBin)
+	f := assertCursorInstalled(t, path)
 	require.Len(t, f.Hooks["stop"], 2)
 	assert.Equal(t, "say done", f.Hooks["stop"][0]["command"])
 	assert.Equal(t, float64(3), f.Hooks["stop"][1]["timeout"])
-	assert.NotContains(t, string(mustRead(t, path)), testHookBin)
+	assert.NotContains(t, string(mustRead(t, path)), "/usr/local/bin/shelltime")
 }
 
 func TestCursorHooks_InstallDropsDuplicatesAndRetiredEvents(t *testing.T) {
@@ -158,32 +159,18 @@ func TestCursorHooks_InstallDropsDuplicatesAndRetiredEvents(t *testing.T) {
 		"afterFileEdit":[{"command":"mine too"},{"command":"/old/shelltime hook-ingest --agent cursor --event afterFileEdit"}]
 	}}`, 0644)
 
-	require.NoError(t, svc.Install(testHookBin))
+	require.NoError(t, svc.Install())
 
-	f := assertCursorInstalled(t, path, testHookBin)
-	assert.Equal(t, []map[string]any{{"command": CursorHookCommand(testHookBin, "stop")}, {"command": "mine"}}, f.Hooks["stop"])
+	f := assertCursorInstalled(t, path)
+	assert.Equal(t, []map[string]any{{"command": CursorProjectHookCommand("stop")}, {"command": "mine"}}, f.Hooks["stop"])
 	assert.NotContains(t, f.Hooks, "beforeReadFile", "an event only we used goes")
 	assert.Equal(t, []map[string]any{{"command": "mine too"}}, f.Hooks["afterFileEdit"])
-}
-
-func TestCursorHooks_QuotesBinaryWithSpaces(t *testing.T) {
-	svc, path := newTestCursorHooks(t)
-	bin := "/Users/me/My Tools/it's/shelltime"
-
-	require.NoError(t, svc.Install(bin))
-
-	f := readCursorHooks(t, path)
-	cmd := f.Hooks["stop"][0]["command"].(string)
-	assert.Equal(t, `'/Users/me/My Tools/it'\''s/shelltime' hook-ingest --agent cursor --event stop`, cmd)
-	status, err := svc.Status()
-	require.NoError(t, err)
-	assert.Equal(t, []string{bin}, status.Binaries)
 }
 
 func TestCursorHooks_Uninstall(t *testing.T) {
 	svc, path := newTestCursorHooks(t)
 	writeFile(t, path, `{"version":1,"hooks":{"stop":[{"command":"say done"}],"afterFileEdit":[{"command":"fmt"}]},"other":true}`, 0644)
-	require.NoError(t, svc.Install(testHookBin))
+	require.NoError(t, svc.Install())
 
 	require.NoError(t, svc.Uninstall())
 
@@ -233,7 +220,7 @@ func TestCursorHooks_RefusesInvalidFiles(t *testing.T) {
 			svc, path := newTestCursorHooks(t)
 			writeFile(t, path, content, 0644)
 
-			err := svc.Install(testHookBin)
+			err := svc.Install()
 			require.Error(t, err)
 			assert.ErrorIs(t, err, ErrHookFileInvalid)
 			assert.Equal(t, content, string(mustRead(t, path)), "left untouched")
@@ -256,12 +243,12 @@ func TestCursorHooks_Status(t *testing.T) {
 	assert.False(t, status.Installed)
 	assert.Equal(t, agenthook.CursorEvents, status.MissingEvents)
 
-	require.NoError(t, svc.Install(testHookBin))
+	require.NoError(t, svc.Install())
 	status, err = svc.Status()
 	require.NoError(t, err)
 	assert.True(t, status.Installed)
 	assert.Empty(t, status.MissingEvents)
-	assert.Equal(t, []string{testHookBin}, status.Binaries)
+	assert.Equal(t, []string{ProjectHookCLI}, status.Binaries)
 
 	// An install from an older version, without the session events
 	writeFile(t, path, `{"version":1,"hooks":{
@@ -279,36 +266,8 @@ func TestHookCommandBinary(t *testing.T) {
 	assert.Equal(t, "/a b/shelltime", hookCommandBinary(`'/a b/shelltime' hook-ingest --agent agy --event Stop`))
 	assert.Equal(t, "/a b/shelltime", hookCommandBinary(`"/a b/shelltime" hook-ingest --agent agy --event Stop`))
 	assert.Equal(t, "", hookCommandBinary("say done"))
-}
-
-func TestHookBinaryPath(t *testing.T) {
-	origExe, origLook := hookExecutable, hookLookPath
-	t.Cleanup(func() { hookExecutable, hookLookPath = origExe, origLook })
-
-	dir := t.TempDir()
-	cellar := filepath.Join(dir, "Cellar", "shelltime", "0.1.99", "bin", "shelltime")
-	writeFile(t, cellar, "#!/bin/sh\n", 0755)
-	link := filepath.Join(dir, "bin", "shelltime")
-	require.NoError(t, os.MkdirAll(filepath.Dir(link), 0755))
-	require.NoError(t, os.Symlink(cellar, link))
-	other := filepath.Join(dir, "other", "shelltime")
-	writeFile(t, other, "#!/bin/sh\n", 0755)
-
-	hookExecutable = func() (string, error) { return cellar, nil }
-	hookLookPath = func(string) (string, error) { return link, nil }
-	got, err := HookBinaryPath()
-	require.NoError(t, err)
-	assert.Equal(t, link, got, "the PATH name of the same file wins")
-
-	hookLookPath = func(string) (string, error) { return other, nil }
-	got, err = HookBinaryPath()
-	require.NoError(t, err)
-	assert.Equal(t, cellar, got, "another shelltime on PATH isn't this one")
-
-	hookLookPath = func(string) (string, error) { return "", os.ErrNotExist }
-	got, err = HookBinaryPath()
-	require.NoError(t, err)
-	assert.Equal(t, cellar, got)
+	assert.Equal(t, ProjectHookCLI, hookCommandBinary(CursorProjectHookCommand("stop")))
+	assert.Equal(t, ProjectHookCLI, hookCommandBinary(AntigravityProjectHookCommand("Stop")))
 }
 
 func mustRead(t *testing.T, path string) []byte {
@@ -325,10 +284,10 @@ func TestCursorHooks_WritesThroughASymlink(t *testing.T) {
 	require.NoError(t, os.MkdirAll(filepath.Dir(path), 0755))
 	require.NoError(t, os.Symlink(real, path))
 
-	require.NoError(t, svc.Install(testHookBin))
+	require.NoError(t, svc.Install())
 
 	info, err := os.Lstat(path)
 	require.NoError(t, err)
 	assert.NotZero(t, info.Mode()&os.ModeSymlink, "the link stays a link")
-	assertCursorInstalled(t, real, testHookBin)
+	assertCursorInstalled(t, real)
 }
