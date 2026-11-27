@@ -282,6 +282,12 @@ func TestPrintProjectAgentHooksHint(t *testing.T) {
 	assert.Equal(t, "To track Cursor, run `shelltime cursor install` in each project's repository and commit the hook file.", stripANSI(out.String()))
 
 	out.Reset()
+	orig := agentHooksGOOS
+	agentHooksGOOS = "windows"
+	printProjectAgentHooksHint(found("cursor", "agy"))
+	agentHooksGOOS = orig
+	assert.Empty(t, out.String(), "Windows can't install them")
+
 	printProjectAgentHooksHint(found("cursor", "agy"))
 	assert.Equal(t, "To track Cursor and Antigravity, run `shelltime cursor install` and `shelltime agy install` in each project's repository and commit the hook file.", stripANSI(out.String()))
 }

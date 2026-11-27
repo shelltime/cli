@@ -54,14 +54,17 @@ const (
 )
 
 // CloudEnvSignal returns the signal the environment gives that this process runs in a cloud
-// VM, or "": SHELLTIME_CLOUD set to true, or a Claude Code cloud environment's
-// CLAUDE_CODE_REMOTE=true. A nil getenv reads nothing.
+// VM, or "": SHELLTIME_CLOUD when set to a boolean (false says it isn't, whatever else is set),
+// else a Claude Code cloud environment's CLAUDE_CODE_REMOTE=true. A nil getenv reads nothing.
 func CloudEnvSignal(getenv func(string) string) string {
 	if getenv == nil {
 		return ""
 	}
-	if on, err := strconv.ParseBool(strings.TrimSpace(getenv(CloudEnvVar))); err == nil && on {
-		return CloudSignalEnv
+	if on, err := strconv.ParseBool(strings.TrimSpace(getenv(CloudEnvVar))); err == nil {
+		if on {
+			return CloudSignalEnv
+		}
+		return ""
 	}
 	if getenv(claudeCodeRemoteEnvVar) == "true" {
 		return CloudSignalClaudeCodeRemote

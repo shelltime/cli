@@ -133,6 +133,22 @@ func TestCursorUninstallCommand_NothingToRemoveOutsideAProject(t *testing.T) {
 	assert.Contains(t, stripANSI(out.String()), "No Cursor hooks to remove here")
 }
 
+func TestCursorUninstallCommand_CleansTheUserFileWhenTheProjectFileIsInvalid(t *testing.T) {
+	home, repo := setupAgentHooksCommand(t)
+	path := filepath.Join(repo, ".cursor", "hooks.json")
+	require.NoError(t, os.MkdirAll(filepath.Dir(path), 0755))
+	require.NoError(t, os.WriteFile(path, []byte(`{"version":1,`), 0644))
+	installUserHooksFor(t, filepath.Join(home, ".cursor", "hooks.json"), "cursor", agenthook.CursorEvents, "/usr/local/bin/shelltime")
+	app := &cli.App{Name: "t", Commands: []*cli.Command{CursorCommand}}
+
+	captureColor(t)
+	err := app.Run([]string{"t", "cursor", "uninstall"})
+	assert.ErrorIs(t, err, model.ErrHookFileInvalid, "the project file's failure is still reported")
+	status, statusErr := model.NewCursorHooksService().Status()
+	require.NoError(t, statusErr)
+	assert.False(t, status.Installed, "the user-level file was cleaned all the same")
+}
+
 func TestAgyUninstallCommand_InvalidGlobalFileIsAWarning(t *testing.T) {
 	home, repo := setupAgentHooksCommand(t)
 	app := &cli.App{Name: "t", Commands: []*cli.Command{AgyCommand}}

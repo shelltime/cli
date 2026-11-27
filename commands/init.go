@@ -121,8 +121,11 @@ func runInitStep(verbose bool, step func() error) error {
 }
 
 // printProjectAgentHooksHint says how to track the detected agents whose hooks go into each
-// project's repository: Cursor and Antigravity.
+// project's repository: Cursor and Antigravity. Not on Windows, where their install refuses.
 func printProjectAgentHooksHint(lookPath func(string) (string, error)) {
+	if agentHooksGOOS == "windows" {
+		return
+	}
 	var agents, commands []string
 	if cursorDetected(lookPath) {
 		agents = append(agents, "Cursor")

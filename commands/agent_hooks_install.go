@@ -116,6 +116,9 @@ func removeUserAgentHooks(a agentHooks) error {
 func uninstallAgentHooks(a agentHooks) error {
 	color.Yellow.Printf("Removing %s hooks...\n", a.name)
 
+	// A project file that can't be cleaned is reported last: the user-level file is cleaned
+	// whatever happens to it
+	var projectErr error
 	removed := false
 	root, err := currentProjectRoot()
 	switch {
@@ -123,13 +126,14 @@ func uninstallAgentHooks(a agentHooks) error {
 		svc := a.project(root)
 		if err := svc.Uninstall(); err != nil {
 			color.Red.Printf("Failed to remove the %s hooks: %v\n", a.name, err)
-			return err
+			projectErr = err
+			break
 		}
 		color.Green.Printf("%s hooks removed from %s\n", a.name, svc.Path())
 		removed = true
 	case !errors.Is(err, model.ErrHomeIsNotAProject):
 		color.Red.Printf("Failed to find the project: %v\n", err)
-		return err
+		projectErr = err
 	}
 
 	user := a.user()
@@ -143,10 +147,10 @@ func uninstallAgentHooks(a agentHooks) error {
 			break
 		}
 		color.Green.Printf("%s hooks removed from %s\n", a.name, user.Path())
-	case !removed:
+	case !removed && projectErr == nil:
 		color.Yellow.Printf("No %s hooks to remove here: the home folder is no project, and %s has none.\n", a.name, user.Path())
 	}
-	return nil
+	return projectErr
 }
 
 // currentProjectRoot is the root of the project the working directory is in, where agents look

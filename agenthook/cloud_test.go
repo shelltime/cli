@@ -25,6 +25,10 @@ func TestCloudEnvSignal(t *testing.T) {
 
 	both := envOf(map[string]string{"SHELLTIME_CLOUD": "true", "CLAUDE_CODE_REMOTE": "true"})
 	assert.Equal(t, CloudSignalEnv, CloudEnvSignal(both), "the explicit variable is named first")
+	off := envOf(map[string]string{"SHELLTIME_CLOUD": "false", "CLAUDE_CODE_REMOTE": "true"})
+	assert.Empty(t, CloudEnvSignal(off), "an explicit false wins")
+	unparsable := envOf(map[string]string{"SHELLTIME_CLOUD": "yes", "CLAUDE_CODE_REMOTE": "true"})
+	assert.Equal(t, CloudSignalClaudeCodeRemote, CloudEnvSignal(unparsable), "a value that isn't a boolean is no say")
 }
 
 func TestNormalize_CloudCursor(t *testing.T) {
