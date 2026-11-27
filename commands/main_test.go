@@ -16,5 +16,13 @@ func TestMain(m *testing.M) {
 	os.Unsetenv("CLAUDE_CODE_REMOTE")
 	os.Unsetenv("CLAUDE_CODE_REMOTE_SESSION_ID")
 	trackSocketPath = filepath.Join(os.TempDir(), fmt.Sprintf("shelltime-commands-test-%d.sock", os.Getpid()))
-	os.Exit(m.Run())
+	// `shelltime q` counts calls for its tip under $HOME; keep the count out of the real one
+	tipDir, err := os.MkdirTemp("", "shelltime-commands-test-tips")
+	if err != nil {
+		panic(err)
+	}
+	queryTipCountPath = func() string { return filepath.Join(tipDir, "query-tip.count") }
+	code := m.Run()
+	os.RemoveAll(tipDir)
+	os.Exit(code)
 }

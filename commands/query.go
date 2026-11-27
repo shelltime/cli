@@ -7,7 +7,9 @@ import (
 	"log/slog"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"runtime"
+	"strconv"
 	"strings"
 	"time"
 
@@ -168,23 +170,54 @@ func commandQuery(c *cli.Context) error {
 
 			// Execute the command
 			return executeCommand(ctx, newCommand)
-		} else {
-			if shouldShowTips(cfg) && actionType != model.ActionOther {
-				color.Yellow.Printf("\nTip: This is a %s command. Enable 'ai.agent.%s' in your config to auto-run it.\n",
-					actionType, actionType)
-			}
+		} else if actionType != model.ActionOther && showQueryTip(cfg) {
+			color.Yellow.Printf("\nTip: Run `shelltime config enable ai.agent %s` to let shelltime q run %s commands like this one.\n",
+				actionType, actionType)
 		}
-	} else {
-		if shouldShowTips(cfg) {
-			color.Yellow.Printf("\nTip: You can enable AI auto-run in your config file:\n")
-			color.Yellow.Printf("   [ai.agent]\n")
-			color.Yellow.Printf("   view = true    # Auto-run view commands\n")
-			color.Yellow.Printf("   edit = true    # Auto-run edit commands\n")
-			color.Yellow.Printf("   delete = true  # Auto-run delete commands\n")
-		}
+	} else if showQueryTip(cfg) {
+		color.Yellow.Printf("\nTip: Let shelltime q run the commands it suggests:\n")
+		color.Yellow.Printf("   shelltime config enable ai.agent view        # read-only commands\n")
+		color.Yellow.Printf("   shelltime config enable ai.agent view,edit   # and commands that change files\n")
+		color.Yellow.Printf("   Hide tips: shelltime config disable ai.showTips\n")
 	}
 
 	return nil
+}
+
+// queryTipEvery: shelltime q shows a tip on every queryTipEvery-th call that has one to show,
+// so it stays findable without printing on every call.
+const queryTipEvery = 5
+
+// queryTipCountPath is where shelltime q counts those calls. A variable so tests keep away from
+// the real home.
+var queryTipCountPath = func() string {
+	return filepath.Join(os.ExpandEnv("$HOME"), model.COMMAND_BASE_STORAGE_FOLDER, "query-tip.count")
+}
+
+// showQueryTip reports whether this shelltime q call, which has a tip to show, shows it: tips
+// are on and it is the call's turn.
+func showQueryTip(cfg model.ShellTimeConfig) bool {
+	return shouldShowTips(cfg) && takeQueryTipTurn()
+}
+
+// takeQueryTipTurn counts a call that has a tip to show and reports whether it is a
+// queryTipEvery-th one. A count that can't be read starts over; one that can't be saved shows
+// nothing, so a read-only home stays quiet rather than showing the tip every time.
+func takeQueryTipTurn() bool {
+	path := queryTipCountPath()
+	count := 0
+	if data, err := os.ReadFile(path); err == nil {
+		count, _ = strconv.Atoi(strings.TrimSpace(string(data)))
+	}
+	if count < 0 || count >= queryTipEvery {
+		count = 0
+	}
+	count++
+	if err := os.WriteFile(path, []byte(strconv.Itoa(count)+"\n"), 0644); err != nil {
+		slog.Debug("Failed to save the shelltime q tip count", slog.Any("err", err))
+		return false
+	}
+	return count == queryTipEvery
 }
 
 // printQueryRequest prints the request body `shelltime q` would send.
