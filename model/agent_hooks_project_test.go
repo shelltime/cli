@@ -218,6 +218,24 @@ func TestAntigravityStatus_SkipsDisabledHooks(t *testing.T) {
 	assert.False(t, status.Present)
 }
 
+func TestCursorStatus_PresentCountsRetiredEvents(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	svc := NewCursorHooksService()
+	writeFile(t, svc.Path(), `{"version":1,"hooks":{
+		"retiredEvent":[{"command":"`+legacyHookCommand("/a/shelltime", "cursor", "retiredEvent")+`"},{"command":"say hi"}],
+		"stop":[{"command":"say done"}]}}`, 0644)
+	status, err := svc.Status()
+	require.NoError(t, err)
+	assert.False(t, status.Installed, "no managed event records")
+	assert.True(t, status.Present, "Uninstall removes the command under the retired event")
+
+	require.NoError(t, svc.Uninstall())
+	status, err = svc.Status()
+	require.NoError(t, err)
+	assert.False(t, status.Present)
+	assert.JSONEq(t, `{"version":1,"hooks":{"retiredEvent":[{"command":"say hi"}],"stop":[{"command":"say done"}]}}`, string(mustRead(t, svc.Path())))
+}
+
 func TestProjectHookSearchDirs(t *testing.T) {
 	assert.Equal(t, []string{"/home/me/.shelltime/bin", "/opt/homebrew/bin", "/usr/local/bin"}, ProjectHookSearchDirs("/home/me"))
 }

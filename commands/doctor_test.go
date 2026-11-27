@@ -825,7 +825,8 @@ func TestDoctorCheckAntigravity(t *testing.T) {
 	require.NoError(t, os.WriteFile(userPath, []byte("{,"), 0644))
 	user := findDoctorResult(t, doctorCheckAntigravity(env), "antigravity.user_hooks")
 	assert.Equal(t, doctorWarn, user.Status)
-	assert.Contains(t, user.Fix, "Fix the JSON")
+	assert.Contains(t, user.Message, "can't be parsed")
+	assert.Contains(t, user.Fix, "strict JSON")
 	assert.Nil(t, user.AutoFix)
 
 	// One that is no JSON problem (a folder in its place) says nothing it can't back up

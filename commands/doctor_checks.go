@@ -1144,12 +1144,12 @@ func doctorCheckUserHooks(a doctorAgentHooks) []doctorResult {
 	user := a.hooks.user()
 	status, err := user.Status()
 	if errors.Is(err, model.ErrHookFileInvalid) {
-		// A missing file is no error; this one isn't strict JSON
+		// A missing file is no error; this one can't be parsed
 		return []doctorResult{{
 			ID:      a.id + ".user_hooks",
 			Status:  doctorWarn,
-			Message: fmt.Sprintf("%s isn't strict JSON, so %s may ignore the hooks in it, any ShellTime hooks an older version left included: %v", user.Path(), a.name, err),
-			Fix:     fmt.Sprintf("Fix the JSON in %s (no comments, trailing commas or byte order mark).", user.Path()),
+			Message: fmt.Sprintf("%s can't be parsed, so %s may ignore the hooks in it, any ShellTime hooks an older version left included: %v", user.Path(), a.name, err),
+			Fix:     fmt.Sprintf("Fix %s as the error says: it must be strict JSON (no comments, trailing commas or byte order mark).", user.Path()),
 		}}
 	}
 	if err != nil {
