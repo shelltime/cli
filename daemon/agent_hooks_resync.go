@@ -3,9 +3,9 @@ package daemon
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"log/slog"
 	"os"
-	"slices"
 	"sync"
 	"time"
 
@@ -23,11 +23,16 @@ const (
 // AgentHookResyncService sends again the Cursor and Antigravity hook events saved in
 // ~/.shelltime/agent-hooks.pending.jsonl: by hook-ingest when no daemon took them, and by the
 // daemon when the server couldn't. It runs at start and every AgentHookResyncInterval, like
-// HeartbeatResyncService. Events the server refused for what they hold are dropped; the rest
-// that fail stay for the next pass, with the lines saved meanwhile.
+// HeartbeatResyncService. Each pass readies the events as the batcher does, under today's
+// config (prepareAgentHookEvents: repository, privacy). Events the server refused for what
+// they hold are dropped; the rest that fail stay for the next pass, with the lines saved
+// meanwhile.
 type AgentHookResyncService struct {
 	config        model.ShellTimeConfig
 	configService model.ConfigService
+	// repos resolves the repository of events saved without one (hook-ingest has no git
+	// lookup); nil adds none, like the batcher's when aiCodeOtel.sendRepository is off.
+	repos *model.GitRepositoryResolver
 	// send is replaced in tests
 	send     func(ctx context.Context, cfg model.ShellTimeConfig, events []agenthook.Event) error
 	ticker   *time.Ticker
@@ -39,6 +44,7 @@ type AgentHookResyncService struct {
 func NewAgentHookResyncService(config model.ShellTimeConfig) *AgentHookResyncService {
 	return &AgentHookResyncService{
 		config:   config,
+		repos:    socketRepositoryResolver(config),
 		send:     model.SendAgentHookEvents,
 		stopChan: make(chan struct{}),
 	}
@@ -91,11 +97,6 @@ func (s *AgentHookResyncService) Stop() {
 	slog.Info("Agent hook resync service stopped")
 }
 
-type agentHookPendingItem struct {
-	line  string
-	event agenthook.Event
-}
-
 // resync sends the saved events in chunks and rewrites the file with the lines to keep.
 func (s *AgentHookResyncService) resync(ctx context.Context) {
 	lines, err := model.ReadAgentHookPendingLines()
@@ -114,7 +115,9 @@ func (s *AgentHookResyncService) resync(ctx context.Context) {
 		return
 	}
 
-	var items []agentHookPendingItem
+	// Each event next to its line: a line kept for the next pass is kept as it was saved
+	var events []agenthook.Event
+	var eventLines []string
 	discarded := 0
 	for _, line := range lines {
 		var ev agenthook.Event
@@ -122,36 +125,29 @@ func (s *AgentHookResyncService) resync(ctx context.Context) {
 			discarded++
 			continue
 		}
-		// hook-ingest applied the settings of its time; apply today's too
-		model.ApplyAgentHookPrivacy(&ev, cfg)
-		items = append(items, agentHookPendingItem{line: line, event: ev})
+		events = append(events, ev)
+		eventLines = append(eventLines, line)
 	}
+	// hook-ingest applied the settings of its time and looked up no repository
+	prepareAgentHookEvents(ctx, cfg, s.repos, events)
 
 	var kept []string
 	sent, dropped := 0, 0
-	chunks := slices.Collect(slices.Chunk(items, agentHookResyncChunkSize))
-	for i, chunk := range chunks {
-		events := make([]agenthook.Event, len(chunk))
-		for j, item := range chunk {
-			events[j] = item.event
-		}
-		err := s.send(ctx, cfg, events)
+	for start := 0; start < len(events); start += agentHookResyncChunkSize {
+		end := min(start+agentHookResyncChunkSize, len(events))
+		err := s.send(ctx, cfg, events[start:end])
 		if err == nil {
-			sent += len(chunk)
+			sent += end - start
 			continue
 		}
-		if ctx.Err() != nil || isRetryableSyncError(err) {
+		if ctx.Err() != nil || agentHookSendCanWait(err) {
 			// The server is away: keep this chunk and the ones after it untried
-			for _, c := range chunks[i:] {
-				for _, item := range c {
-					kept = append(kept, item.line)
-				}
-			}
+			kept = append(kept, eventLines[start:]...)
 			slog.Warn("Failed to resend agent hook events, keeping them for the next pass", slog.Any("err", err))
 			break
 		}
-		dropped += len(chunk)
-		slog.Warn("Server refused saved agent hook events, dropping them", slog.Int("count", len(chunk)), slog.Any("err", err))
+		dropped += end - start
+		slog.Warn("Server refused saved agent hook events, dropping them", slog.Int("count", end-start), slog.Any("err", err))
 	}
 
 	// Events saved while this pass was sending were appended after the lines it read. If the
@@ -162,6 +158,13 @@ func (s *AgentHookResyncService) resync(ctx context.Context) {
 		}
 		return append(kept, current...)
 	})
+	if errors.Is(err, model.ErrAgentHookPendingBusy) {
+		// Nothing changed: the next pass sends again what this one sent, which the server
+		// recognizes by the event ids
+		slog.Warn("Saved agent hook events are locked by another process, leaving them for the next pass",
+			slog.Int("sent", sent), slog.Int("dropped", dropped))
+		return
+	}
 	if err != nil {
 		slog.Error("Failed to update saved agent hook events", slog.Any("err", err))
 		return

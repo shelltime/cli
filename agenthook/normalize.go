@@ -41,6 +41,31 @@ func Normalize(agent, event string, stdin []byte, now time.Time, getenv func(str
 	if err != nil {
 		return Event{}, err
 	}
+	return normalizePayload(canonical, event, p, now, getenv)
+}
+
+// NormalizeTruncated turns the start of a hook payload too large to read whole into an Event.
+// The top-level fields that end before the cut are read as Normalize reads them (agents put
+// the conversation, model and workspace first, and the bulk, like a tool's output, last); the
+// rest is lost, and the event's metadata says truncated. A prefix that holds nothing usable
+// still gives an event of the agent and the --event name, so the hook is counted.
+func NormalizeTruncated(agent, event string, prefix []byte, now time.Time, getenv func(string) string) (Event, error) {
+	canonical, ok := ParseAgent(agent)
+	if !ok {
+		return Event{}, fmt.Errorf("%w %q", ErrUnknownAgent, agent)
+	}
+	if getenv == nil {
+		getenv = func(string) string { return "" }
+	}
+	ev, err := normalizePayload(canonical, event, parsePayloadPrefix(prefix), now, getenv)
+	if err != nil {
+		return Event{}, err
+	}
+	ev.SetMetadata("truncated", true)
+	return ev, nil
+}
+
+func normalizePayload(canonical, event string, p payload, now time.Time, getenv func(string) string) (Event, error) {
 	event = strings.TrimSpace(event)
 	if event == "" {
 		event = p.eventName()
@@ -66,15 +91,15 @@ func Normalize(agent, event string, stdin []byte, now time.Time, getenv func(str
 }
 
 // ResolveEventName returns event, or when it is empty the event name the payload carries
-// (Cursor's hook_event_name, newer Antigravity builds' hookEventName). Malformed payloads
-// give "".
+// (Cursor's hook_event_name, newer Antigravity builds' hookEventName), also in a payload cut
+// short before its end. Malformed payloads give "".
 func ResolveEventName(event string, stdin []byte) string {
 	if event = strings.TrimSpace(event); event != "" {
 		return event
 	}
 	p, err := parsePayload(stdin)
 	if err != nil {
-		return ""
+		p = parsePayloadPrefix(stdin)
 	}
 	return p.eventName()
 }
@@ -96,6 +121,34 @@ func parsePayload(stdin []byte) (payload, error) {
 		return nil, fmt.Errorf("invalid hook payload: not a JSON object")
 	}
 	return p, nil
+}
+
+// parsePayloadPrefix reads the top-level fields of a JSON object cut short: every field whose
+// value ends before the cut, in order, stopping at the first one that doesn't. Anything that
+// doesn't start as an object gives an empty payload.
+func parsePayloadPrefix(prefix []byte) payload {
+	data := bytes.TrimSpace(bytes.TrimPrefix(bytes.TrimSpace(prefix), utf8BOM))
+	p := payload{}
+	dec := json.NewDecoder(bytes.NewReader(data))
+	if tok, err := dec.Token(); err != nil || tok != json.Delim('{') {
+		return p
+	}
+	for dec.More() {
+		tok, err := dec.Token()
+		if err != nil {
+			break
+		}
+		key, ok := tok.(string)
+		if !ok {
+			break
+		}
+		var value json.RawMessage
+		if err := dec.Decode(&value); err != nil {
+			break
+		}
+		p[key] = value
+	}
+	return p
 }
 
 func (p payload) eventName() string {

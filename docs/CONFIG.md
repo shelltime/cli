@@ -341,11 +341,11 @@ You don't need to set it in a Claude Code cloud environment ([cloud.bash](https:
 
 ## Cursor and Antigravity Hooks
 
-`shelltime cursor install` and `shelltime agy install` register ShellTime in the native hooks of Cursor (`~/.cursor/hooks.json`) and Google Antigravity (`~/.gemini/config/hooks.json`). Each event goes to the daemon, which applies data masking and your exclude patterns before sending it.
+`shelltime cursor install` and `shelltime agy install` register ShellTime in the native hooks of Cursor (`~/.cursor/hooks.json`) and Google Antigravity (`~/.gemini/config/hooks.json`). Each event goes to the daemon, which applies data masking and your exclude patterns before sending it. An event whose shell command matches an exclude pattern is sent without the command, its prompt, tool input, response or error.
 
 | Option | Type | Default | Description |
 |--------|------|---------|-------------|
-| `agentHooks.sendContent` | boolean | `true` | Send the text of prompts, agent responses and tool input. Off, only the activity is sent: event types, tool names, shell commands, file paths, the workspace and timing |
+| `agentHooks.sendContent` | boolean | `true` | Send the text of prompts, agent responses, tool input and errors, and the paths of files attached to prompts. Off, only the activity is sent: event types, tool names, shell commands, the files tools worked on, the workspace and timing |
 
 ```yaml
 agentHooks:

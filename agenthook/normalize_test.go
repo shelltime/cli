@@ -455,6 +455,52 @@ func TestResolveEventName(t *testing.T) {
 	assert.Equal(t, "beforeSubmitPrompt", ResolveEventName("", []byte(`{"hook_event_name":"beforeSubmitPrompt"}`)))
 	assert.Equal(t, "Stop", ResolveEventName("", []byte(`{"hookEventName":"Stop"}`)))
 	assert.Equal(t, "", ResolveEventName("", []byte(`garbage`)))
+	assert.Equal(t, "postToolUse", ResolveEventName("", []byte(`{"hook_event_name":"postToolUse","tool_output":"cut sh`)), "a payload cut short")
+}
+
+func TestNormalizeTruncated(t *testing.T) {
+	// Cut inside tool_output: the fields before it are read, the ones after are lost
+	prefix := "\xEF\xBB\xBF" + `{"conversation_id":"c1","model":"gpt-5","workspace_roots":["/repo"],"tool_name":"Read",` +
+		`"tool_input":{"path":"/repo/big.log"},"tool_output":"` + strings.Repeat("x", 1000)
+	ev, err := NormalizeTruncated("cursor", "postToolUse", []byte(prefix), testNow, envOf(map[string]string{"VSCODE_PID": "1"}))
+	require.NoError(t, err)
+	assert.Equal(t, AgentCursor, ev.Agent)
+	assert.Equal(t, SurfaceIDE, ev.Surface)
+	assert.Equal(t, EventToolUse, ev.EventType)
+	assert.Equal(t, "postToolUse", ev.HookEventName)
+	assert.Equal(t, "c1", ev.SessionID)
+	assert.Equal(t, "gpt-5", ev.Model)
+	assert.Equal(t, "/repo", ev.Workspace)
+	assert.Equal(t, "Read", ev.ToolName)
+	assert.Equal(t, "/repo/big.log", ev.FilePath)
+	assert.Equal(t, "2026-11-27T07:30:00.123456789Z", ev.Timestamp)
+	assert.Regexp(t, `^[0-9a-f]{32}$`, ev.ID)
+	assert.Equal(t, true, ev.Metadata["truncated"])
+
+	// Nothing usable before the cut: the agent and the --event name are enough
+	for name, prefix := range map[string]string{
+		"cut in the first value": `{"lastUserInput":"` + strings.Repeat("y", 100),
+		"not an object":          `garbage`,
+		"empty":                  ``,
+	} {
+		ev, err := NormalizeTruncated("agy", "PreInvocation", []byte(prefix), testNow, nil)
+		require.NoError(t, err, name)
+		assert.Equal(t, AgentAntigravity, ev.Agent, name)
+		assert.Equal(t, EventPromptSubmit, ev.EventType, name)
+		assert.Empty(t, ev.Prompt, name)
+		assert.Empty(t, ev.SessionID, name)
+		assert.Equal(t, true, ev.Metadata["truncated"], name)
+	}
+
+	// The event name from a field before the cut, else no event
+	ev, err = NormalizeTruncated("cursor", "", []byte(`{"hook_event_name":"stop","status":"comp`), testNow, nil)
+	require.NoError(t, err)
+	assert.Equal(t, EventStop, ev.EventType)
+	assert.Empty(t, ev.Status, "cut before its end")
+	_, err = NormalizeTruncated("cursor", "", []byte(`{"prompt":"x`), testNow, nil)
+	assert.ErrorIs(t, err, ErrNoEventName)
+	_, err = NormalizeTruncated("vim", "stop", []byte(`{}`), testNow, nil)
+	assert.ErrorIs(t, err, ErrUnknownAgent)
 }
 
 func TestMCPServerFromToolName(t *testing.T) {

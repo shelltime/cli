@@ -114,14 +114,19 @@ func readStdinWithTimeout(ctx context.Context) ([]byte, error) {
 	return readWithTimeout(ctx, os.Stdin, 0)
 }
 
-// errInputTooLarge is returned by readWithTimeout for input over its limit.
+// errInputTooLarge is returned by readWithTimeout for input over its limit, with the first
+// limit bytes.
 var errInputTooLarge = errors.New("input too large")
 
 // readWithTimeout reads r to its end, or returns ctx's error once ctx ends first. A positive
-// limit makes more than limit bytes an error.
+// limit makes more than limit bytes an error: errInputTooLarge, returned with the first limit
+// bytes, and the rest left unread.
 func readWithTimeout(ctx context.Context, r io.Reader, limit int64) ([]byte, error) {
-	resultCh := make(chan []byte, 1)
-	errCh := make(chan error, 1)
+	type result struct {
+		data []byte
+		err  error
+	}
+	resultCh := make(chan result, 1)
 
 	go func() {
 		src := r
@@ -130,23 +135,21 @@ func readWithTimeout(ctx context.Context, r io.Reader, limit int64) ([]byte, err
 		}
 		data, err := io.ReadAll(src)
 		if err != nil {
-			errCh <- err
+			resultCh <- result{err: err}
 			return
 		}
 		if limit > 0 && int64(len(data)) > limit {
-			errCh <- errInputTooLarge
+			resultCh <- result{data: data[:limit], err: errInputTooLarge}
 			return
 		}
-		resultCh <- data
+		resultCh <- result{data: data}
 	}()
 
 	select {
 	case <-ctx.Done():
 		return nil, ctx.Err()
-	case err := <-errCh:
-		return nil, err
-	case data := <-resultCh:
-		return data, nil
+	case res := <-resultCh:
+		return res.data, res.err
 	}
 }
 

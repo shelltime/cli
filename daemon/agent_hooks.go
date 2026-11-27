@@ -2,7 +2,9 @@ package daemon
 
 import (
 	"context"
+	"errors"
 	"log/slog"
+	"net/http"
 	"sync"
 	"time"
 
@@ -27,8 +29,9 @@ const (
 // daemon and sends them in batches: every agentHookFlushInterval, or as soon as
 // agentHookMaxBatch are waiting. Before sending, each event gets the git repository of its
 // workspace and the user's privacy settings, read from the config on disk. A batch the server
-// can take later (no answer, a 5xx, an expired token) is saved to the pending file for
-// AgentHookResyncService; one it refused for what it holds is dropped.
+// can take later (no answer, a 5xx, an expired token, a server without the endpoint yet), or
+// one there is no token to send with, is saved to the pending file for
+// AgentHookResyncService; one the server refused for what it holds is dropped.
 type AgentHookBatcher struct {
 	config        model.ShellTimeConfig
 	configService model.ConfigService
@@ -89,9 +92,9 @@ func (b *AgentHookBatcher) SetConfigService(cs model.ConfigService) {
 	b.configService = cs
 }
 
-// Add queues an event. An event without a session id gets the last one seen for its agent and
-// workspace (Cursor sometimes sends tool events with an empty conversation_id). After Shutdown
-// the event is saved for the resync service instead.
+// Add queues an event. An event without a session id gets the last one an event carried for
+// its agent and workspace within agentHookSessionTTL (Cursor sometimes sends tool events with
+// an empty conversation_id). After Shutdown the event is saved for the resync service instead.
 func (b *AgentHookBatcher) Add(ev agenthook.Event) {
 	b.mu.Lock()
 	b.fillSessionLocked(&ev)
@@ -153,7 +156,14 @@ func (b *AgentHookBatcher) loop() {
 	}
 }
 
+// fillSessionLocked lends an event without a session id the last one seen for its agent and
+// workspace. Only an event that carries its own id keeps that id lendable for longer, so a run
+// of events without one never stretches it past agentHookSessionTTL. Events without a
+// workspace are left alone: every agent's events without one would share a key.
 func (b *AgentHookBatcher) fillSessionLocked(ev *agenthook.Event) {
+	if ev.Workspace == "" {
+		return
+	}
 	key := agentHookSessionKey{agent: ev.Agent, workspace: ev.Workspace}
 	now := b.now()
 	if ev.SessionID != "" {
@@ -162,7 +172,6 @@ func (b *AgentHookBatcher) fillSessionLocked(ev *agenthook.Event) {
 	}
 	if s, ok := b.sessions[key]; ok && now.Sub(s.seen) < agentHookSessionTTL {
 		ev.SessionID = s.id
-		b.sessions[key] = agentHookSession{id: s.id, seen: now}
 	}
 }
 
@@ -191,7 +200,13 @@ func (b *AgentHookBatcher) flush(ctx context.Context) {
 	}
 
 	cfg := b.currentConfig(ctx)
-	b.prepare(ctx, cfg, events)
+	prepareAgentHookEvents(ctx, cfg, b.repos, events)
+	if cfg.Token == "" {
+		// Every request would be refused; keep them for when the user signs in
+		b.save(events, "no token")
+		slog.Debug("No token configured, agent hook events saved", slog.Int("count", len(events)))
+		return
+	}
 
 	sent, dropped := 0, 0
 	chunks := model.SplitAgentHookEvents(events, model.AgentHookMaxEventsPerRequest, model.AgentHookMaxRequestBytes)
@@ -201,7 +216,7 @@ func (b *AgentHookBatcher) flush(ctx context.Context) {
 			sent += len(chunk)
 			continue
 		}
-		if ctx.Err() != nil || isRetryableSyncError(err) {
+		if ctx.Err() != nil || agentHookSendCanWait(err) {
 			var rest []agenthook.Event
 			for _, c := range chunks[i:] {
 				rest = append(rest, c...)
@@ -218,8 +233,11 @@ func (b *AgentHookBatcher) flush(ctx context.Context) {
 	slog.Debug("Agent hook events sent", slog.Int("sent", sent), slog.Int("dropped", dropped))
 }
 
-// prepare adds each event's repository and applies the privacy settings.
-func (b *AgentHookBatcher) prepare(ctx context.Context, cfg model.ShellTimeConfig, events []agenthook.Event) {
+// prepareAgentHookEvents readies events to leave the machine under cfg, for the batcher and
+// the resync service alike: with aiCodeOtel.sendRepository on, an event with a workspace and
+// no repository gets the workspace's (repos nil adds none); off, every repository is removed.
+// Then the privacy settings apply. It can run more than once on the same events.
+func prepareAgentHookEvents(ctx context.Context, cfg model.ShellTimeConfig, repos *model.GitRepositoryResolver, events []agenthook.Event) {
 	sendsRepository := cfg.SendsRepository()
 	repositories := map[string]string{}
 	for i := range events {
@@ -227,16 +245,31 @@ func (b *AgentHookBatcher) prepare(ctx context.Context, cfg model.ShellTimeConfi
 		switch {
 		case !sendsRepository:
 			ev.Repository = ""
-		case b.repos != nil && ev.Repository == "" && ev.Workspace != "":
+		case repos != nil && ev.Repository == "" && ev.Workspace != "":
 			url, ok := repositories[ev.Workspace]
 			if !ok {
-				url = b.repos.Resolve(ctx, ev.Workspace).URL
+				url = repos.Resolve(ctx, ev.Workspace).URL
 				repositories[ev.Workspace] = url
 			}
 			ev.Repository = url
 		}
 		model.ApplyAgentHookPrivacy(ev, cfg)
 	}
+}
+
+// agentHookSendCanWait reports whether events the server didn't take can be sent later, so
+// they are kept: what the command sync retries (no answer, a 5xx, 429, an expired token or
+// plan), and a 404 or 405, which a server without the agent hook endpoint answers (one from
+// before it, or before it is deployed). Any other refusal is for what the events hold.
+func agentHookSendCanWait(err error) bool {
+	if isRetryableSyncError(err) {
+		return true
+	}
+	var statusErr *model.HTTPStatusError
+	if errors.As(err, &statusErr) {
+		return statusErr.StatusCode == http.StatusNotFound || statusErr.StatusCode == http.StatusMethodNotAllowed
+	}
+	return false
 }
 
 // currentConfig reads the config on disk, else the last one read, else the one the daemon

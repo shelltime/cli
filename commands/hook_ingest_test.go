@@ -214,13 +214,25 @@ func TestHookIngest_PanicStillAnswersOnce(t *testing.T) {
 }
 
 func TestHookIngest_OversizedPayload(t *testing.T) {
-	big := `{"prompt":"` + strings.Repeat("x", hookIngestStdinLimit) + `"}`
+	big := `{"conversation_id":"c1","workspace_roots":["/repo"],"prompt":"` + strings.Repeat("x", hookIngestStdinLimit) + `"}`
 	h := setupHookIngest(t, strings.NewReader(big))
+	h.config.On("ReadConfigFile", mock.Anything).Return(model.ShellTimeConfig{}, nil)
 
 	h.run(t, "--agent", "cursor", "--event", "beforeSubmitPrompt")
 
 	h.assertOnlyReply(t, `{"continue":true}`)
-	assert.Empty(t, pendingHookEvents(t))
+	events := pendingHookEvents(t)
+	require.Len(t, events, 1, "the event is still recorded")
+	ev := events[0]
+	assert.Equal(t, agenthook.AgentCursor, ev.Agent)
+	assert.Equal(t, agenthook.EventPromptSubmit, ev.EventType)
+	assert.Equal(t, "beforeSubmitPrompt", ev.HookEventName)
+	assert.Equal(t, "2026-11-27T09:00:00Z", ev.Timestamp)
+	assert.NotEmpty(t, ev.Hostname)
+	assert.Equal(t, "c1", ev.SessionID, "fields before the cut are kept")
+	assert.Equal(t, "/repo", ev.Workspace)
+	assert.Empty(t, ev.Prompt, "the field cut short is not")
+	assert.Equal(t, true, ev.Metadata["truncated"])
 }
 
 func TestHookIngest_StdinThatNeverEnds(t *testing.T) {

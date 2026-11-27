@@ -2,6 +2,7 @@ package commands
 
 import (
 	"context"
+	"errors"
 	"io"
 	"log/slog"
 	"os"
@@ -17,7 +18,8 @@ import (
 const (
 	// hookIngestStdinTimeout bounds reading the hook payload: the agent waits on the hook.
 	hookIngestStdinTimeout = 500 * time.Millisecond
-	// hookIngestStdinLimit caps the hook payload; a larger one gives no event.
+	// hookIngestStdinLimit caps the hook payload read. A larger one is recorded from its first
+	// hookIngestStdinLimit bytes, marked truncated (agenthook.NormalizeTruncated).
 	hookIngestStdinLimit = 4 << 20
 	// hookIngestDaemonTimeout bounds handing the event to the daemon, acknowledgment included.
 	hookIngestDaemonTimeout = 50 * time.Millisecond
@@ -88,11 +90,20 @@ func runHookIngest(ctx context.Context, agent, event string) {
 	cancel()
 	answer(agenthook.ResolveEventName(event, stdin))
 
-	if readErr != nil {
+	var ev agenthook.Event
+	var err error
+	switch {
+	case errors.Is(readErr, errInputTooLarge):
+		// The event still happened: record what the start of the payload says
+		slog.Warn("hook-ingest: hook payload over the size limit, recording it truncated",
+			slog.String("agent", agent), slog.String("event", event), slog.Int("limit", hookIngestStdinLimit))
+		ev, err = agenthook.NormalizeTruncated(agent, event, stdin, hookIngestNow(), hookIngestGetenv)
+	case readErr != nil:
 		slog.Warn("hook-ingest: couldn't read the hook payload", slog.String("agent", agent), slog.String("event", event), slog.Any("err", readErr))
 		return
+	default:
+		ev, err = agenthook.Normalize(agent, event, stdin, hookIngestNow(), hookIngestGetenv)
 	}
-	ev, err := agenthook.Normalize(agent, event, stdin, hookIngestNow(), hookIngestGetenv)
 	if err != nil {
 		slog.Warn("hook-ingest: no event recorded", slog.String("agent", agent), slog.String("event", event), slog.Any("err", err))
 		return

@@ -3,6 +3,8 @@ package daemon
 import (
 	"context"
 	"encoding/json"
+	"errors"
+	"fmt"
 	"net"
 	"net/http"
 	"net/http/httptest"
@@ -200,10 +202,65 @@ func TestAgentHookBatcher_DropsWhatTheServerRefuses(t *testing.T) {
 	assert.Empty(t, savedAgentHookEvents(t))
 }
 
+// A server without the endpoint (older, or not deployed yet) answers 404 or 405: the events
+// wait for one that has it.
+func TestAgentHookBatcher_SavesWhenTheServerHasNoEndpoint(t *testing.T) {
+	for _, status := range []int{http.StatusNotFound, http.StatusMethodNotAllowed} {
+		t.Run(http.StatusText(status), func(t *testing.T) {
+			isolateAgentHookHome(t)
+			srv := newAgentHookServer(t, status)
+			b := NewAgentHookBatcher(model.ShellTimeConfig{APIEndpoint: srv.URL, Token: "tok"}, nil)
+
+			b.Add(hookEvent("a", "s1", "/w"))
+			b.flush(context.Background())
+
+			assert.Equal(t, 1, srv.requestCount())
+			saved := savedAgentHookEvents(t)
+			require.Len(t, saved, 1)
+			assert.Equal(t, "a", saved[0].ID)
+		})
+	}
+}
+
+func TestAgentHookBatcher_SavesWithoutToken(t *testing.T) {
+	isolateAgentHookHome(t)
+	b := NewAgentHookBatcher(model.ShellTimeConfig{APIEndpoint: "http://unused"}, nil)
+	b.send = func(context.Context, model.ShellTimeConfig, []agenthook.Event) error {
+		t.Error("nothing is sent without a token")
+		return nil
+	}
+
+	b.Add(hookEvent("a", "s1", "/w"))
+	b.Shutdown(context.Background())
+
+	saved := savedAgentHookEvents(t)
+	require.Len(t, saved, 1)
+	assert.Equal(t, "a", saved[0].ID)
+	assert.NotContains(t, saved[0].Prompt, agentHookTestJWT, "saved with the privacy settings applied")
+}
+
+func TestAgentHookSendCanWait(t *testing.T) {
+	status := func(code int) error { return &model.HTTPStatusError{StatusCode: code} }
+	for code, want := range map[int]bool{
+		http.StatusNotFound:              true,
+		http.StatusMethodNotAllowed:      true,
+		http.StatusUnauthorized:          true,
+		http.StatusTooManyRequests:       true,
+		http.StatusBadGateway:            true,
+		http.StatusBadRequest:            false,
+		http.StatusRequestEntityTooLarge: false,
+		http.StatusUnprocessableEntity:   false,
+	} {
+		assert.Equal(t, want, agentHookSendCanWait(status(code)), code)
+	}
+	assert.True(t, agentHookSendCanWait(fmt.Errorf("wrapped: %w", status(http.StatusNotFound))))
+	assert.False(t, agentHookSendCanWait(errors.New("encode failed")))
+}
+
 func TestAgentHookBatcher_StopsAfterFirstRetryableChunk(t *testing.T) {
 	isolateAgentHookHome(t)
 	var calls int
-	b := NewAgentHookBatcher(model.ShellTimeConfig{}, nil)
+	b := NewAgentHookBatcher(model.ShellTimeConfig{Token: "tok"}, nil)
 	b.send = func(ctx context.Context, cfg model.ShellTimeConfig, events []agenthook.Event) error {
 		calls++
 		return &model.HTTPStatusError{StatusCode: http.StatusBadGateway, Message: "bad gateway"}
@@ -232,13 +289,16 @@ func TestAgentHookBatcher_FillsSessionIDs(t *testing.T) {
 	other := hookEvent("4", "", "/w")
 	other.Agent = agenthook.AgentAntigravity
 	b.Add(other)
+	b.Add(hookEvent("5", "sX", ""))
+	b.Add(hookEvent("6", "", ""))
 
 	now = now.Add(59 * time.Minute)
-	b.Add(hookEvent("5", "", "/w"))
-	now = now.Add(61 * time.Minute)
-	b.Add(hookEvent("6", "", "/w"))
-	b.Add(hookEvent("7", "s2", "/w"))
+	b.Add(hookEvent("7", "", "/w"))
+	now = now.Add(2 * time.Minute)
 	b.Add(hookEvent("8", "", "/w"))
+	b.Add(hookEvent("9", "s2", "/w"))
+	now = now.Add(59 * time.Minute)
+	b.Add(hookEvent("10", "", "/w"))
 
 	b.mu.Lock()
 	defer b.mu.Unlock()
@@ -247,15 +307,18 @@ func TestAgentHookBatcher_FillsSessionIDs(t *testing.T) {
 		sessions[ev.ID] = ev.SessionID
 	}
 	assert.Equal(t, map[string]string{
-		"1": "s1",
-		"2": "s1", // same agent and workspace
-		"3": "",   // another workspace
-		"4": "",   // another agent
-		"5": "s1", // within the hour
-		"6": "",   // after it
-		"7": "s2",
-		"8": "s2",
+		"1":  "s1",
+		"2":  "s1", // same agent and workspace
+		"3":  "",   // another workspace
+		"4":  "",   // another agent
+		"5":  "sX",
+		"6":  "",   // no workspace: nothing is lent
+		"7":  "s1", // within the hour of event 1
+		"8":  "",   // after it: lending to event 7 didn't extend it
+		"9":  "s2",
+		"10": "s2", // within the hour of event 9
 	}, sessions)
+	assert.NotContains(t, b.sessions, agentHookSessionKey{agent: agenthook.AgentCursor}, "events without a workspace aren't remembered")
 }
 
 func TestAgentHookBatcher_AddsRepository(t *testing.T) {
@@ -446,6 +509,64 @@ func TestAgentHookResync_ChunksAndKeepsWithoutToken(t *testing.T) {
 	s.resync(context.Background())
 	assert.Equal(t, []int{agentHookResyncChunkSize, 1}, sizes)
 	assert.NoFileExists(t, model.GetAgentHooksPendingFilePath())
+}
+
+func TestAgentHookResync_KeepsWhenTheServerHasNoEndpoint(t *testing.T) {
+	for _, status := range []int{http.StatusNotFound, http.StatusMethodNotAllowed} {
+		t.Run(http.StatusText(status), func(t *testing.T) {
+			isolateAgentHookHome(t)
+			require.NoError(t, model.AppendAgentHookPending(hookEvent("a", "s1", "/w")))
+
+			srv := newAgentHookServer(t, status)
+			s := NewAgentHookResyncService(model.ShellTimeConfig{APIEndpoint: srv.URL, Token: "tok"})
+			s.resync(context.Background())
+
+			assert.Equal(t, 1, srv.requestCount())
+			saved := savedAgentHookEvents(t)
+			require.Len(t, saved, 1)
+			assert.Equal(t, "a", saved[0].ID)
+		})
+	}
+}
+
+// Saved events are readied under today's config, like the batcher's: hook-ingest looked up no
+// repository, and aiCodeOtel.sendRepository may have been turned off since an event was saved.
+func TestAgentHookResync_RepositoryFollowsTheSwitch(t *testing.T) {
+	isolateAgentHookHome(t)
+	dir := gitRepoWithOrigin(t, "git@github.com:acme/web.git")
+	fromHookIngest := hookEvent("a", "s1", dir)
+	fromBatcher := hookEvent("b", "s1", filepath.Join(t.TempDir(), "elsewhere"))
+	fromBatcher.Repository = "https://github.com/acme/api"
+	require.NoError(t, model.AppendAgentHookPending(fromHookIngest, fromBatcher))
+
+	var got []agenthook.Event
+	send := func(_ context.Context, _ model.ShellTimeConfig, events []agenthook.Event) error {
+		got = append(got, events...)
+		return &model.HTTPStatusError{StatusCode: http.StatusServiceUnavailable}
+	}
+	s := NewAgentHookResyncService(model.ShellTimeConfig{APIEndpoint: "http://unused", Token: "tok"})
+	s.send = send
+	s.resync(context.Background())
+
+	require.Len(t, got, 2)
+	assert.Equal(t, "https://github.com/acme/web", got[0].Repository, "resolved from the workspace")
+	assert.Equal(t, "https://github.com/acme/api", got[1].Repository, "kept")
+	saved := savedAgentHookEvents(t)
+	require.Len(t, saved, 2)
+	assert.Empty(t, saved[0].Repository, "a kept line stays as it was saved")
+
+	got = nil
+	off := model.ShellTimeConfig{APIEndpoint: "http://unused", Token: "tok", AICodeOtel: &model.AICodeOtel{SendRepository: new(false)}}
+	s = NewAgentHookResyncService(model.ShellTimeConfig{APIEndpoint: "http://unused", Token: "tok"})
+	s.send = send
+	mc := model.NewMockConfigService(t)
+	mc.On("ReadConfigFile", mock.Anything, mock.Anything).Return(off, nil)
+	s.SetConfigService(mc)
+	s.resync(context.Background())
+
+	require.Len(t, got, 2)
+	assert.Empty(t, got[0].Repository)
+	assert.Empty(t, got[1].Repository, "the switch read from disk removes it")
 }
 
 func TestAgentHookResync_StartStop(t *testing.T) {
