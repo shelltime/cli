@@ -48,12 +48,14 @@ func setupDoctorTest(t *testing.T) (string, *model.MockConfigService) {
 	origLookPath, origDial, origLatest := doctorLookPath, doctorDialTCP, doctorFetchLatestVersion
 	origResolve, origCodexStatus, origService := doctorResolveDaemonBinary, doctorCodexInstallationStatus, doctorDaemonServiceCheck
 	origDaemonInstall, origCCInstall, origCodexInstall := doctorRunDaemonInstall, doctorRunCCInstall, doctorRunCodexInstall
+	origCursorInstall, origAgyInstall := doctorRunCursorInstall, doctorRunAgyInstall
 	origWait, origStdin, origOut, origCommit := doctorDaemonStartWait, doctorStdin, doctorOut, commitID
 	t.Cleanup(func() {
 		configService = origConfig
 		doctorLookPath, doctorDialTCP, doctorFetchLatestVersion = origLookPath, origDial, origLatest
 		doctorResolveDaemonBinary, doctorCodexInstallationStatus, doctorDaemonServiceCheck = origResolve, origCodexStatus, origService
 		doctorRunDaemonInstall, doctorRunCCInstall, doctorRunCodexInstall = origDaemonInstall, origCCInstall, origCodexInstall
+		doctorRunCursorInstall, doctorRunAgyInstall = origCursorInstall, origAgyInstall
 		doctorDaemonStartWait, doctorStdin, doctorOut, commitID = origWait, origStdin, origOut, origCommit
 	})
 
@@ -642,6 +644,120 @@ func TestDoctorCheckCodex(t *testing.T) {
 	assert.Equal(t, doctorInfo, findDoctorResult(t, doctorCheckCodex(env), "codex.auth").Status, "no auth.json")
 }
 
+// --- Cursor and Antigravity ---------------------------------------------------
+
+func TestDoctorCheckCursor(t *testing.T) {
+	home, _ := setupDoctorTest(t)
+	env := newTestDoctorEnv(doctorTestConfig(t))
+	hooksPath := filepath.Join(home, ".cursor", "hooks.json")
+
+	assert.Equal(t, doctorSkip, findDoctorResult(t, doctorCheckCursor(env), "cursor.detected").Status)
+
+	require.NoError(t, os.MkdirAll(filepath.Dir(hooksPath), 0755))
+	hooks := findDoctorResult(t, doctorCheckCursor(env), "cursor.hooks")
+	assert.Equal(t, doctorWarn, hooks.Status, "not installed")
+	assert.Contains(t, hooks.Fix, "shelltime cursor install")
+	require.NotNil(t, hooks.AutoFix)
+	assert.Equal(t, "cursor.install", hooks.AutoFix.Key)
+
+	require.NoError(t, os.WriteFile(hooksPath, []byte("{\n// mine\n}"), 0644))
+	hooks = findDoctorResult(t, doctorCheckCursor(env), "cursor.hooks")
+	assert.Equal(t, doctorFail, hooks.Status)
+	assert.Nil(t, hooks.AutoFix, "install can't fix invalid JSON")
+	assert.Contains(t, hooks.Fix, "Fix the JSON")
+
+	// Installed with a binary that exists and runs
+	bin := filepath.Join(home, "bin", "shelltime")
+	require.NoError(t, os.MkdirAll(filepath.Dir(bin), 0755))
+	require.NoError(t, os.WriteFile(bin, []byte("#!/bin/sh\n"), 0755))
+	require.NoError(t, os.Remove(hooksPath))
+	require.NoError(t, model.NewCursorHooksService().Install(bin))
+	results := doctorCheckCursor(env)
+	assert.Equal(t, doctorOK, findDoctorResult(t, results, "cursor.hooks").Status)
+	assert.False(t, hasDoctorResult(results, "cursor.hook_events"))
+	assert.False(t, hasDoctorResult(results, "cursor.hook_binary"))
+
+	// The binary isn't executable any more
+	require.NoError(t, os.Chmod(bin, 0644))
+	binary := findDoctorResult(t, doctorCheckCursor(env), "cursor.hook_binary")
+	assert.Equal(t, doctorFail, binary.Status)
+	assert.Contains(t, binary.Message, "isn't executable")
+	require.NotNil(t, binary.AutoFix)
+
+	// An older install: some events and a binary that's gone
+	require.NoError(t, os.WriteFile(hooksPath, []byte(`{"version":1,"hooks":{"stop":[{"command":"/gone/shelltime hook-ingest --agent cursor --event stop"}]}}`), 0644))
+	results = doctorCheckCursor(env)
+	assert.Equal(t, doctorOK, findDoctorResult(t, results, "cursor.hooks").Status)
+	events := findDoctorResult(t, results, "cursor.hook_events")
+	assert.Equal(t, doctorWarn, events.Status)
+	assert.Contains(t, events.Message, "beforeSubmitPrompt")
+	binary = findDoctorResult(t, results, "cursor.hook_binary")
+	assert.Equal(t, doctorFail, binary.Status)
+	assert.Contains(t, binary.Message, "/gone/shelltime")
+	assert.Contains(t, binary.Message, "doesn't exist")
+
+	// Detected through PATH too
+	require.NoError(t, os.RemoveAll(filepath.Join(home, ".cursor")))
+	doctorLookPath = func(name string) (string, error) {
+		if name == "cursor-agent" {
+			return "/usr/local/bin/cursor-agent", nil
+		}
+		return "", exec.ErrNotFound
+	}
+	assert.Equal(t, doctorWarn, findDoctorResult(t, doctorCheckCursor(env), "cursor.hooks").Status)
+}
+
+func TestDoctorCheckAntigravity(t *testing.T) {
+	home, _ := setupDoctorTest(t)
+	env := newTestDoctorEnv(doctorTestConfig(t))
+
+	assert.Equal(t, doctorSkip, findDoctorResult(t, doctorCheckAntigravity(env), "antigravity.detected").Status)
+
+	require.NoError(t, os.MkdirAll(filepath.Join(home, ".gemini", "antigravity"), 0755))
+	hooks := findDoctorResult(t, doctorCheckAntigravity(env), "antigravity.hooks")
+	assert.Equal(t, doctorWarn, hooks.Status)
+	require.NotNil(t, hooks.AutoFix)
+	assert.Equal(t, "antigravity.install", hooks.AutoFix.Key)
+	assert.Contains(t, hooks.Fix, "shelltime agy install")
+
+	hooksPath := model.NewAntigravityHooksService().Path()
+	require.NoError(t, os.MkdirAll(filepath.Dir(hooksPath), 0755))
+	require.NoError(t, os.WriteFile(hooksPath, []byte("\xEF\xBB\xBF{}"), 0644))
+	hooks = findDoctorResult(t, doctorCheckAntigravity(env), "antigravity.hooks")
+	assert.Equal(t, doctorFail, hooks.Status)
+	assert.Contains(t, hooks.Message, "byte order mark")
+
+	bin := filepath.Join(home, "shelltime")
+	require.NoError(t, os.WriteFile(bin, []byte("#!/bin/sh\n"), 0755))
+	require.NoError(t, os.Remove(hooksPath))
+	require.NoError(t, model.NewAntigravityHooksService().Install(bin))
+	results := doctorCheckAntigravity(env)
+	assert.Equal(t, doctorOK, findDoctorResult(t, results, "antigravity.hooks").Status)
+	assert.Len(t, results, 1)
+}
+
+func TestCommandDoctor_FixInstallsAgentHooks(t *testing.T) {
+	home, mc := setupDoctorTest(t)
+	writeDoctorConfigFile(t, home)
+	mc.On("ReadConfigFile", mock.Anything).Return(doctorTestConfig(t), nil)
+	require.NoError(t, os.WriteFile(filepath.Join(home, ".zshrc"), nil, 0644))
+	require.NoError(t, os.MkdirAll(filepath.Join(home, ".cursor"), 0755))
+	require.NoError(t, os.MkdirAll(filepath.Join(home, ".gemini", "antigravity-cli"), 0755))
+
+	var ran []string
+	doctorRunCursorInstall = func(*cli.Context) error {
+		ran = append(ran, "cursor")
+		return nil
+	}
+	doctorRunAgyInstall = func(*cli.Context) error {
+		ran = append(ran, "agy")
+		return nil
+	}
+
+	_ = doctorTestApp().Run([]string{"t", "doctor", "--offline", "--fix", "--yes"})
+	assert.Equal(t, []string{"cursor", "agy"}, ran)
+}
+
 // --- AI usage receiver --------------------------------------------------------
 
 func TestDoctorCheckOtelReceiver(t *testing.T) {
@@ -698,6 +814,12 @@ func TestDoctorCheckSync(t *testing.T) {
 	assert.Equal(t, doctorWarn, pending.Status)
 	assert.Contains(t, pending.Message, "2 upload")
 	assert.Contains(t, findDoctorResult(t, results, "sync.heartbeats").Message, "3 editor")
+	assert.False(t, hasDoctorResult(results, "sync.agent_hooks"))
+
+	require.NoError(t, os.WriteFile(filepath.Join(base, "agent-hooks.pending.jsonl"), []byte("{}\n{}\n\n"), 0600))
+	hookEvents := findDoctorResult(t, doctorCheckSync(env), "sync.agent_hooks")
+	assert.Equal(t, doctorInfo, hookEvents.Status)
+	assert.Contains(t, hookEvents.Message, "2 Cursor or Antigravity hook event")
 }
 
 func TestCountNonEmptyLines(t *testing.T) {

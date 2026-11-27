@@ -12,6 +12,7 @@ This guide covers every configuration option in ShellTime CLI. ShellTime runs fi
 - [AI Features](#ai-features)
 - [Claude Code Integration](#claude-code-integration)
 - [Codex Usage Tracking](#codex-usage-tracking)
+- [Cursor and Antigravity Hooks](#cursor-and-antigravity-hooks)
 - [Network Proxy](#network-proxy)
 - [Advanced Settings](#advanced-settings)
 - [Complete Example](#complete-example)
@@ -337,6 +338,21 @@ In this mode ShellTime records nothing about the machine, so it never shows up a
 - Claude Code and Codex sessions, prompts, tokens, cost and the pull requests they open are collected as usual.
 
 You don't need to set it in a Claude Code cloud environment ([cloud.bash](https://github.com/shelltime/installation/blob/main/cloud.bash)): when `aiCloudOnly` is unset, the mode is on wherever `CLAUDE_CODE_REMOTE=true`, which cloud environments set and your own machines never do. To track a cloud VM's commands anyway, set `aiCloudOnly: false`. `shelltime doctor` shows whether the mode is on and why.
+
+## Cursor and Antigravity Hooks
+
+`shelltime cursor install` and `shelltime agy install` register ShellTime in the native hooks of Cursor (`~/.cursor/hooks.json`) and Google Antigravity (`~/.gemini/config/hooks.json`). Each event goes to the daemon, which applies data masking and your exclude patterns before sending it. An event whose shell command matches an exclude pattern is sent without the command, its prompt, tool input, response or error.
+
+| Option | Type | Default | Description |
+|--------|------|---------|-------------|
+| `agentHooks.sendContent` | boolean | `true` | Send the text of prompts, agent responses, tool input and errors, and the paths of files attached to prompts. Off, only the activity is sent: event types, tool names, shell commands, the files tools worked on, the workspace and timing |
+
+```yaml
+agentHooks:
+  sendContent: false
+```
+
+`shelltime config disable agentHooks.sendContent` writes this for you. The daemon reads the setting for each batch, so no restart is needed.
 
 ## Codex Usage Tracking
 

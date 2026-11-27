@@ -3,10 +3,12 @@ package daemon
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"net"
 	"os"
 	"time"
 
+	"github.com/malamtime/cli/agenthook"
 	"github.com/malamtime/cli/model"
 )
 
@@ -122,6 +124,39 @@ func SendSessionPullRequests(socketPath string, sessionID string, urls []string)
 	}
 
 	return json.NewEncoder(conn).Encode(msg)
+}
+
+// agentHookDialTimeout bounds connecting to the daemon socket for an agent hook event: a
+// listening daemon accepts at once, and a socket file left by a dead one refuses at once.
+const agentHookDialTimeout = 20 * time.Millisecond
+
+// SendAgentHookEvent hands one Cursor or Antigravity hook event to the daemon and waits for
+// its acknowledgment, all within timeout. It returns an error when the daemon didn't take the
+// event, so the caller can keep it itself.
+func SendAgentHookEvent(socketPath string, ev agenthook.Event, timeout time.Duration) error {
+	conn, err := net.DialTimeout("unix", socketPath, min(agentHookDialTimeout, timeout))
+	if err != nil {
+		return err
+	}
+	defer conn.Close()
+	if err := conn.SetDeadline(time.Now().Add(timeout)); err != nil {
+		return err
+	}
+
+	msg := SocketMessage{Type: SocketMessageTypeAgentHook, Payload: ev}
+	if err := json.NewEncoder(conn).Encode(msg); err != nil {
+		return err
+	}
+	var ack struct {
+		Status string `json:"status"`
+	}
+	if err := json.NewDecoder(conn).Decode(&ack); err != nil {
+		return fmt.Errorf("no acknowledgment from the daemon: %w", err)
+	}
+	if ack.Status != "ok" {
+		return fmt.Errorf("the daemon didn't take the agent hook event (status %q)", ack.Status)
+	}
+	return nil
 }
 
 // RequestListCommands asks the daemon for the locally buffered commands (used

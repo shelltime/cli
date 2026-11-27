@@ -94,6 +94,12 @@ func GetSyncPendingFilePath() string {
 	return GetStoragePath("sync-pending.jsonl")
 }
 
+// GetAgentHooksPendingFilePath returns the path to the file of Cursor and Antigravity hook
+// events waiting to be sent: one JSON event per line.
+func GetAgentHooksPendingFilePath() string {
+	return GetStoragePath("agent-hooks.pending.jsonl")
+}
+
 // GetBinFolderPath returns the path to the bin folder
 func GetBinFolderPath() string {
 	return GetStoragePath("bin")

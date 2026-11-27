@@ -119,6 +119,14 @@ func joinWithAnd(names []string) string {
 	return strings.Join(names[:len(names)-1], ", ") + " and " + names[len(names)-1]
 }
 
+// joinWithOr lists names as "a, b or c".
+func joinWithOr(names []string) string {
+	if len(names) <= 1 {
+		return strings.Join(names, "")
+	}
+	return strings.Join(names[:len(names)-1], ", ") + " or " + names[len(names)-1]
+}
+
 // tildePath shows a path under the home directory as ~/...
 func tildePath(path string) string {
 	home, err := os.UserHomeDir()

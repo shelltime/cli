@@ -40,6 +40,7 @@ func CleanLargeLogFiles(thresholdBytes int64, force bool) (int64, error) {
 		GetLogFilePath(),
 		GetHeartbeatLogFilePath(),
 		GetSyncPendingFilePath(),
+		GetAgentHooksPendingFilePath(),
 	}
 
 	var totalFreed int64

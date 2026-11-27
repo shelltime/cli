@@ -1,9 +1,9 @@
 package commands
 
 import (
-	"bufio"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -111,34 +111,45 @@ func commandCCStatusline(c *cli.Context) error {
 }
 
 func readStdinWithTimeout(ctx context.Context) ([]byte, error) {
-	stdin := os.Stdin
-	resultCh := make(chan []byte, 1)
-	errCh := make(chan error, 1)
+	return readWithTimeout(ctx, os.Stdin, 0)
+}
+
+// errInputTooLarge is returned by readWithTimeout for input over its limit, with the first
+// limit bytes.
+var errInputTooLarge = errors.New("input too large")
+
+// readWithTimeout reads r to its end, or returns ctx's error once ctx ends first. A positive
+// limit makes more than limit bytes an error: errInputTooLarge, returned with the first limit
+// bytes, and the rest left unread.
+func readWithTimeout(ctx context.Context, r io.Reader, limit int64) ([]byte, error) {
+	type result struct {
+		data []byte
+		err  error
+	}
+	resultCh := make(chan result, 1)
 
 	go func() {
-		reader := bufio.NewReader(stdin)
-		var data []byte
-		for {
-			line, err := reader.ReadBytes('\n')
-			data = append(data, line...)
-			if err != nil {
-				if err == io.EOF {
-					break
-				}
-				errCh <- err
-				return
-			}
+		src := r
+		if limit > 0 {
+			src = io.LimitReader(r, limit+1)
 		}
-		resultCh <- data
+		data, err := io.ReadAll(src)
+		if err != nil {
+			resultCh <- result{err: err}
+			return
+		}
+		if limit > 0 && int64(len(data)) > limit {
+			resultCh <- result{data: data[:limit], err: errInputTooLarge}
+			return
+		}
+		resultCh <- result{data: data}
 	}()
 
 	select {
 	case <-ctx.Done():
 		return nil, ctx.Err()
-	case err := <-errCh:
-		return nil, err
-	case data := <-resultCh:
-		return data, nil
+	case res := <-resultCh:
+		return res.data, res.err
 	}
 }
 

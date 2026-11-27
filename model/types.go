@@ -45,6 +45,20 @@ func (c ShellTimeConfig) SendsRepository() bool {
 	return c.AICodeOtel == nil || c.AICodeOtel.SendRepository == nil || *c.AICodeOtel.SendRepository
 }
 
+// AgentHooksConfig configures the hooks of coding agents without OTEL (Cursor, Antigravity):
+// `shelltime cursor install` and `shelltime agy install`.
+type AgentHooksConfig struct {
+	// SendContent sends the text of prompts, agent responses and tool input (default true).
+	// False sends only the activity: event types, tool names, commands, file paths, timing.
+	SendContent *bool `toml:"sendContent,omitempty" yaml:"sendContent,omitempty" json:"sendContent,omitempty"`
+}
+
+// AgentHooksSendContent reports whether agent hook events may carry prompt, response and tool
+// input text: on unless agentHooks.sendContent is false.
+func (c ShellTimeConfig) AgentHooksSendContent() bool {
+	return c.AgentHooks == nil || c.AgentHooks.SendContent == nil || *c.AgentHooks.SendContent
+}
+
 // CodeTracking configuration for coding activity heartbeat tracking
 type CodeTracking struct {
 	Enabled     *bool  `toml:"enabled" yaml:"enabled" json:"enabled"`
@@ -95,6 +109,9 @@ type ShellTimeConfig struct {
 
 	// CodeTracking configuration for coding activity heartbeat tracking
 	CodeTracking *CodeTracking `toml:"codeTracking" yaml:"codeTracking" json:"codeTracking"`
+
+	// AgentHooks configures what the Cursor and Antigravity hooks send
+	AgentHooks *AgentHooksConfig `toml:"agentHooks,omitempty" yaml:"agentHooks,omitempty" json:"agentHooks,omitempty"`
 
 	// AICloudOnly collects only AI coding agent telemetry (aiCodeOtel) and nothing about the
 	// machine: no shell commands, editor heartbeats, aliases or dotfiles, so it never becomes a
