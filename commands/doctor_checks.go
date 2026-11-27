@@ -1143,17 +1143,20 @@ func projectHookToolFound(bin string) bool {
 func doctorCheckUserHooks(a doctorAgentHooks) []doctorResult {
 	user := a.hooks.user()
 	status, err := user.Status()
-	if errors.Is(err, model.ErrHookFileInvalid) {
-		// A missing file is no error; this one can't be parsed
+	if err != nil {
+		// A missing file is no error. A file ShellTime can't parse is reported only when an older
+		// version's hooks are in it, which can then be neither checked nor removed; the rest of
+		// such a file is the user's own business
+		if data, readErr := os.ReadFile(user.Path()); readErr != nil || !errors.Is(err, model.ErrHookFileInvalid) ||
+			!strings.Contains(string(data), model.HookIngestSubcommand) {
+			return nil
+		}
 		return []doctorResult{{
 			ID:      a.id + ".user_hooks",
 			Status:  doctorWarn,
-			Message: fmt.Sprintf("%s can't be parsed, so %s may ignore the hooks in it, any ShellTime hooks an older version left included: %v", user.Path(), a.name, err),
-			Fix:     fmt.Sprintf("Fix %s as the error says: it must be strict JSON (no comments, trailing commas or byte order mark).", user.Path()),
+			Message: fmt.Sprintf("ShellTime can't check or remove the hooks an older version left in %s: %v", user.Path(), err),
+			Fix:     fmt.Sprintf("Fix %s as the error says, or delete its ShellTime hooks by hand.", user.Path()),
 		}}
-	}
-	if err != nil {
-		return nil
 	}
 	if !status.Installed {
 		return nil
