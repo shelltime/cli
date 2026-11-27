@@ -321,6 +321,84 @@ func TestAgentHookBatcher_FillsSessionIDs(t *testing.T) {
 	assert.NotContains(t, b.sessions, agentHookSessionKey{agent: agenthook.AgentCursor}, "events without a workspace aren't remembered")
 }
 
+func TestAgentHookBatcher_MarksCloudSessions(t *testing.T) {
+	b := NewAgentHookBatcher(model.ShellTimeConfig{}, nil)
+	now := time.Date(2026, 11, 27, 10, 0, 0, 0, time.UTC)
+	b.now = func() time.Time { return now }
+	b.flushInterval = time.Hour
+	t.Cleanup(func() { b.cancel() })
+
+	cloud := func(id, session, workspace string) agenthook.Event {
+		ev := hookEvent(id, session, workspace)
+		ev.Cloud = agenthook.CloudSignalCursorBackgroundAgent
+		return ev
+	}
+
+	b.Add(cloud("1", "c1", "/w")) // Cursor's sessionStart in a Cloud Agent
+	b.Add(hookEvent("2", "c1", "/w"))
+	b.Add(hookEvent("3", "", "/w")) // gets c1 lent first, then its mark
+	b.Add(hookEvent("4", "c2", "/w"))
+	other := hookEvent("5", "c1", "/w")
+	other.Agent = agenthook.AgentAntigravity
+	b.Add(other)
+	b.Add(cloud("6", "", "/elsewhere"))
+	b.Add(hookEvent("7", "", "/elsewhere"))
+
+	// Every event of the session keeps it marked for an hour after it
+	now = now.Add(59 * time.Minute)
+	b.Add(hookEvent("8", "c1", ""))
+	now = now.Add(59 * time.Minute)
+	b.Add(hookEvent("9", "c1", ""))
+	now = now.Add(61 * time.Minute)
+	b.Add(hookEvent("10", "c1", ""))
+
+	// A signal of the event's own is kept over the session's
+	env := hookEvent("11", "c3", "")
+	env.Cloud = agenthook.CloudSignalEnv
+	b.Add(env)
+
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	clouds := map[string]string{}
+	for _, ev := range b.pending {
+		clouds[ev.ID] = ev.Cloud
+	}
+	bg := agenthook.CloudSignalCursorBackgroundAgent
+	assert.Equal(t, map[string]string{
+		"1":  bg,
+		"2":  bg,
+		"3":  bg,
+		"4":  "", // another session
+		"5":  "", // the same id from another agent
+		"6":  bg,
+		"7":  "", // no session id to remember the mark by
+		"8":  bg,
+		"9":  bg, // within the hour of event 8
+		"10": "", // more than an hour after the session's last event
+		"11": agenthook.CloudSignalEnv,
+	}, clouds)
+}
+
+func TestAgentHookBatcher_PrunesCloudSessions(t *testing.T) {
+	isolateAgentHookHome(t)
+	b := NewAgentHookBatcher(model.ShellTimeConfig{}, nil)
+	now := time.Date(2026, 11, 27, 10, 0, 0, 0, time.UTC)
+	b.now = func() time.Time { return now }
+	b.send = func(context.Context, model.ShellTimeConfig, []agenthook.Event) error { return nil }
+	b.flushInterval = time.Hour
+	t.Cleanup(func() { b.cancel() })
+
+	ev := hookEvent("1", "c1", "/w")
+	ev.Cloud = agenthook.CloudSignalEnv
+	b.Add(ev)
+	now = now.Add(agentHookSessionTTL)
+	b.flush(context.Background())
+
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	assert.Empty(t, b.clouds)
+}
+
 func TestAgentHookBatcher_AddsRepository(t *testing.T) {
 	isolateAgentHookHome(t)
 	dir := gitRepoWithOrigin(t, "git@github.com:acme/web.git")

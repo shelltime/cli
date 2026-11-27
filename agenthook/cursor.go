@@ -40,6 +40,11 @@ func normalizeCursor(ev *Event, event string, p payload, getenv func(string) str
 	ev.Workspace = firstWorkspace(p.strs("workspace_roots"), p.str("cwd"), getenv("CURSOR_PROJECT_DIR"))
 	p.setStringMetadata(ev, "cursor_version", "cursor_version")
 	p.setStringMetadata(ev, "generation_id", "generation_id")
+	// A remote workspace may be a cloud agent's VM or one of the user's SSH hosts, so this is
+	// kept apart from the cloud signals
+	if getenv(cursorCodeRemoteEnvVar) == "true" {
+		ev.SetMetadata("remote_workspace", true)
+	}
 
 	switch strings.ToLower(event) {
 	case strings.ToLower(CursorBeforeSubmitPrompt):

@@ -86,6 +86,7 @@ func normalizePayload(canonical, event string, p payload, now time.Time, getenv 
 	case AgentAntigravity:
 		normalizeAntigravity(&ev, event, p)
 	}
+	ev.Cloud = cloudSignal(canonical, p, getenv)
 	capEvent(&ev)
 	return ev, nil
 }

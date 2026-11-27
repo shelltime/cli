@@ -6,8 +6,8 @@ import (
 	"testing"
 )
 
-// TestMain clears the Claude Code cloud session environment, so the suite gives the same results
-// inside a cloud session (where CLAUDE_CODE_REMOTE=true) as on CI.
+// TestMain clears the cloud environment variables, so the suite gives the same results inside a
+// cloud session (where CLAUDE_CODE_REMOTE=true or SHELLTIME_CLOUD=true) as on CI.
 //
 // It also gives the suite its own HOME. Handlers queue what they couldn't send under
 // $HOME/.shelltime (sync-pending.jsonl, coding-heartbeat.data.log), and a daemon running on the
@@ -16,6 +16,7 @@ import (
 func TestMain(m *testing.M) {
 	os.Unsetenv("CLAUDE_CODE_REMOTE")
 	os.Unsetenv("CLAUDE_CODE_REMOTE_SESSION_ID")
+	os.Unsetenv("SHELLTIME_CLOUD")
 	os.Exit(runInTempHome(m))
 }
 

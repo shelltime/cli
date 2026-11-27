@@ -6,6 +6,8 @@ import (
 	"io"
 	"log/slog"
 	"os"
+	"os/exec"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -47,15 +49,16 @@ var HookIngestCommand = &cli.Command{
 	Flags: []cli.Flag{
 		&cli.StringFlag{Name: "agent", Usage: "the agent that runs the hook: cursor, or agy (antigravity)"},
 		&cli.StringFlag{Name: "event", Usage: "the hook event"},
+		&cli.BoolFlag{Name: "project", Usage: "run from a project's hook file (cursor/agy install --project)"},
 	},
 	Action: func(c *cli.Context) error {
-		runHookIngest(c.Context, c.String("agent"), c.String("event"))
+		runHookIngest(c.Context, c.String("agent"), c.String("event"), c.Bool("project"))
 		return nil
 	},
 	OnUsageError: func(c *cli.Context, err error, isSubcommand bool) error {
-		// The hook still answers. Read --agent and --event from the arguments as they are.
-		agent, event := hookIngestFlagsFromArgs(hookIngestRawArgs())
-		runHookIngest(c.Context, agent, event)
+		// The hook still answers. Read the flags from the arguments as they are.
+		agent, event, project := hookIngestFlagsFromArgs(hookIngestRawArgs())
+		runHookIngest(c.Context, agent, event, project)
 		return nil
 	},
 }
@@ -63,7 +66,12 @@ var HookIngestCommand = &cli.Command{
 // runHookIngest answers the hook on stdout, then records its event: through the daemon when
 // one takes it, else in the pending file the daemon resends from. Nothing else ever reaches
 // stdout, and a panic still answers.
-func runHookIngest(ctx context.Context, agent, event string) {
+//
+// project is set when a project's hook file runs it. The agent runs that file next to the
+// user's own hooks, so the event is left to those when they record it too, unless the event ran
+// in a cloud VM: Cursor Cloud Agents never run the user's hooks, even where a setup script
+// wrote some.
+func runHookIngest(ctx context.Context, agent, event string, project bool) {
 	if ctx == nil {
 		ctx = context.Background()
 	}
@@ -106,6 +114,10 @@ func runHookIngest(ctx context.Context, agent, event string) {
 	}
 	if err != nil {
 		slog.Warn("hook-ingest: no event recorded", slog.String("agent", agent), slog.String("event", event), slog.Any("err", err))
+		return
+	}
+	if project && ev.Cloud == "" && userHooksRecord(ev.Agent, ev.HookEventName) {
+		slog.Debug("hook-ingest: the user's own hooks record this event", slog.String("agent", ev.Agent), slog.String("event", ev.HookEventName))
 		return
 	}
 	ev.Hostname, _ = os.Hostname()
@@ -154,11 +166,19 @@ func sendHookEventToDaemon(socketPath string, ev agenthook.Event) bool {
 	return true
 }
 
-// hookIngestFlagsFromArgs finds --agent and --event (or -agent, --agent=x) in raw arguments.
-func hookIngestFlagsFromArgs(args []string) (agent, event string) {
+// hookIngestFlagsFromArgs finds --agent, --event (or -agent, --agent=x) and --project (or
+// --project=bool) in raw arguments.
+func hookIngestFlagsFromArgs(args []string) (agent, event string, project bool) {
 	for i := 0; i < len(args); i++ {
 		name, value, hasValue := strings.Cut(strings.TrimLeft(args[i], "-"), "=")
-		if !strings.HasPrefix(args[i], "-") || (name != "agent" && name != "event") {
+		if !strings.HasPrefix(args[i], "-") {
+			continue
+		}
+		if name == "project" {
+			project = !hasValue || strings.EqualFold(value, "true") || value == "1"
+			continue
+		}
+		if name != "agent" && name != "event" {
 			continue
 		}
 		if !hasValue {
@@ -174,5 +194,53 @@ func hookIngestFlagsFromArgs(args []string) (agent, event string) {
 			event = value
 		}
 	}
-	return agent, event
+	return agent, event, project
+}
+
+// userHooksRecord reports whether the user's own hook file for agent registers ShellTime for
+// event with a binary that is still there, so the agent records the event through it. Anything
+// it can't read counts as not recording, so the project hook records the event instead.
+func userHooksRecord(agent, event string) bool {
+	var events []string
+	var status model.AgentHooksStatus
+	var err error
+	switch agent {
+	case agenthook.AgentCursor:
+		events = agenthook.CursorEvents
+		status, err = model.NewCursorHooksService().Status()
+	case agenthook.AgentAntigravity:
+		events = agenthook.AntigravityEvents
+		status, err = model.NewAntigravityHooksService().Status()
+	default:
+		return false
+	}
+	if err != nil || !status.Installed || !containsFold(events, event) || containsFold(status.MissingEvents, event) {
+		return false
+	}
+	for _, bin := range status.Binaries {
+		if hookBinaryExists(bin) {
+			return true
+		}
+	}
+	return false
+}
+
+// hookBinaryExists reports whether a hook command's binary is there: the file for a path, else
+// a match on PATH.
+func hookBinaryExists(bin string) bool {
+	if filepath.IsAbs(bin) {
+		info, err := os.Stat(bin)
+		return err == nil && !info.IsDir()
+	}
+	_, err := exec.LookPath(bin)
+	return err == nil
+}
+
+func containsFold(values []string, s string) bool {
+	for _, v := range values {
+		if strings.EqualFold(v, s) {
+			return true
+		}
+	}
+	return false
 }

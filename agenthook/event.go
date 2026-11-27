@@ -50,6 +50,9 @@ type Event struct {
 	ID      string `json:"id,omitempty"`
 	Agent   string `json:"agent,omitempty"`
 	Surface string `json:"surface,omitempty"`
+	// Cloud is set when the hook ran in a cloud agent's VM rather than on one of the user's
+	// machines, to the signal that showed it (CloudSignal*).
+	Cloud string `json:"cloud,omitempty"`
 	// SessionID is the agent's conversation id.
 	SessionID     string `json:"session_id,omitempty"`
 	EventType     string `json:"event_type,omitempty"`

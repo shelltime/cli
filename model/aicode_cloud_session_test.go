@@ -44,8 +44,11 @@ func TestIsAICloudOnly(t *testing.T) {
 		{name: "local machine", env: map[string]string{"TERM_PROGRAM": "ghostty"}, want: false},
 		{name: "cloud environment", env: cloud, want: true},
 		{name: "remote flag off", env: map[string]string{"CLAUDE_CODE_REMOTE": "false"}, want: false},
+		{name: "SHELLTIME_CLOUD marks another agent's cloud VM", env: map[string]string{"SHELLTIME_CLOUD": "true"}, want: true},
+		{name: "SHELLTIME_CLOUD off", env: map[string]string{"SHELLTIME_CLOUD": "false"}, want: false},
 		{name: "on in the config", cfg: ShellTimeConfig{AICloudOnly: &on}, want: true},
 		{name: "off in the config wins in the cloud", cfg: ShellTimeConfig{AICloudOnly: &off}, env: cloud, want: false},
+		{name: "off in the config wins over SHELLTIME_CLOUD", cfg: ShellTimeConfig{AICloudOnly: &off}, env: map[string]string{"SHELLTIME_CLOUD": "true"}, want: false},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

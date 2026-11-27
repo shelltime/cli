@@ -87,6 +87,64 @@ func TestAgyInstallAndUninstallCommands(t *testing.T) {
 	assert.JSONEq(t, `{}`, string(data))
 }
 
+func TestCursorProjectInstallAndUninstallCommands(t *testing.T) {
+	home := setupAgentHooksCommand(t)
+	repo := t.TempDir()
+	require.NoError(t, os.Mkdir(filepath.Join(repo, ".git"), 0755))
+	sub := filepath.Join(repo, "web")
+	require.NoError(t, os.Mkdir(sub, 0755))
+	t.Chdir(sub)
+	path := filepath.Join(repo, ".cursor", "hooks.json")
+	app := &cli.App{Name: "t", Commands: []*cli.Command{CursorCommand}}
+
+	out := captureColor(t)
+	require.NoError(t, app.Run([]string{"t", "cursor", "install", "--project"}))
+	text := stripANSI(out.String())
+	assert.Contains(t, text, "Cursor project hooks installed in "+path)
+	assert.Contains(t, text, "Commit it: Cursor Cloud Agents run only the repository's hooks")
+	assert.Contains(t, text, "SHELLTIME_CLOUD=true")
+	assert.Contains(t, text, "Privacy: the Cursor hooks send")
+	assert.NotContains(t, text, "Restart Cursor")
+
+	status, err := model.NewCursorProjectHooksService(repo).Status()
+	require.NoError(t, err)
+	assert.True(t, status.Installed)
+	assert.Equal(t, []string{model.ProjectHookBinary}, status.Binaries, "the project file runs shelltime from PATH")
+	_, err = os.Stat(filepath.Join(home, ".cursor", "hooks.json"))
+	assert.True(t, os.IsNotExist(err), "the user's hook file is left alone")
+
+	require.NoError(t, app.Run([]string{"t", "cursor", "uninstall", "--project"}))
+	status, err = model.NewCursorProjectHooksService(repo).Status()
+	require.NoError(t, err)
+	assert.False(t, status.Installed)
+}
+
+func TestAgyProjectInstallAndUninstallCommands(t *testing.T) {
+	home := setupAgentHooksCommand(t)
+	repo := t.TempDir()
+	t.Chdir(repo) // not a repository: the folder itself
+	path := filepath.Join(repo, ".agents", "hooks.json")
+	app := &cli.App{Name: "t", Commands: []*cli.Command{AgyCommand}}
+
+	out := captureColor(t)
+	require.NoError(t, app.Run([]string{"t", "agy", "i", "--project"}))
+	text := stripANSI(out.String())
+	assert.Contains(t, text, "Antigravity project hooks installed in "+path)
+	assert.Contains(t, text, "Gemini API sandbox")
+
+	status, err := model.NewAntigravityProjectHooksService(repo).Status()
+	require.NoError(t, err)
+	assert.True(t, status.Installed)
+	assert.Equal(t, []string{model.ProjectHookBinary}, status.Binaries)
+	_, err = os.Stat(filepath.Join(home, ".gemini", "config", "hooks.json"))
+	assert.True(t, os.IsNotExist(err), "the user's hook file is left alone")
+
+	require.NoError(t, app.Run([]string{"t", "agy", "u", "--project"}))
+	data, err := os.ReadFile(path)
+	require.NoError(t, err)
+	assert.JSONEq(t, `{}`, string(data))
+}
+
 func TestConfigDisableAgentHooksSendContent(t *testing.T) {
 	path := setupConfigSetTest(t, "token: abc\n")
 	app := &cli.App{Name: "t", Commands: []*cli.Command{ConfigCommand}}

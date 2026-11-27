@@ -14,6 +14,37 @@ import (
 // HookIngestSubcommand is what every agent hook command runs: `<bin> hook-ingest --agent …`.
 const HookIngestSubcommand = "hook-ingest"
 
+const (
+	// ProjectHookBinary is the binary a project's hook file runs. The file is committed and
+	// runs on every machine that checks the repository out, a cloud agent's VM included, so it
+	// names shelltime as each machine's PATH finds it, never this machine's path.
+	ProjectHookBinary = "shelltime"
+	// ProjectHookFlag marks a hook command written to a project's hook file. The agent runs
+	// those next to the user's own hooks, so hook-ingest leaves an event to the user's hook when
+	// that records it too.
+	ProjectHookFlag = "--project"
+)
+
+// ProjectHooksRoot returns the root of the project dir is in, where its agents look for project
+// hook files: the nearest folder up from dir that holds .git (a folder, or a file in a worktree
+// or submodule), else dir itself.
+func ProjectHooksRoot(dir string) (string, error) {
+	dir, err := filepath.Abs(dir)
+	if err != nil {
+		return "", err
+	}
+	for d := dir; ; {
+		if _, err := os.Stat(filepath.Join(d, ".git")); err == nil {
+			return d, nil
+		}
+		parent := filepath.Dir(d)
+		if parent == d {
+			return dir, nil
+		}
+		d = parent
+	}
+}
+
 // AgentHooksStatus is what an agent's hook file says about the ShellTime hooks in it.
 type AgentHooksStatus struct {
 	// Installed is true when the file registers ShellTime for at least one event.

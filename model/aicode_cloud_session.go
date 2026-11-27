@@ -3,6 +3,8 @@ package model
 import (
 	"net/http"
 	"strings"
+
+	"github.com/malamtime/cli/agenthook"
 )
 
 // AICodeCloudSessionIDAttribute is the standard attribute Claude Code puts on every event and
@@ -23,13 +25,15 @@ func CloudSessionIDFromEnv(getenv func(string) string) string {
 
 // IsAICloudOnly reports whether this machine collects only AI coding agent telemetry, and no
 // shell commands, editor heartbeats, aliases, dotfiles or anything else that would make it a
-// host. cfg.AICloudOnly decides when it is set; unset, the mode is on in a Claude Code cloud
-// environment, a throwaway VM that isn't one of the user's machines.
+// host. cfg.AICloudOnly decides when it is set; unset, the mode is on in a cloud agent's VM, a
+// throwaway machine that isn't one of the user's: a Claude Code cloud environment, or one that
+// sets SHELLTIME_CLOUD=true (agenthook.CloudEnvSignal), as a Cursor Cloud Agent's or a Gemini
+// API sandbox's can.
 func IsAICloudOnly(cfg ShellTimeConfig, getenv func(string) string) bool {
 	if cfg.AICloudOnly != nil {
 		return *cfg.AICloudOnly
 	}
-	return getenv("CLAUDE_CODE_REMOTE") == "true"
+	return agenthook.CloudEnvSignal(getenv) != ""
 }
 
 // ProxyInjectedToken is the token a Claude Code cloud environment's sessions sign in with when

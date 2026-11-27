@@ -9,7 +9,7 @@ import (
 )
 
 const aiCloudOnlyReason = "AI cloud only mode collects only AI coding agent usage on this machine " +
-	"(aiCloudOnly in the config, on by default in a Claude Code cloud environment)"
+	"(aiCloudOnly in the config, on by default in a Claude Code cloud environment and where SHELLTIME_CLOUD=true)"
 
 // skippedInAICloudOnly reports whether AI cloud only mode is on for cfg, after saying which
 // action it skipped. Commands that would upload commands or anything about the machine stop then.

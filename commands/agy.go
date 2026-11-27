@@ -20,18 +20,30 @@ var AgyInstallCommand = &cli.Command{
 	Name:    "install",
 	Aliases: []string{"i"},
 	Usage:   "Install the ShellTime hooks into ~/.gemini/config/hooks.json (Antigravity app and agy CLI)",
-	Action:  commandAgyInstall,
+	Flags: []cli.Flag{&cli.BoolFlag{
+		Name:  "project",
+		Usage: "install them into the current repository's .agents/hooks.json instead, which the Antigravity agent reads in a Gemini API sandbox too (commit it)",
+	}},
+	Action: commandAgyInstall,
 }
 
 var AgyUninstallCommand = &cli.Command{
 	Name:    "uninstall",
 	Aliases: []string{"u"},
 	Usage:   "Remove the ShellTime hooks from ~/.gemini/config/hooks.json",
-	Action:  commandAgyUninstall,
+	Flags: []cli.Flag{&cli.BoolFlag{
+		Name:  "project",
+		Usage: "remove them from the current repository's .agents/hooks.json instead",
+	}},
+	Action: commandAgyUninstall,
 }
 
 func commandAgyInstall(c *cli.Context) error {
-	if err := installAgyHooks(); err != nil {
+	install := installAgyHooks
+	if c.Bool("project") {
+		install = installAgyProjectHooks
+	}
+	if err := install(); err != nil {
 		return err
 	}
 	printAgentHooksPrivacyNote("Antigravity")
@@ -58,10 +70,39 @@ func installAgyHooks() error {
 	return nil
 }
 
+// installAgyProjectHooks writes the hooks into the current repository's .agents/hooks.json.
+func installAgyProjectHooks() error {
+	color.Yellow.Println("Installing Antigravity project hooks...")
+
+	root, err := currentProjectRoot()
+	if err != nil {
+		color.Red.Printf("Failed to find the project: %v\n", err)
+		return err
+	}
+	svc := model.NewAntigravityProjectHooksService(root)
+	if err := svc.Install(model.ProjectHookBinary); err != nil {
+		color.Red.Printf("Failed to install the Antigravity project hooks: %v\n", err)
+		return err
+	}
+
+	color.Green.Printf("Antigravity project hooks installed in %s\n", svc.Path())
+	color.Yellow.Println("Commit it: the Antigravity agent reads .agents/hooks.json from the repository its Gemini API sandbox mounts.")
+	printProjectHooksNote()
+	return nil
+}
+
 func commandAgyUninstall(c *cli.Context) error {
 	color.Yellow.Println("Removing Antigravity hooks...")
 
 	svc := model.NewAntigravityHooksService()
+	if c.Bool("project") {
+		root, err := currentProjectRoot()
+		if err != nil {
+			color.Red.Printf("Failed to find the project: %v\n", err)
+			return err
+		}
+		svc = model.NewAntigravityProjectHooksService(root)
+	}
 	if err := svc.Uninstall(); err != nil {
 		color.Red.Printf("Failed to remove the Antigravity hooks: %v\n", err)
 		return err

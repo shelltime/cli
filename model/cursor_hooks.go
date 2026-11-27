@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 
 	"github.com/malamtime/cli/agenthook"
@@ -22,17 +23,27 @@ var utf8BOM = []byte("\xEF\xBB\xBF")
 const cursorHookMarker = HookIngestSubcommand + " --agent cursor"
 
 // CursorHooksService registers `shelltime hook-ingest` for Cursor's hook events in the user's
-// ~/.cursor/hooks.json, which both the IDE and cursor-agent read:
+// ~/.cursor/hooks.json, which both the IDE and cursor-agent read, or in a project's
+// .cursor/hooks.json, the only one Cursor Cloud Agents run:
 //
 //	{"version": 1, "hooks": {"<event>": [{"command": "…"}]}}
 //
 // Every other hook and key stays as the user wrote it, in its order.
 type CursorHooksService struct {
 	path string
+	// project writes commands that run `--project` (see ProjectHookFlag)
+	project bool
 }
 
 func NewCursorHooksService() *CursorHooksService {
 	return &CursorHooksService{path: os.ExpandEnv("$HOME/.cursor/hooks.json")}
+}
+
+// NewCursorProjectHooksService manages the .cursor/hooks.json of the project at root. Cursor
+// runs it in that project next to the user's own hooks, and Cloud Agents run only it, never
+// ~/.cursor/hooks.json.
+func NewCursorProjectHooksService(root string) *CursorHooksService {
+	return &CursorHooksService{path: filepath.Join(root, ".cursor", "hooks.json"), project: true}
 }
 
 // Path returns the hook file.
@@ -43,6 +54,13 @@ func (s *CursorHooksService) Path() string {
 // CursorHookCommand is the command registered for a Cursor hook event.
 func CursorHookCommand(bin, event string) string {
 	return hookCommand(bin, HookIngestSubcommand, "--agent", agenthook.AgentCursor, "--event", event)
+}
+
+func (s *CursorHooksService) command(bin, event string) string {
+	if s.project {
+		return CursorHookCommand(bin, event) + " " + ProjectHookFlag
+	}
+	return CursorHookCommand(bin, event)
 }
 
 // Install registers bin for every managed event. It creates the file when missing, sets
@@ -95,7 +113,7 @@ func (s *CursorHooksService) Install(bin string) error {
 				return fmt.Errorf("%w: hooks.%s in %s isn't an array", ErrHookFileInvalid, event, s.path)
 			}
 		}
-		entries, err = upsertCursorHookEntry(entries, CursorHookCommand(bin, event))
+		entries, err = upsertCursorHookEntry(entries, s.command(bin, event))
 		if err != nil {
 			return err
 		}

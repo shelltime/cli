@@ -18,7 +18,8 @@ const (
 	// agentHookMaxBatch sends the queued events at once when this many are waiting.
 	agentHookMaxBatch = 100
 	// agentHookSessionTTL is how long the last session id seen for an agent and workspace is
-	// lent to events that come without one.
+	// lent to events that come without one, and how long after a cloud session's last event its
+	// later events are still marked as cloud.
 	agentHookSessionTTL = time.Hour
 	// agentHookShutdownTimeout bounds sending what is still queued when the daemon stops;
 	// whatever doesn't make it is saved for the resync service.
@@ -28,7 +29,8 @@ const (
 // AgentHookBatcher collects the Cursor and Antigravity hook events hook-ingest hands to the
 // daemon and sends them in batches: every agentHookFlushInterval, or as soon as
 // agentHookMaxBatch are waiting. Before sending, each event gets the git repository of its
-// workspace and the user's privacy settings, read from the config on disk. A batch the server
+// workspace and the user's privacy settings, read from the config on disk, and the events of a
+// session an earlier event showed was a cloud run are marked as cloud too. A batch the server
 // can take later (no answer, a 5xx, an expired token, a server without the endpoint yet), or
 // one there is no token to send with, is saved to the pending file for
 // AgentHookResyncService; one the server refused for what it holds is dropped.
@@ -47,6 +49,7 @@ type AgentHookBatcher struct {
 	mu       sync.Mutex
 	pending  []agenthook.Event
 	sessions map[agentHookSessionKey]agentHookSession
+	clouds   map[agentHookCloudKey]agentHookCloud
 	started  bool
 	closed   bool
 
@@ -67,6 +70,16 @@ type agentHookSession struct {
 	seen time.Time
 }
 
+type agentHookCloudKey struct {
+	agent, sessionID string
+}
+
+// agentHookCloud is a session an event showed was a cloud run, with that event's signal.
+type agentHookCloud struct {
+	signal string
+	seen   time.Time
+}
+
 // NewAgentHookBatcher returns a batcher that sends with cfg (or, once SetConfigService is
 // called, the config on disk at each batch). Its loop starts with the first event.
 func NewAgentHookBatcher(cfg model.ShellTimeConfig, repos *model.GitRepositoryResolver) *AgentHookBatcher {
@@ -79,6 +92,7 @@ func NewAgentHookBatcher(cfg model.ShellTimeConfig, repos *model.GitRepositoryRe
 		flushInterval: agentHookFlushInterval,
 		maxBatch:      agentHookMaxBatch,
 		sessions:      make(map[agentHookSessionKey]agentHookSession),
+		clouds:        make(map[agentHookCloudKey]agentHookCloud),
 		flushCh:       make(chan struct{}, 1),
 		ctx:           ctx,
 		cancel:        cancel,
@@ -94,10 +108,12 @@ func (b *AgentHookBatcher) SetConfigService(cs model.ConfigService) {
 
 // Add queues an event. An event without a session id gets the last one an event carried for
 // its agent and workspace within agentHookSessionTTL (Cursor sometimes sends tool events with
-// an empty conversation_id). After Shutdown the event is saved for the resync service instead.
+// an empty conversation_id), and one of a cloud session is marked as cloud. After Shutdown the
+// event is saved for the resync service instead.
 func (b *AgentHookBatcher) Add(ev agenthook.Event) {
 	b.mu.Lock()
 	b.fillSessionLocked(&ev)
+	b.fillCloudLocked(&ev)
 	if b.closed {
 		b.mu.Unlock()
 		// No repository lookup here: git can take seconds, and hook-ingest waits for the answer
@@ -175,11 +191,35 @@ func (b *AgentHookBatcher) fillSessionLocked(ev *agenthook.Event) {
 	}
 }
 
+// fillCloudLocked marks an event of a session an earlier event showed was a cloud run: Cursor
+// says so only in sessionStart (is_background_agent). The session stays marked for
+// agentHookSessionTTL after its last event.
+func (b *AgentHookBatcher) fillCloudLocked(ev *agenthook.Event) {
+	if ev.SessionID == "" {
+		return
+	}
+	key := agentHookCloudKey{agent: ev.Agent, sessionID: ev.SessionID}
+	now := b.now()
+	if ev.Cloud == "" {
+		c, ok := b.clouds[key]
+		if !ok || now.Sub(c.seen) >= agentHookSessionTTL {
+			return
+		}
+		ev.Cloud = c.signal
+	}
+	b.clouds[key] = agentHookCloud{signal: ev.Cloud, seen: now}
+}
+
 func (b *AgentHookBatcher) pruneSessionsLocked() {
 	now := b.now()
 	for key, s := range b.sessions {
 		if now.Sub(s.seen) >= agentHookSessionTTL {
 			delete(b.sessions, key)
+		}
+	}
+	for key, c := range b.clouds {
+		if now.Sub(c.seen) >= agentHookSessionTTL {
+			delete(b.clouds, key)
 		}
 	}
 }

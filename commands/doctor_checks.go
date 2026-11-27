@@ -15,6 +15,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/malamtime/cli/agenthook"
 	"github.com/malamtime/cli/daemon"
 	"github.com/malamtime/cli/model"
 	"github.com/urfave/cli/v2"
@@ -444,8 +445,11 @@ func doctorCheckConfig(env *doctorEnv) []doctorResult {
 	cfg := env.cfg
 	if env.aiCloudOnly {
 		source := "on by default in a Claude Code cloud environment"
-		if cfg.AICloudOnly != nil {
+		switch {
+		case cfg.AICloudOnly != nil:
 			source = "aiCloudOnly is on in your config"
+		case agenthook.CloudEnvSignal(os.Getenv) == agenthook.CloudSignalEnv:
+			source = "on by default where SHELLTIME_CLOUD=true"
 		}
 		results = append(results, doctorResult{
 			ID:      "config.ai_cloud_only",
