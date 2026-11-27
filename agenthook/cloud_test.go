@@ -127,6 +127,30 @@ func TestNormalize_CloudAntigravitySandbox(t *testing.T) {
 	ev, err = Normalize("cursor", "stop", []byte(`{"conversation_id":"c1"}`), testNow, nil)
 	require.NoError(t, err)
 	assert.Empty(t, ev.Cloud, "the sandbox user marks Antigravity events only")
+
+	ev, err = Normalize("agy", "Stop", []byte(`{"conversationId":"a1"}`), testNow, envOf(map[string]string{"SHELLTIME_CLOUD": "false"}))
+	require.NoError(t, err)
+	assert.Empty(t, ev.Cloud, "an explicit false wins over the sandbox user")
+}
+
+func TestCloudEnvExplicit(t *testing.T) {
+	on, set := CloudEnvExplicit(nil)
+	assert.False(t, on)
+	assert.False(t, set)
+	on, set = CloudEnvExplicit(envOf(map[string]string{"SHELLTIME_CLOUD": " false "}))
+	assert.False(t, on)
+	assert.True(t, set)
+	on, set = CloudEnvExplicit(envOf(map[string]string{"SHELLTIME_CLOUD": "1"}))
+	assert.True(t, on)
+	assert.True(t, set)
+	_, set = CloudEnvExplicit(envOf(map[string]string{"SHELLTIME_CLOUD": "maybe"}))
+	assert.False(t, set)
+}
+
+func TestNormalize_ExplicitFalseWinsOverCursor(t *testing.T) {
+	ev, err := Normalize("cursor", "sessionStart", []byte(`{"session_id":"c1","is_background_agent":true}`), testNow, envOf(map[string]string{"SHELLTIME_CLOUD": "false"}))
+	require.NoError(t, err)
+	assert.Empty(t, ev.Cloud)
 }
 
 func TestNormalize_CloudAntigravity(t *testing.T) {

@@ -60,7 +60,7 @@ func CloudEnvSignal(getenv func(string) string) string {
 	if getenv == nil {
 		return ""
 	}
-	if on, err := strconv.ParseBool(strings.TrimSpace(getenv(CloudEnvVar))); err == nil {
+	if on, set := CloudEnvExplicit(getenv); set {
 		if on {
 			return CloudSignalEnv
 		}
@@ -70,6 +70,16 @@ func CloudEnvSignal(getenv func(string) string) string {
 		return CloudSignalClaudeCodeRemote
 	}
 	return ""
+}
+
+// CloudEnvExplicit reads SHELLTIME_CLOUD: set is true when it holds a boolean, which then decides
+// alone whether the machine is a cloud VM, over every other signal. A nil getenv reads nothing.
+func CloudEnvExplicit(getenv func(string) string) (on, set bool) {
+	if getenv == nil {
+		return false, false
+	}
+	on, err := strconv.ParseBool(strings.TrimSpace(getenv(CloudEnvVar)))
+	return on, err == nil
 }
 
 // InAntigravitySandbox reports whether this process runs as AntigravitySandboxUser. The user
@@ -85,9 +95,12 @@ func InAntigravitySandbox(getenv func(string) string) bool {
 	return name == AntigravitySandboxUser
 }
 
-// cloudSignal returns what shows that the hook behind p ran in a cloud VM, or "": what the
-// agent says first, then the environment.
+// cloudSignal returns what shows that the hook behind p ran in a cloud VM, or "": an explicit
+// SHELLTIME_CLOUD=false first, then what the agent says, then the environment.
 func cloudSignal(agent string, p payload, getenv func(string) string) string {
+	if on, set := CloudEnvExplicit(getenv); set && !on {
+		return ""
+	}
 	switch agent {
 	case AgentCursor:
 		if background, ok := p.boolean("is_background_agent"); ok && background {

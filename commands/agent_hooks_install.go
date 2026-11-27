@@ -124,7 +124,14 @@ func uninstallAgentHooks(a agentHooks) error {
 	switch {
 	case err == nil:
 		svc := a.project(root)
-		if err := svc.Uninstall(); err != nil {
+		status, err := svc.Status()
+		if err == nil && !status.Installed {
+			break
+		}
+		if err == nil {
+			err = svc.Uninstall()
+		}
+		if err != nil {
 			color.Red.Printf("Failed to remove the %s hooks: %v\n", a.name, err)
 			projectErr = err
 			break
@@ -148,7 +155,7 @@ func uninstallAgentHooks(a agentHooks) error {
 		}
 		color.Green.Printf("%s hooks removed from %s\n", a.name, user.Path())
 	case !removed && projectErr == nil:
-		color.Yellow.Printf("No %s hooks to remove here: the home folder is no project, and %s has none.\n", a.name, user.Path())
+		color.Yellow.Printf("No ShellTime hooks for %s to remove here or in %s.\n", a.name, user.Path())
 	}
 	return projectErr
 }

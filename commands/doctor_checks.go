@@ -1040,12 +1040,20 @@ func doctorCheckAntigravity(env *doctorEnv) []doctorResult {
 	})
 }
 
-// doctorCheckAgentHooks checks an agent's hooks: the project doctor runs in has them for every
-// event and this machine has what they record with, and the hooks an older version installed
-// in the agent's user-level file still work, if there are any.
+// doctorCheckAgentHooks checks an agent's hooks: the git repository doctor runs in has them for
+// every event and this machine has what they record with, and the hooks an older version
+// installed in the agent's user-level file still work, if there are any. Outside a repository
+// there is nothing to check, so doctor never offers to write a hook file into whatever folder it
+// was run from.
 func doctorCheckAgentHooks(a doctorAgentHooks) []doctorResult {
 	var results []doctorResult
-	if root, err := currentProjectRoot(); err != nil {
+	root, err := currentProjectRoot()
+	if err == nil {
+		if _, statErr := os.Stat(filepath.Join(root, ".git")); statErr != nil {
+			err = statErr
+		}
+	}
+	if err != nil {
 		results = append(results, doctorResult{
 			ID:      a.id + ".hooks",
 			Status:  doctorSkip,

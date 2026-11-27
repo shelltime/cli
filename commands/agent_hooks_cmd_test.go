@@ -130,7 +130,18 @@ func TestCursorUninstallCommand_NothingToRemoveOutsideAProject(t *testing.T) {
 
 	out := captureColor(t)
 	require.NoError(t, app.Run([]string{"t", "cursor", "uninstall"}))
-	assert.Contains(t, stripANSI(out.String()), "No Cursor hooks to remove here")
+	assert.Contains(t, stripANSI(out.String()), "No ShellTime hooks for Cursor to remove here")
+}
+
+func TestCursorUninstallCommand_RepositoryWithoutHooksIsNoRemoval(t *testing.T) {
+	setupAgentHooksCommand(t)
+	app := &cli.App{Name: "t", Commands: []*cli.Command{CursorCommand}}
+
+	out := captureColor(t)
+	require.NoError(t, app.Run([]string{"t", "cursor", "uninstall"}))
+	text := stripANSI(out.String())
+	assert.NotContains(t, text, "removed from", "nothing was there to remove")
+	assert.Contains(t, text, "No ShellTime hooks for Cursor to remove here")
 }
 
 func TestCursorUninstallCommand_CleansTheUserFileWhenTheProjectFileIsInvalid(t *testing.T) {

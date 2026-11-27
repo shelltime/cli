@@ -741,6 +741,12 @@ func TestDoctorCheckCursor(t *testing.T) {
 	assert.Equal(t, doctorSkip, hooks.Status)
 	assert.Contains(t, hooks.Message, "run `shelltime doctor` in a project's repository")
 
+	// Nor in a folder outside a repository: doctor never offers to write a hook file there
+	t.Chdir(t.TempDir())
+	hooks = findDoctorResult(t, doctorCheckCursor(env), "cursor.hooks")
+	assert.Equal(t, doctorSkip, hooks.Status)
+	assert.Nil(t, hooks.AutoFix)
+
 	// Detected through PATH too
 	t.Chdir(repo)
 	require.NoError(t, os.RemoveAll(filepath.Join(home, ".cursor")))

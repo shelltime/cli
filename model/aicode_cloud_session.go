@@ -33,6 +33,9 @@ func IsAICloudOnly(cfg ShellTimeConfig, getenv func(string) string) bool {
 	if cfg.AICloudOnly != nil {
 		return *cfg.AICloudOnly
 	}
+	if on, set := agenthook.CloudEnvExplicit(getenv); set {
+		return on
+	}
 	return agenthook.CloudEnvSignal(getenv) != "" || agenthook.InAntigravitySandbox(getenv)
 }
 
