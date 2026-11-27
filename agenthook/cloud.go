@@ -37,8 +37,9 @@ const CloudEnvVar = "SHELLTIME_CLOUD"
 // isn't documented; it is what the sandbox shows.
 const AntigravitySandboxUser = "antigravity"
 
-// lookupOSUser returns the name of the OS user this process runs as; replaced in tests.
-var lookupOSUser = func() (string, error) {
+// OSUserLookup returns the name of the OS user this process runs as. Test suites replace it, so
+// they behave the same in an Antigravity sandbox as elsewhere.
+var OSUserLookup = func() (string, error) {
 	u, err := user.Current()
 	if err != nil {
 		return "", err
@@ -72,7 +73,7 @@ func CloudEnvSignal(getenv func(string) string) string {
 // comes from the user database, else USER or LOGNAME: a container's user often has no entry in
 // it. A nil getenv reads nothing.
 func InAntigravitySandbox(getenv func(string) string) bool {
-	name, err := lookupOSUser()
+	name, err := OSUserLookup()
 	if (err != nil || name == "") && getenv != nil {
 		if name = getenv("USER"); name == "" {
 			name = getenv("LOGNAME")

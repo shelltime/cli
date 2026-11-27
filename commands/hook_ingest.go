@@ -68,8 +68,10 @@ var HookIngestCommand = &cli.Command{
 //
 // project is set when a project's hook file runs it. An older version may have left its hooks
 // in the agent's user-level file, which the agent runs next to the project's, so the event is
-// left to those when they record it too, unless the event ran in a cloud VM: Cursor Cloud
-// Agents never run the user's hooks, even where a setup script wrote some.
+// left to those when they record it too, unless it ran in a cloud VM: Cursor Cloud Agents never
+// run the user's hooks, even where a setup script wrote some. Cursor names a cloud run only in
+// sessionStart, which the daemon remembers for the session's later events, so a daemon makes
+// that call (YieldToUserHooks); without one the event is left to the user's hook.
 func runHookIngest(ctx context.Context, agent, event string, project bool) {
 	if ctx == nil {
 		ctx = context.Background()
@@ -115,10 +117,7 @@ func runHookIngest(ctx context.Context, agent, event string, project bool) {
 		slog.Warn("hook-ingest: no event recorded", slog.String("agent", agent), slog.String("event", event), slog.Any("err", err))
 		return
 	}
-	if project && ev.Cloud == "" && userHooksRecord(ev.Agent, ev.HookEventName) {
-		slog.Debug("hook-ingest: the user's own hooks record this event", slog.String("agent", ev.Agent), slog.String("event", ev.HookEventName))
-		return
-	}
+	ev.YieldToUserHooks = project && ev.Cloud == "" && userHooksRecord(ev.Agent, ev.HookEventName)
 	ev.Hostname, _ = os.Hostname()
 
 	// Fast path, before any config is read: the daemon applies the privacy settings, adds the
@@ -140,6 +139,10 @@ func runHookIngest(ctx context.Context, agent, event string, project bool) {
 		}
 	}
 
+	if ev.YieldToUserHooks {
+		slog.Debug("hook-ingest: no daemon, event left to the user-level hook", slog.String("agent", ev.Agent), slog.String("event", ev.HookEventName))
+		return
+	}
 	// No daemon: keep the event, with the privacy settings applied, for the daemon to send
 	model.ApplyAgentHookPrivacy(&ev, config)
 	if err := model.AppendAgentHookPending(ev); err != nil {
@@ -215,12 +218,18 @@ func userHooksRecord(agent, event string) bool {
 	default:
 		return false
 	}
-	if err != nil || !status.Installed || !containsFold(events, event) || containsFold(status.MissingEvents, event) {
+	if err != nil || !status.Installed {
 		return false
 	}
-	for _, bin := range status.Binaries {
-		if hookBinaryExists(bin) {
-			return true
+	// The binaries of this event's commands: another event's binary says nothing about it
+	for _, managed := range events {
+		if !strings.EqualFold(managed, event) {
+			continue
+		}
+		for _, bin := range status.EventBinaries[managed] {
+			if hookBinaryExists(bin) {
+				return true
+			}
 		}
 	}
 	return false

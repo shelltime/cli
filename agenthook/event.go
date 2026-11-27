@@ -78,6 +78,12 @@ type Event struct {
 	ToolInput string `json:"tool_input,omitempty"`
 
 	Metadata map[string]any `json:"metadata,omitempty"`
+
+	// YieldToUserHooks travels from hook-ingest to the daemon only, never to the server: the
+	// event came from a project's hook while an older version's user-level hook records it too,
+	// so the daemon drops it unless the session is a cloud run (whose agent runs no user-level
+	// hooks), which only the daemon remembers across events.
+	YieldToUserHooks bool `json:"yield_to_user_hooks,omitempty"`
 }
 
 // SetMetadata sets one metadata key, creating the map when needed.

@@ -75,7 +75,7 @@ func TestProjectHooksRoot(t *testing.T) {
 
 func TestProjectHookCommand(t *testing.T) {
 	assert.Equal(t,
-		`PATH=$PATH:$HOME/.shelltime/bin; command -v shelltime >/dev/null 2>&1 && command -v shelltime-daemon >/dev/null 2>&1 && exec shelltime hook-ingest --agent cursor --event beforeSubmitPrompt --project; echo '{"continue":true}'`,
+		`PATH=$PATH:$HOME/.shelltime/bin:/opt/homebrew/bin:/usr/local/bin; command -v shelltime >/dev/null 2>&1 && command -v shelltime-daemon >/dev/null 2>&1 && exec shelltime hook-ingest --agent cursor --event beforeSubmitPrompt --project; echo '{"continue":true}'`,
 		CursorProjectHookCommand("beforeSubmitPrompt"))
 	assert.True(t, strings.HasSuffix(CursorProjectHookCommand("stop"), `--event stop --project; echo '{}'`))
 	assert.True(t, strings.HasSuffix(AntigravityProjectHookCommand("Stop"), `--agent agy --event Stop --project; echo '{"decision":"allow"}'`))
@@ -156,6 +156,28 @@ func TestCursorProjectHooks(t *testing.T) {
 
 	require.NoError(t, svc.Uninstall())
 	assert.JSONEq(t, `{"version":1,"hooks":{"afterFileEdit":[{"command":".cursor/hooks/format.sh"}]}}`, string(mustRead(t, path)))
+}
+
+func TestProjectHookSearchDirs(t *testing.T) {
+	assert.Equal(t, []string{"/home/me/.shelltime/bin", "/opt/homebrew/bin", "/usr/local/bin"}, ProjectHookSearchDirs("/home/me"))
+}
+
+func TestStatus_EventBinaries(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	cursor := NewCursorHooksService()
+	writeFile(t, cursor.Path(), `{"version":1,"hooks":{
+		"beforeSubmitPrompt":[{"command":"`+legacyHookCommand("/a/shelltime", "cursor", "beforeSubmitPrompt")+`"}],
+		"stop":[{"command":"`+legacyHookCommand("/b/shelltime", "cursor", "stop")+`"},{"command":"say done"}]}}`, 0644)
+	status, err := cursor.Status()
+	require.NoError(t, err)
+	assert.Equal(t, map[string][]string{"beforeSubmitPrompt": {"/a/shelltime"}, "stop": {"/b/shelltime"}}, status.EventBinaries)
+	assert.Equal(t, []string{"/a/shelltime", "/b/shelltime"}, status.Binaries)
+
+	agy := NewAntigravityHooksService()
+	writeFile(t, agy.Path(), `{"shelltime":{"Stop":[{"type":"command","command":"`+legacyHookCommand("/c/shelltime", "agy", "Stop")+`","timeout":15}]}}`, 0644)
+	status, err = agy.Status()
+	require.NoError(t, err)
+	assert.Equal(t, map[string][]string{"Stop": {"/c/shelltime"}}, status.EventBinaries)
 }
 
 func TestUserHooksAreOnlyCleaned(t *testing.T) {

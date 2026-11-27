@@ -726,6 +726,15 @@ func TestDoctorCheckCursor(t *testing.T) {
 	require.NoError(t, user.AutoFix.Run(nil))
 	assert.False(t, hasDoctorResult(doctorCheckCursor(env), "cursor.user_hooks"), "the fix removed them")
 
+	// A project's command copied into the user file isn't an older version's hook
+	userPath := model.NewCursorHooksService().Path()
+	copied, err := json.Marshal(map[string]any{"version": 1, "hooks": map[string]any{
+		"stop": []any{map[string]any{"command": model.CursorProjectHookCommand("stop")}},
+	}})
+	require.NoError(t, err)
+	require.NoError(t, os.WriteFile(userPath, copied, 0644))
+	assert.False(t, hasDoctorResult(doctorCheckCursor(env), "cursor.user_hooks"))
+
 	// Outside a project there is no project file to check
 	t.Chdir(home)
 	hooks = findDoctorResult(t, doctorCheckCursor(env), "cursor.hooks")

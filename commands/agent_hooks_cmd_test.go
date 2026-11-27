@@ -43,6 +43,7 @@ func TestCursorInstallAndUninstallCommands(t *testing.T) {
 	text := stripANSI(out.String())
 	assert.Contains(t, text, "Cursor hooks installed in "+path)
 	assert.Contains(t, text, "Removed the ShellTime hooks an older version put in "+userPath)
+	assert.Contains(t, text, "Now each repository needs its own install: run `shelltime cursor install` in the others too.")
 	assert.Contains(t, text, "Commit it: Cursor Cloud Agents run only the hooks in the repository.")
 	assert.Contains(t, text, "Restart Cursor")
 	assert.Contains(t, text, "SHELLTIME_CLOUD=true")
@@ -78,6 +79,20 @@ func TestCursorInstallCommand_RefusesInvalidFile(t *testing.T) {
 	assert.NotContains(t, out.String(), "Privacy")
 }
 
+func TestCursorInstallCommand_RefusesWindows(t *testing.T) {
+	_, repo := setupAgentHooksCommand(t)
+	orig := agentHooksGOOS
+	agentHooksGOOS = "windows"
+	t.Cleanup(func() { agentHooksGOOS = orig })
+	app := &cli.App{Name: "t", Commands: []*cli.Command{CursorCommand}}
+
+	out := captureColor(t)
+	err := app.Run([]string{"t", "cursor", "install"})
+	assert.ErrorIs(t, err, model.ErrProjectHooksUnsupported)
+	assert.Contains(t, stripANSI(out.String()), "macOS and Linux only")
+	assert.NoFileExists(t, filepath.Join(repo, ".cursor", "hooks.json"))
+}
+
 func TestCursorInstallCommand_RefusesTheHomeFolder(t *testing.T) {
 	home, _ := setupAgentHooksCommand(t)
 	t.Chdir(home)
@@ -103,6 +118,33 @@ func TestCursorUninstallCommand_OutsideAProjectCleansTheUserFile(t *testing.T) {
 	status, err := model.NewCursorHooksService().Status()
 	require.NoError(t, err)
 	assert.False(t, status.Installed)
+}
+
+func TestCursorUninstallCommand_NothingToRemoveOutsideAProject(t *testing.T) {
+	home, _ := setupAgentHooksCommand(t)
+	t.Chdir(home)
+	app := &cli.App{Name: "t", Commands: []*cli.Command{CursorCommand}}
+
+	out := captureColor(t)
+	require.NoError(t, app.Run([]string{"t", "cursor", "uninstall"}))
+	assert.Contains(t, stripANSI(out.String()), "No Cursor hooks to remove here")
+}
+
+func TestAgyUninstallCommand_InvalidGlobalFileIsAWarning(t *testing.T) {
+	home, repo := setupAgentHooksCommand(t)
+	app := &cli.App{Name: "t", Commands: []*cli.Command{AgyCommand}}
+	captureColor(t)
+	require.NoError(t, app.Run([]string{"t", "agy", "install"}))
+	userPath := filepath.Join(home, ".gemini", "config", "hooks.json")
+	require.NoError(t, os.MkdirAll(filepath.Dir(userPath), 0755))
+	require.NoError(t, os.WriteFile(userPath, []byte("{\n// mine\n}"), 0644))
+
+	out := captureColor(t)
+	require.NoError(t, app.Run([]string{"t", "agy", "uninstall"}), "the project's hooks were removed, which is what was asked")
+	text := stripANSI(out.String())
+	assert.Contains(t, text, "Antigravity hooks removed from "+filepath.Join(repo, ".agents", "hooks.json"))
+	assert.Contains(t, text, "Couldn't read "+userPath)
+	assert.NotContains(t, text, "Failed")
 }
 
 func TestAgyInstallAndUninstallCommands(t *testing.T) {

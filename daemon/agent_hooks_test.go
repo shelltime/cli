@@ -379,6 +379,41 @@ func TestAgentHookBatcher_MarksCloudSessions(t *testing.T) {
 	}, clouds)
 }
 
+func TestAgentHookBatcher_YieldsToUserHooksUnlessCloud(t *testing.T) {
+	b := NewAgentHookBatcher(model.ShellTimeConfig{}, nil)
+	now := time.Date(2026, 11, 27, 10, 0, 0, 0, time.UTC)
+	b.now = func() time.Time { return now }
+	b.flushInterval = time.Hour
+	t.Cleanup(func() { b.cancel() })
+
+	yielding := func(id, session string) agenthook.Event {
+		ev := hookEvent(id, session, "/w")
+		ev.YieldToUserHooks = true
+		return ev
+	}
+	start := hookEvent("1", "cloud", "/w") // a Cloud Agent's sessionStart
+	start.Cloud = agenthook.CloudSignalCursorBackgroundAgent
+	b.Add(start)
+	b.Add(yielding("2", "cloud"))
+	b.Add(yielding("3", "local"))
+	b.Add(hookEvent("4", "local", "/w"))
+
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	var ids []string
+	for _, ev := range b.pending {
+		ids = append(ids, ev.ID)
+		assert.False(t, ev.YieldToUserHooks, "the mark stays in the daemon")
+	}
+	assert.Equal(t, []string{"1", "2", "4"}, ids, "a local session's yielding event is left to the user-level hook")
+}
+
+func TestPrepareAgentHookEvents_DropsTheYieldMark(t *testing.T) {
+	events := []agenthook.Event{{ID: "1", Agent: agenthook.AgentCursor, YieldToUserHooks: true}}
+	prepareAgentHookEvents(context.Background(), model.ShellTimeConfig{}, nil, events)
+	assert.False(t, events[0].YieldToUserHooks, "never sent to the server")
+}
+
 func TestAgentHookBatcher_PrunesCloudSessions(t *testing.T) {
 	isolateAgentHookHome(t)
 	b := NewAgentHookBatcher(model.ShellTimeConfig{}, nil)

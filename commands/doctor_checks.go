@@ -1098,15 +1098,15 @@ func doctorCheckProjectHooks(a doctorAgentHooks, file agentHooksFile) []doctorRe
 		results = append(results, doctorResult{
 			ID:      a.id + ".hook_tools",
 			Status:  doctorWarn,
-			Message: fmt.Sprintf("The %s hooks find %s neither on PATH nor in ~/.shelltime/bin, so they skip every event on this machine.", a.name, bin),
+			Message: fmt.Sprintf("The %s hooks find %s neither on PATH nor in ~/.shelltime/bin, /opt/homebrew/bin or /usr/local/bin, so they skip every event on this machine.", a.name, bin),
 			Fix:     "Reinstall ShellTime, or add the folder that holds shelltime and shelltime-daemon to PATH.",
 		})
 	}
 	return results
 }
 
-// projectHookToolFound reports whether a project hook command finds bin: on PATH, or in
-// ~/.shelltime/bin.
+// projectHookToolFound reports whether a project hook command finds bin: on PATH, or in one of
+// the folders the command adds to it (model.ProjectHookSearchDirs).
 func projectHookToolFound(bin string) bool {
 	if _, err := doctorLookPath(bin); err == nil {
 		return true
@@ -1115,17 +1115,32 @@ func projectHookToolFound(bin string) bool {
 	if err != nil {
 		return false
 	}
-	info, err := os.Stat(filepath.Join(home, model.COMMAND_BASE_STORAGE_FOLDER, "bin", bin))
-	return err == nil && !info.IsDir() && (runtime.GOOS == "windows" || info.Mode().Perm()&0o111 != 0)
+	for _, dir := range model.ProjectHookSearchDirs(home) {
+		info, err := os.Stat(filepath.Join(dir, bin))
+		if err == nil && !info.IsDir() && info.Mode().Perm()&0o111 != 0 {
+			return true
+		}
+	}
+	return false
 }
 
 // doctorCheckUserHooks reports the ShellTime hooks an older version installed in the agent's
-// user-level file. Working ones still record every project's events, and the projects' hooks
-// leave those events to them; ones whose binary is gone fail on every event.
+// user-level file, which name their binary by its absolute path. Working ones still record
+// every project's events, and the projects' hooks leave those events to them; ones whose binary
+// is gone fail on every event. A project's command copied into the file isn't one of them.
 func doctorCheckUserHooks(a doctorAgentHooks) []doctorResult {
 	user := a.hooks.user()
 	status, err := user.Status()
 	if err != nil || !status.Installed {
+		return nil
+	}
+	var binaries []string
+	for _, bin := range status.Binaries {
+		if filepath.IsAbs(bin) {
+			binaries = append(binaries, bin)
+		}
+	}
+	if len(binaries) == 0 {
 		return nil
 	}
 	remove := &doctorFix{
@@ -1133,7 +1148,7 @@ func doctorCheckUserHooks(a doctorAgentHooks) []doctorResult {
 		Label: fmt.Sprintf("Remove the ShellTime hooks an older version put in %s", user.Path()),
 		Run:   func(*cli.Context) error { return removeUserAgentHooks(a.hooks) },
 	}
-	for _, bin := range status.Binaries {
+	for _, bin := range binaries {
 		var problem string
 		switch info, err := os.Stat(bin); {
 		case err != nil:

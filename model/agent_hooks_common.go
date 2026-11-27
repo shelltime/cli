@@ -27,9 +27,19 @@ const (
 	// project's, so such a run leaves the event to those when they record it too.
 	ProjectHookFlag = "--project"
 	// projectHookPath is added to the PATH a project hook command searches: where the install
-	// script puts shelltime and shelltime-daemon when it doesn't use Homebrew.
-	projectHookPath = "$HOME/.shelltime/bin"
+	// script puts shelltime and shelltime-daemon when it doesn't use Homebrew, then Homebrew's
+	// folders, which an app started from the Dock may not have on its PATH.
+	projectHookPath = "$HOME/.shelltime/bin:/opt/homebrew/bin:/usr/local/bin"
 )
+
+// ProjectHookSearchDirs are the folders a project hook command searches after PATH, for home.
+func ProjectHookSearchDirs(home string) []string {
+	return []string{filepath.Join(home, COMMAND_BASE_STORAGE_FOLDER, "bin"), "/opt/homebrew/bin", "/usr/local/bin"}
+}
+
+// ErrProjectHooksUnsupported is returned for installing project hooks on Windows: their command
+// is POSIX sh, and shelltime-daemon, which they record through, runs on macOS and Linux only.
+var ErrProjectHooksUnsupported = errors.New("the Cursor and Antigravity hooks need shelltime-daemon, which runs on macOS and Linux only")
 
 // ErrHomeIsNotAProject is returned for a project root that is the user's home folder, whose
 // .cursor/hooks.json is Cursor's user-level hook file, not a project's.
@@ -39,8 +49,8 @@ var ErrHomeIsNotAProject = errors.New("the home folder isn't a project; run this
 // the --agent value). The file is committed and runs on every machine that checks the
 // repository out, a cloud agent's VM included, and the agents disagree on the folder a hook
 // runs in, so the command is self-contained POSIX sh: where the shelltime CLI and its daemon are
-// installed (on PATH, or in ~/.shelltime/bin) it hands the event to hook-ingest; anywhere else
-// it answers with the reply that lets the agent carry on, so the hook never fails.
+// installed (on PATH, or in ProjectHookSearchDirs) it hands the event to hook-ingest; anywhere
+// else it answers with the reply that lets the agent carry on, so the hook never fails.
 func projectHookCommand(agent, event string) string {
 	return fmt.Sprintf("PATH=$PATH:%s; command -v %s >/dev/null 2>&1 && command -v %s >/dev/null 2>&1 && exec %s %s --agent %s --event %s %s; echo '%s'",
 		projectHookPath, ProjectHookCLI, ProjectHookDaemon,
@@ -82,18 +92,33 @@ type AgentHooksStatus struct {
 	MissingEvents []string
 	// Binaries are the shelltime binaries the registered commands run, each once.
 	Binaries []string
+	// EventBinaries are the binaries each managed event's commands run, by event.
+	EventBinaries map[string][]string
 }
 
-func (s *AgentHooksStatus) addBinary(bin string) {
+// addBinary records bin as run by event's commands.
+func (s *AgentHooksStatus) addBinary(event, bin string) {
 	if bin == "" {
 		return
 	}
-	for _, b := range s.Binaries {
-		if b == bin {
-			return
+	if s.EventBinaries == nil {
+		s.EventBinaries = map[string][]string{}
+	}
+	if !containsString(s.EventBinaries[event], bin) {
+		s.EventBinaries[event] = append(s.EventBinaries[event], bin)
+	}
+	if !containsString(s.Binaries, bin) {
+		s.Binaries = append(s.Binaries, bin)
+	}
+}
+
+func containsString(values []string, s string) bool {
+	for _, v := range values {
+		if v == s {
+			return true
 		}
 	}
-	s.Binaries = append(s.Binaries, bin)
+	return false
 }
 
 // hookCommandBinary returns the binary a hook command runs hook-ingest with: the text before

@@ -181,7 +181,7 @@ func (s *CursorHooksService) Status() (AgentHooksStatus, error) {
 			for _, entry := range entries {
 				if _, command, ok := commandField(entry); ok && strings.Contains(command, cursorHookMarker) {
 					found = true
-					status.addBinary(hookCommandBinary(command))
+					status.addBinary(event, hookCommandBinary(command))
 				}
 			}
 		}

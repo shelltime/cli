@@ -108,12 +108,22 @@ func (b *AgentHookBatcher) SetConfigService(cs model.ConfigService) {
 
 // Add queues an event. An event without a session id gets the last one an event carried for
 // its agent and workspace within agentHookSessionTTL (Cursor sometimes sends tool events with
-// an empty conversation_id), and one of a cloud session is marked as cloud. After Shutdown the
-// event is saved for the resync service instead.
+// an empty conversation_id), and one of a cloud session is marked as cloud. An event that
+// yields to an older version's user-level hook is dropped unless its session is a cloud run,
+// whose agent runs no user-level hooks. After Shutdown the event is saved for the resync service
+// instead.
 func (b *AgentHookBatcher) Add(ev agenthook.Event) {
 	b.mu.Lock()
 	b.fillSessionLocked(&ev)
 	b.fillCloudLocked(&ev)
+	if ev.YieldToUserHooks {
+		if ev.Cloud == "" {
+			b.mu.Unlock()
+			slog.Debug("Agent hook event left to the user-level hook", slog.String("agent", ev.Agent), slog.String("eventType", ev.EventType))
+			return
+		}
+		ev.YieldToUserHooks = false
+	}
 	if b.closed {
 		b.mu.Unlock()
 		// No repository lookup here: git can take seconds, and hook-ingest waits for the answer
@@ -282,6 +292,8 @@ func prepareAgentHookEvents(ctx context.Context, cfg model.ShellTimeConfig, repo
 	repositories := map[string]string{}
 	for i := range events {
 		ev := &events[i]
+		// Meant for the daemon alone
+		ev.YieldToUserHooks = false
 		switch {
 		case !sendsRepository:
 			ev.Repository = ""

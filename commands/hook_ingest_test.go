@@ -311,6 +311,31 @@ func TestHookIngest_SendsToDaemon(t *testing.T) {
 	assert.Empty(t, pendingHookEvents(t), "nothing saved locally")
 }
 
+// With a daemon, a project hook's event that a user-level hook records too goes to the daemon
+// marked to yield: only the daemon knows whether the session is a cloud run.
+func TestHookIngest_ProjectHookLeavesTheYieldToTheDaemon(t *testing.T) {
+	h := setupHookIngest(t, strings.NewReader(cursorStopPayload))
+	installUserCursorHooks(t, "")
+	socketPath, got := fakeHookDaemon(t, `{"status":"ok"}`)
+	trackSocketPath = socketPath
+
+	h.run(t, "--agent", "cursor", "--event", "stop", "--project")
+
+	h.assertOnlyReply(t, `{}`)
+	select {
+	case msg := <-got:
+		raw, err := json.Marshal(msg.Payload)
+		require.NoError(t, err)
+		var ev agenthook.Event
+		require.NoError(t, json.Unmarshal(raw, &ev))
+		assert.True(t, ev.YieldToUserHooks)
+		assert.Equal(t, agenthook.EventStop, ev.EventType)
+	case <-time.After(time.Second):
+		t.Fatal("the daemon got no message")
+	}
+	assert.Empty(t, pendingHookEvents(t))
+}
+
 func TestHookIngest_DaemonOnConfiguredSocket(t *testing.T) {
 	h := setupHookIngest(t, strings.NewReader(`{"conversationId":"a"}`))
 	socketPath, got := fakeHookDaemon(t, `{"status":"ok"}`)
@@ -428,6 +453,7 @@ func TestHookIngest_ProjectHookRecordsWithoutUserHooks(t *testing.T) {
 
 func TestHookIngest_ProjectHookLeavesTheEventToUserHooks(t *testing.T) {
 	h := setupHookIngest(t, strings.NewReader(cursorStopPayload))
+	h.config.On("ReadConfigFile", mock.Anything).Return(model.ShellTimeConfig{}, nil)
 	installUserCursorHooks(t, "")
 
 	h.run(t, "--agent", "cursor", "--event", "stop", "--project")
@@ -511,6 +537,7 @@ func TestHookIngest_ProjectHookRecordsCloudEvents(t *testing.T) {
 
 func TestHookIngest_ProjectFlagAfterAUsageError(t *testing.T) {
 	h := setupHookIngest(t, strings.NewReader(cursorStopPayload))
+	h.config.On("ReadConfigFile", mock.Anything).Return(model.ShellTimeConfig{}, nil)
 	installUserCursorHooks(t, "")
 	args := []string{"--bogus", "--agent", "cursor", "--event", "stop", "--project"}
 	hookIngestRawArgs = func() []string { return append([]string{"shelltime", "hook-ingest"}, args...) }
@@ -541,6 +568,25 @@ func TestHookBinaryExists(t *testing.T) {
 	assert.False(t, hookBinaryExists(filepath.Join(t.TempDir(), "shelltime")))
 	assert.False(t, hookBinaryExists(t.TempDir()), "a folder isn't a binary")
 	assert.False(t, hookBinaryExists("sh"), "a project command's PATH name isn't an older version's hook")
+}
+
+func TestUserHooksRecord_ChecksTheEventsOwnBinary(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	exe, err := os.Executable()
+	require.NoError(t, err)
+	path := model.NewCursorHooksService().Path()
+	require.NoError(t, os.MkdirAll(filepath.Dir(path), 0755))
+	data, err := json.Marshal(map[string]any{"version": 1, "hooks": map[string]any{
+		"beforeSubmitPrompt": []any{map[string]any{"command": legacyHookCommand(exe, "cursor", "beforeSubmitPrompt")}},
+		"stop":               []any{map[string]any{"command": legacyHookCommand(filepath.Join(home, "gone", "shelltime"), "cursor", "stop")}},
+	}})
+	require.NoError(t, err)
+	require.NoError(t, os.WriteFile(path, data, 0644))
+
+	assert.True(t, userHooksRecord(agenthook.AgentCursor, "beforeSubmitPrompt"))
+	assert.False(t, userHooksRecord(agenthook.AgentCursor, "stop"), "the stop hook runs a binary that's gone, whatever beforeSubmitPrompt's runs")
+	assert.False(t, userHooksRecord(agenthook.AgentCursor, "postToolUse"), "not registered at all")
 }
 
 func TestUserHooksRecord_ProjectCommandsInTheUserFile(t *testing.T) {

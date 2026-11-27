@@ -160,7 +160,7 @@ func (s *AntigravityHooksService) Status() (AgentHooksStatus, error) {
 		for _, command := range commands {
 			if strings.Contains(command, HookIngestSubcommand) {
 				found = true
-				status.addBinary(hookCommandBinary(command))
+				status.addBinary(event, hookCommandBinary(command))
 			}
 		}
 		if !found {

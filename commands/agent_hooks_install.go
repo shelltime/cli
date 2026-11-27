@@ -3,6 +3,7 @@ package commands
 import (
 	"errors"
 	"os"
+	"runtime"
 
 	"github.com/gookit/color"
 	"github.com/malamtime/cli/model"
@@ -16,6 +17,9 @@ type agentHooksFile interface {
 	Path() string
 }
 
+// agentHooksGOOS is the platform install checks; replaced in tests.
+var agentHooksGOOS = runtime.GOOS
+
 // agentHooks describes one agent for `<agent> install` and `<agent> uninstall`.
 type agentHooks struct {
 	name string // the agent, as messages name it
@@ -28,6 +32,8 @@ type agentHooks struct {
 	commit string
 	// restart says what to restart for the hooks to apply
 	restart string
+	// command is the install command
+	command string
 }
 
 var cursorHooks = agentHooks{
@@ -36,6 +42,7 @@ var cursorHooks = agentHooks{
 	user:    func() agentHooksFile { return model.NewCursorHooksService() },
 	commit:  "Commit it: Cursor Cloud Agents run only the hooks in the repository.",
 	restart: "Restart Cursor (the IDE and any running cursor-agent sessions) to apply them.",
+	command: "shelltime cursor install",
 }
 
 var antigravityHooks = agentHooks{
@@ -44,14 +51,20 @@ var antigravityHooks = agentHooks{
 	user:    func() agentHooksFile { return model.NewAntigravityHooksService() },
 	commit:  "Commit it: the Antigravity agent reads .agents/hooks.json from the repository its Gemini API sandbox mounts.",
 	restart: "Restart Antigravity (the app and any running agy sessions) to apply them.",
+	command: "shelltime agy install",
 }
 
 // installAgentHooks registers ShellTime in the hook file of the project the working directory
 // is in, then removes the hooks an older version installed in the agent's user-level file, so
-// the project's are the only ones.
+// the project's are the only ones. Windows is refused: the hook command is POSIX sh, and the
+// daemon it records through doesn't run there.
 func installAgentHooks(a agentHooks) error {
 	color.Yellow.Printf("Installing %s hooks...\n", a.name)
 
+	if agentHooksGOOS == "windows" {
+		color.Red.Printf("Failed to install the %s hooks: %v\n", a.name, model.ErrProjectHooksUnsupported)
+		return model.ErrProjectHooksUnsupported
+	}
 	root, err := currentProjectRoot()
 	if err != nil {
 		color.Red.Printf("Failed to find the project: %v\n", err)
@@ -89,15 +102,18 @@ func removeUserAgentHooks(a agentHooks) error {
 		return err
 	}
 	color.Green.Printf("Removed the ShellTime hooks an older version put in %s\n", user.Path())
+	color.Yellow.Printf("They tracked %s in every folder. Now each repository needs its own install: run `%s` in the others too.\n", a.name, a.command)
 	return nil
 }
 
 // uninstallAgentHooks removes ShellTime from the hook file of the project the working directory
 // is in, and from the agent's user-level file. Outside a project only the user-level file is
-// cleaned.
+// cleaned. A user-level file it can't read is reported and left alone, as install does: the
+// project's file is what this command is for.
 func uninstallAgentHooks(a agentHooks) error {
 	color.Yellow.Printf("Removing %s hooks...\n", a.name)
 
+	removed := false
 	root, err := currentProjectRoot()
 	switch {
 	case err == nil:
@@ -107,20 +123,26 @@ func uninstallAgentHooks(a agentHooks) error {
 			return err
 		}
 		color.Green.Printf("%s hooks removed from %s\n", a.name, svc.Path())
+		removed = true
 	case !errors.Is(err, model.ErrHomeIsNotAProject):
 		color.Red.Printf("Failed to find the project: %v\n", err)
 		return err
 	}
 
 	user := a.user()
-	if status, err := user.Status(); err == nil && !status.Installed {
-		return nil
+	status, err := user.Status()
+	switch {
+	case err != nil:
+		color.Yellow.Printf("Couldn't read %s, so any ShellTime hooks in it stay: %v\n", user.Path(), err)
+	case status.Installed:
+		if err := user.Uninstall(); err != nil {
+			color.Yellow.Printf("Couldn't remove the ShellTime hooks from %s: %v\n", user.Path(), err)
+			break
+		}
+		color.Green.Printf("%s hooks removed from %s\n", a.name, user.Path())
+	case !removed:
+		color.Yellow.Printf("No %s hooks to remove here: the home folder is no project, and %s has none.\n", a.name, user.Path())
 	}
-	if err := user.Uninstall(); err != nil {
-		color.Red.Printf("Failed to remove the %s hooks: %v\n", a.name, err)
-		return err
-	}
-	color.Green.Printf("%s hooks removed from %s\n", a.name, user.Path())
 	return nil
 }
 

@@ -86,9 +86,9 @@ func TestNormalize_CloudCursor(t *testing.T) {
 // asOSUser makes the user database name the process's user name (or fail when name is "").
 func asOSUser(t *testing.T, name string) {
 	t.Helper()
-	orig := lookupOSUser
-	t.Cleanup(func() { lookupOSUser = orig })
-	lookupOSUser = func() (string, error) {
+	orig := OSUserLookup
+	t.Cleanup(func() { OSUserLookup = orig })
+	OSUserLookup = func() (string, error) {
 		if name == "" {
 			return "", errors.New("unknown userid 1001")
 		}
