@@ -165,6 +165,27 @@ func TestSetConfigBoolTOML(t *testing.T) {
 			value: true,
 			want:  "[ai.agent]\nview = true\n",
 		},
+		{
+			name:  "replaces a key spelled in another case",
+			in:    "[ai.agent]\nView = true\n",
+			path:  agentView,
+			value: false,
+			want:  "[ai.agent]\nView = false\n",
+		},
+		{
+			name:  "finds a table spelled in another case",
+			in:    "[AI.Agent]\nview = false\n",
+			path:  agentView,
+			value: true,
+			want:  "[AI.Agent]\nview = true\n",
+		},
+		{
+			name:  "adds the key under a parent table spelled in another case",
+			in:    "[AI]\nshowTips = false\n",
+			path:  agentView,
+			value: true,
+			want:  "[AI]\nagent.view = true\nshowTips = false\n",
+		},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
@@ -187,10 +208,13 @@ func TestSetConfigBoolRefusesWhatItCantWriteCleanly(t *testing.T) {
 	// Encoding again would drop the documents after the first
 	_, err = setConfigBool([]byte("ai: {agent: {view: false}}\n---\nfoo: 1\n"), formatYAML, agentView, true)
 	assert.ErrorContains(t, err, "set it to true there by hand")
-	// A patch still works there
+	// A patch still works there, and a new key stays in the first document
 	got, err := setConfigBool([]byte("ai:\n  agent:\n    view: false\n---\nfoo: 1\n"), formatYAML, agentView, true)
 	require.NoError(t, err)
 	assert.Equal(t, "ai:\n  agent:\n    view: true\n---\nfoo: 1\n", string(got))
+	got, err = setConfigBool([]byte("token: x\n--- # second\nfoo: 1\n"), formatYAML, agentView, true)
+	require.NoError(t, err)
+	assert.Equal(t, "token: x\nai:\n  agent:\n    view: true\n--- # second\nfoo: 1\n", string(got))
 
 	_, err = setConfigBool([]byte("ai: [\n"), formatYAML, agentView, true)
 	assert.ErrorContains(t, err, "failed to parse config file")
@@ -299,6 +323,15 @@ func TestWriteConfigBoolsInAFolderThatTakesNoNewFile(t *testing.T) {
 	_, err := WriteConfigBools(dir, []ConfigBool{{Path: agentView, Value: true}})
 	require.NoError(t, err)
 	assert.Equal(t, "token: abc\nai:\n  agent:\n    view: true\n", readFixture(t, base))
+}
+
+func TestReplaceFileKeepingModeChangesNothingWhenItCantCreateAFile(t *testing.T) {
+	// Not a permission problem, so no in-place write that could cut the config short
+	path := filepath.Join(t.TempDir(), "missing", "config.yaml")
+	err := replaceFileKeepingMode(path, []byte("token: abc\n"), 0600)
+	assert.ErrorContains(t, err, "failed to write config file")
+	_, statErr := os.Stat(path)
+	assert.ErrorIs(t, statErr, os.ErrNotExist)
 }
 
 func TestWriteConfigBoolsErrors(t *testing.T) {

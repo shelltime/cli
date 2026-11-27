@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -119,11 +120,16 @@ func writeConfigBoolsToFile(file string, settings []ConfigBool) error {
 
 // replaceFileKeepingMode replaces path with data and gives it perm, so a failed write never
 // leaves a truncated config behind. The new file is the writer's, without the old one's
-// extended attributes or other hard links. A folder that takes no new file (a read-only
-// dotfiles checkout holding a writable config) gets the file rewritten in place instead.
+// extended attributes or other hard links. A folder that refuses a new file (a read-only
+// dotfiles checkout holding a writable config) gets the file rewritten in place instead; any
+// other failure (a full disk) changes nothing, since an in-place write could then leave the
+// config cut short.
 func replaceFileKeepingMode(path string, data []byte, perm os.FileMode) error {
 	tmp, err := os.CreateTemp(filepath.Dir(path), "."+filepath.Base(path)+".*")
 	if err != nil {
+		if !errors.Is(err, fs.ErrPermission) {
+			return fmt.Errorf("failed to write config file: %w", err)
+		}
 		if writeErr := os.WriteFile(path, data, perm); writeErr != nil {
 			return fmt.Errorf("failed to write config file: %w", writeErr)
 		}
@@ -185,7 +191,7 @@ func onlyConfigBoolChanged(original, edited []byte, format configFormat, path []
 	if err := unmarshalConfig(edited, format, &config); err != nil {
 		return false
 	}
-	setMapPath(want, path, value)
+	setMapPath(want, path, value, format == formatTOML)
 	return reflect.DeepEqual(want, got)
 }
 
@@ -206,8 +212,21 @@ func decodeConfigMap(data []byte, format configFormat) (map[string]any, error) {
 	return m, nil
 }
 
-func setMapPath(m map[string]any, path []string, value bool) {
+// setMapPath sets the boolean at path in m. With fold, a key already there in another case is
+// the one set, as go-toml reads TOML keys in any case.
+func setMapPath(m map[string]any, path []string, value bool, fold bool) {
+	spelled := func(m map[string]any, key string) string {
+		if fold {
+			for existing := range m {
+				if strings.EqualFold(existing, key) {
+					return existing
+				}
+			}
+		}
+		return key
+	}
 	for _, key := range path[:len(path)-1] {
+		key = spelled(m, key)
 		next, ok := m[key].(map[string]any)
 		if !ok {
 			next = map[string]any{}
@@ -215,7 +234,7 @@ func setMapPath(m map[string]any, path []string, value bool) {
 		}
 		m = next
 	}
-	m[path[len(path)-1]] = value
+	m[spelled(m, path[len(path)-1])] = value
 }
 
 // yamlBoolEdits returns candidate edits of a YAML config: the value or the missing keys
@@ -421,7 +440,7 @@ func yamlBlock(path []string, indent, unit int, lit, nl string) string {
 
 // yamlMappingEnd returns the offset just past the last line of the block mapping whose first
 // key is on line firstLine (1-based) at indent. Comments and blank lines after it belong to
-// what follows.
+// what follows, and a document marker (--- or ...) ends it.
 func yamlMappingEnd(data []byte, firstLine, indent int) int {
 	end, offset := len(data), 0
 	for i, line := range bytes.SplitAfter(data, []byte("\n")) {
@@ -434,12 +453,21 @@ func yamlMappingEnd(data []byte, firstLine, indent int) int {
 		if strings.TrimSpace(trimmed) == "" || strings.HasPrefix(trimmed, "#") {
 			continue
 		}
-		if len(text)-len(trimmed) < indent {
+		if len(text)-len(trimmed) < indent || yamlDocumentMarker(text) {
 			break
 		}
 		end = offset
 	}
 	return end
+}
+
+func yamlDocumentMarker(line string) bool {
+	for _, marker := range []string{"---", "..."} {
+		if rest, ok := strings.CutPrefix(line, marker); ok && (rest == "" || rest[0] == ' ' || rest[0] == '\t') {
+			return true
+		}
+	}
+	return false
 }
 
 // yamlOffset converts a yaml.v3 position (1-based line, 1-based column in characters) to a
@@ -506,7 +534,7 @@ func tomlBoolEdits(data []byte, path []string, value bool) ([][]byte, error) {
 	var edits [][]byte
 	best := -1
 	for i, h := range headers {
-		if len(h.path) < len(path) && hasPathPrefix(path, h.path) &&
+		if len(h.path) < len(path) && tomlPathHasPrefix(path, h.path) &&
 			(best < 0 || len(h.path) > len(headers[best].path)) {
 			best = i
 		}
@@ -533,14 +561,14 @@ func tomlFindBool(p *unstable.Parser, kv *unstable.Node, table, path []string) (
 	keys, _ := tomlKey(kv.Key())
 	full := append(slices.Clone(table), keys...)
 	value := kv.Value()
-	if slices.Equal(full, path) {
+	if len(full) == len(path) && tomlPathHasPrefix(path, full) {
 		if value.Kind != unstable.Bool {
 			return 0, 0, false
 		}
 		r := p.Range(value.Data)
 		return int(r.Offset), int(r.Offset + r.Length), true
 	}
-	if value.Kind == unstable.InlineTable && hasPathPrefix(path, full) {
+	if value.Kind == unstable.InlineTable && tomlPathHasPrefix(path, full) {
 		children := value.Children()
 		for children.Next() {
 			if start, end, ok := tomlFindBool(p, children.Node(), full, path); ok {
@@ -561,8 +589,9 @@ func tomlKey(it unstable.Iterator) ([]string, *unstable.Node) {
 	return parts, last
 }
 
-func hasPathPrefix(path, prefix []string) bool {
-	return len(prefix) <= len(path) && slices.Equal(path[:len(prefix)], prefix)
+// tomlPathHasPrefix compares keys in any case, as go-toml matches them to the config's fields.
+func tomlPathHasPrefix(path, prefix []string) bool {
+	return len(prefix) <= len(path) && slices.EqualFunc(path[:len(prefix)], prefix, strings.EqualFold)
 }
 
 // lineEnd returns the offset just past the line break at or after from.
