@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"time"
 
@@ -236,13 +237,13 @@ func userHooksRecord(agent, event string) bool {
 }
 
 // hookBinaryExists reports whether an older version's hook command runs a binary that is still
-// there: an absolute path to a file.
+// there: an absolute path to a file the agent can execute.
 func hookBinaryExists(bin string) bool {
 	if !filepath.IsAbs(bin) {
 		return false
 	}
 	info, err := os.Stat(bin)
-	return err == nil && !info.IsDir()
+	return err == nil && !info.IsDir() && (runtime.GOOS == "windows" || info.Mode().Perm()&0o111 != 0)
 }
 
 func containsFold(values []string, s string) bool {

@@ -567,6 +567,9 @@ func TestHookBinaryExists(t *testing.T) {
 	assert.True(t, hookBinaryExists(exe))
 	assert.False(t, hookBinaryExists(filepath.Join(t.TempDir(), "shelltime")))
 	assert.False(t, hookBinaryExists(t.TempDir()), "a folder isn't a binary")
+	notExecutable := filepath.Join(t.TempDir(), "shelltime")
+	require.NoError(t, os.WriteFile(notExecutable, []byte("#!/bin/sh\n"), 0644))
+	assert.False(t, hookBinaryExists(notExecutable), "the agent can't run a file that lost its executable bit")
 	assert.False(t, hookBinaryExists("sh"), "a project command's PATH name isn't an older version's hook")
 }
 
