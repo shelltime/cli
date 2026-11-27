@@ -174,9 +174,10 @@ func currentProjectRoot() (string, error) {
 // a cloud environment needs for it.
 func printProjectHooksNote() {
 	color.Gray.Println("The hooks record events only where shelltime and shelltime-daemon are installed (on PATH, or in")
-	color.Gray.Println("~/.shelltime/bin), each to that machine's account; anywhere else they let the agent carry on.")
-	color.Gray.Println("In a cloud environment, install shelltime, sign it in (`shelltime auth --token …`), keep")
-	color.Gray.Println("shelltime-daemon running and set SHELLTIME_CLOUD=true, so its sessions show as cloud sessions.")
+	color.Gray.Println("~/.shelltime/bin, /opt/homebrew/bin or /usr/local/bin), each to that machine's account; anywhere")
+	color.Gray.Println("else they let the agent carry on.")
+	color.Gray.Println("In a cloud environment, install shelltime, sign it in (`shelltime auth --token …`), set")
+	color.Gray.Println("SHELLTIME_CLOUD=true, and start shelltime-daemon with it set, so its sessions show as cloud sessions.")
 }
 
 // printAgentHooksPrivacyNote says what the Cursor or Antigravity hooks send.

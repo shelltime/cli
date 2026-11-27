@@ -148,6 +148,10 @@ func (s *AntigravityHooksService) Status() (AgentHooksStatus, error) {
 	if raw, ok := getField(root, AntigravityHookGroup); ok {
 		group, _ = decodeOrderedObject(raw)
 	}
+	if raw, ok := getField(group, "enabled"); ok && string(bytes.TrimSpace(raw)) == "false" {
+		// A disabled group runs none of its hooks
+		group = nil
+	}
 	for _, event := range agenthook.AntigravityEvents {
 		var commands []string
 		if raw, ok := getField(group, event); ok {
@@ -175,6 +179,10 @@ func (s *AntigravityHooksService) Status() (AgentHooksStatus, error) {
 func collectHookCommands(value any, commands []string) []string {
 	switch v := value.(type) {
 	case map[string]any:
+		// Antigravity runs nothing marked "enabled": false
+		if enabled, ok := v["enabled"].(bool); ok && !enabled {
+			return commands
+		}
 		if command, ok := v["command"].(string); ok {
 			commands = append(commands, command)
 		}

@@ -819,10 +819,13 @@ func TestDoctorCheckAntigravity(t *testing.T) {
 	assert.Equal(t, doctorOK, findDoctorResult(t, results, "antigravity.hooks").Status)
 	assert.Len(t, results, 1)
 
-	// An invalid global file is the user's own business now
+	// A global file Antigravity can't read is reported: it ignores every hook in it
 	require.NoError(t, os.MkdirAll(filepath.Join(home, ".gemini", "config"), 0755))
 	require.NoError(t, os.WriteFile(model.NewAntigravityHooksService().Path(), []byte("{,"), 0644))
-	assert.Len(t, doctorCheckAntigravity(env), 1)
+	user := findDoctorResult(t, doctorCheckAntigravity(env), "antigravity.user_hooks")
+	assert.Equal(t, doctorWarn, user.Status)
+	assert.Contains(t, user.Fix, "Fix the JSON")
+	assert.Nil(t, user.AutoFix)
 }
 
 func TestCommandDoctor_FixInstallsAgentHooks(t *testing.T) {

@@ -1143,7 +1143,16 @@ func projectHookToolFound(bin string) bool {
 func doctorCheckUserHooks(a doctorAgentHooks) []doctorResult {
 	user := a.hooks.user()
 	status, err := user.Status()
-	if err != nil || !status.Installed {
+	if err != nil {
+		// A missing file is no error; this one can't be read at all
+		return []doctorResult{{
+			ID:      a.id + ".user_hooks",
+			Status:  doctorWarn,
+			Message: fmt.Sprintf("%s can't be read, so %s ignores the hooks in it, any ShellTime hooks an older version left included: %v", user.Path(), a.name, err),
+			Fix:     fmt.Sprintf("Fix the JSON in %s (no comments, trailing commas or byte order mark).", user.Path()),
+		}}
+	}
+	if !status.Installed {
 		return nil
 	}
 	var binaries []string

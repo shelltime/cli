@@ -54,7 +54,7 @@ var ErrHomeIsNotAProject = errors.New("the home folder isn't a project; run this
 // shelltime from before hook-ingest exits non-zero with its error on stderr; its stdout is
 // dropped and the reply answers instead.
 func projectHookCommand(agent, event string) string {
-	return fmt.Sprintf("PATH=$PATH:%s; command -v %s >/dev/null 2>&1 && command -v %s >/dev/null 2>&1 && out=$(%s %s --agent %s --event %s %s) && printf '%%s\\n' \"$out\" || echo '%s'",
+	return fmt.Sprintf("PATH=${PATH:+$PATH:}%s; command -v %s >/dev/null 2>&1 && command -v %s >/dev/null 2>&1 && out=$(%s %s --agent %s --event %s %s) && printf '%%s\\n' \"$out\" || echo '%s'",
 		projectHookPath, ProjectHookCLI, ProjectHookDaemon,
 		ProjectHookCLI, HookIngestSubcommand, agent, event, ProjectHookFlag,
 		agenthook.PassThrough(agent, event))

@@ -85,7 +85,7 @@ func TestProjectHooksRoot(t *testing.T) {
 
 func TestProjectHookCommand(t *testing.T) {
 	assert.Equal(t,
-		`PATH=$PATH:$HOME/.shelltime/bin:/opt/homebrew/bin:/usr/local/bin; command -v shelltime >/dev/null 2>&1 && command -v shelltime-daemon >/dev/null 2>&1 && out=$(shelltime hook-ingest --agent cursor --event beforeSubmitPrompt --project) && printf '%s\n' "$out" || echo '{"continue":true}'`,
+		`PATH=${PATH:+$PATH:}$HOME/.shelltime/bin:/opt/homebrew/bin:/usr/local/bin; command -v shelltime >/dev/null 2>&1 && command -v shelltime-daemon >/dev/null 2>&1 && out=$(shelltime hook-ingest --agent cursor --event beforeSubmitPrompt --project) && printf '%s\n' "$out" || echo '{"continue":true}'`,
 		CursorProjectHookCommand("beforeSubmitPrompt"))
 	assert.True(t, strings.HasSuffix(CursorProjectHookCommand("stop"), `--event stop --project) && printf '%s\n' "$out" || echo '{}'`))
 	assert.True(t, strings.HasSuffix(AntigravityProjectHookCommand("Stop"), `--agent agy --event Stop --project) && printf '%s\n' "$out" || echo '{"decision":"allow"}'`))
@@ -103,6 +103,23 @@ func runProjectHookCommand(t *testing.T, command, path, home, payload string) st
 	out, err := cmd.Output()
 	require.NoError(t, err, "the hook never fails")
 	return string(out)
+}
+
+// With PATH empty, the command adds no empty entry, which would make sh search the folder the
+// hook runs in (the repository) and run a shelltime found there.
+func TestProjectHookCommand_EmptyPATHDoesNotSearchTheWorkingFolder(t *testing.T) {
+	if _, err := os.Stat("/bin/sh"); err != nil {
+		t.Skip("no /bin/sh")
+	}
+	dir := t.TempDir()
+	writeFile(t, filepath.Join(dir, "shelltime"), "#!/bin/sh\necho planted\n", 0755)
+	writeFile(t, filepath.Join(dir, "shelltime-daemon"), "#!/bin/sh\n", 0755)
+	cmd := exec.Command("/bin/sh", "-c", CursorProjectHookCommand("stop"))
+	cmd.Env = []string{"PATH=", "HOME=" + t.TempDir()}
+	cmd.Dir = dir
+	out, err := cmd.Output()
+	require.NoError(t, err)
+	assert.Equal(t, "{}\n", string(out), "the planted binary never runs")
 }
 
 func TestProjectHookCommand_RunsHookIngestOnlyWithTheCLIAndDaemon(t *testing.T) {
@@ -173,6 +190,26 @@ func TestCursorProjectHooks(t *testing.T) {
 
 	require.NoError(t, svc.Uninstall())
 	assert.JSONEq(t, `{"version":1,"hooks":{"afterFileEdit":[{"command":".cursor/hooks/format.sh"}]}}`, string(mustRead(t, path)))
+}
+
+func TestAntigravityStatus_SkipsDisabledHooks(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	svc := NewAntigravityHooksService()
+	writeFile(t, svc.Path(), `{"shelltime":{
+		"Stop":[{"type":"command","command":"`+legacyHookCommand("/a/shelltime", "agy", "Stop")+`","enabled":false}],
+		"PostToolUse":[{"matcher":"*","enabled":false,"hooks":[{"type":"command","command":"`+legacyHookCommand("/a/shelltime", "agy", "PostToolUse")+`"}]}],
+		"PreInvocation":[{"type":"command","command":"`+legacyHookCommand("/a/shelltime", "agy", "PreInvocation")+`","enabled":true}]}}`, 0644)
+	status, err := svc.Status()
+	require.NoError(t, err)
+	assert.Equal(t, map[string][]string{"PreInvocation": {"/a/shelltime"}}, status.EventBinaries, "Antigravity runs nothing marked enabled: false")
+	assert.Contains(t, status.MissingEvents, "Stop")
+	assert.Contains(t, status.MissingEvents, "PostToolUse")
+
+	writeFile(t, svc.Path(), `{"shelltime":{"enabled":false,
+		"Stop":[{"type":"command","command":"`+legacyHookCommand("/a/shelltime", "agy", "Stop")+`"}]}}`, 0644)
+	status, err = svc.Status()
+	require.NoError(t, err)
+	assert.False(t, status.Installed, "a disabled group runs none of its hooks")
 }
 
 func TestProjectHookSearchDirs(t *testing.T) {
