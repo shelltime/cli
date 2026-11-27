@@ -56,6 +56,11 @@ func TestResolveConfigSwitchesErrors(t *testing.T) {
 
 	_, err = resolveConfigSwitches([]string{"dataMasking"})
 	assert.ErrorContains(t, err, `unknown setting "dataMasking"`)
+
+	_, err = resolveConfigSwitches([]string{"ai.agent.view", "edit"})
+	assert.EqualError(t, err, "ai.agent.view is a setting, not a section: name it alone, or the section first, e.g. `ai.agent view,edit`")
+	_, err = resolveConfigSwitches([]string{"ai.showTips", "shareContext"})
+	assert.ErrorContains(t, err, "e.g. `ai showTips,shareContext`")
 }
 
 func setupConfigSetTest(t *testing.T, config string) string {

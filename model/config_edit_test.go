@@ -184,6 +184,14 @@ func TestSetConfigBoolRefusesWhatItCantWriteCleanly(t *testing.T) {
 	_, err = setConfigBool([]byte("ai: on\n"), formatYAML, agentView, true)
 	assert.ErrorContains(t, err, "set it to true there by hand")
 
+	// Encoding again would drop the documents after the first
+	_, err = setConfigBool([]byte("ai: {agent: {view: false}}\n---\nfoo: 1\n"), formatYAML, agentView, true)
+	assert.ErrorContains(t, err, "set it to true there by hand")
+	// A patch still works there
+	got, err := setConfigBool([]byte("ai:\n  agent:\n    view: false\n---\nfoo: 1\n"), formatYAML, agentView, true)
+	require.NoError(t, err)
+	assert.Equal(t, "ai:\n  agent:\n    view: true\n---\nfoo: 1\n", string(got))
+
 	_, err = setConfigBool([]byte("ai: [\n"), formatYAML, agentView, true)
 	assert.ErrorContains(t, err, "failed to parse config file")
 	_, err = setConfigBool([]byte("[ai\n"), formatTOML, agentView, true)
@@ -215,6 +223,29 @@ func TestWriteConfigBoolsWritesTheFileThatDecides(t *testing.T) {
 		assert.Equal(t, []string{local}, files)
 		assert.Equal(t, "token: abc\nai:\n  showTips: false\n", readFixture(t, base))
 		assert.Equal(t, "ai:\n  shareContext: false\n  agent:\n    view: true\n", readFixture(t, local))
+		assertConfigBool(t, dir, true)
+	})
+
+	t.Run("the base file when the local file doesn't load, as ReadConfigFile skips it", func(t *testing.T) {
+		dir := t.TempDir()
+		base := writeConfigFixture(t, dir, "config.yaml", "token: abc\n", 0644)
+		local := writeConfigFixture(t, dir, "config.local.yaml", "flushCount: nope\nai:\n  showTips: false\n", 0644)
+
+		files, err := WriteConfigBools(dir, []ConfigBool{{Path: agentView, Value: true}})
+		require.NoError(t, err)
+		assert.Equal(t, []string{base}, files)
+		assert.Equal(t, "flushCount: nope\nai:\n  showTips: false\n", readFixture(t, local))
+		assertConfigBool(t, dir, true)
+	})
+
+	t.Run("the local file when its TOML section is spelled in another case", func(t *testing.T) {
+		dir := t.TempDir()
+		writeConfigFixture(t, dir, "config.yaml", "token: abc\n", 0644)
+		local := writeConfigFixture(t, dir, "config.local.toml", "[AI]\nshowTips = false\n", 0644)
+
+		files, err := WriteConfigBools(dir, []ConfigBool{{Path: agentView, Value: true}})
+		require.NoError(t, err)
+		assert.Equal(t, []string{local}, files)
 		assertConfigBool(t, dir, true)
 	})
 
@@ -254,6 +285,20 @@ func TestWriteConfigBoolsKeepsTheFile(t *testing.T) {
 	entries, err := os.ReadDir(repo)
 	require.NoError(t, err)
 	assert.Len(t, entries, 1, "no temporary file is left behind")
+}
+
+func TestWriteConfigBoolsInAFolderThatTakesNoNewFile(t *testing.T) {
+	if runtime.GOOS == "windows" || os.Geteuid() == 0 {
+		t.Skip("needs folder permissions that apply")
+	}
+	dir := t.TempDir()
+	base := writeConfigFixture(t, dir, "config.yaml", "token: abc\n", 0644)
+	require.NoError(t, os.Chmod(dir, 0555))
+	t.Cleanup(func() { os.Chmod(dir, 0755) })
+
+	_, err := WriteConfigBools(dir, []ConfigBool{{Path: agentView, Value: true}})
+	require.NoError(t, err)
+	assert.Equal(t, "token: abc\nai:\n  agent:\n    view: true\n", readFixture(t, base))
 }
 
 func TestWriteConfigBoolsErrors(t *testing.T) {

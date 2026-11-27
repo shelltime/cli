@@ -38,7 +38,9 @@ const configSwitchDescription = `Settings:
 
 Name several settings of one section after it, separated by commas or spaces.
 The change goes to config.local.* when that file has the setting's section
-(it overrides config.yaml's), else to config.yaml. Comments and layout stay.`
+(it overrides config.yaml's), else to config.yaml. Only the setting's lines
+change, so comments and layout stay; for unusual YAML (a {...} mapping, a quoted
+value) the file is written again, which keeps comments but drops blank lines.`
 
 var ConfigEnableCommand *cli.Command = &cli.Command{
 	Name:      "enable",
@@ -127,6 +129,12 @@ func resolveConfigSwitches(args []string) ([]configSwitch, error) {
 	}
 	names := []string{args[0]}
 	if len(args) > 1 {
+		if sw, ok := findConfigSwitch(args[0]); ok {
+			section := sw.key[:strings.LastIndex(sw.key, ".")]
+			under := configSwitchesUnder(section)
+			return nil, fmt.Errorf("%s is a setting, not a section: name it alone, or the section first, e.g. `%s %s`",
+				sw.key, section, strings.Join(under[:min(2, len(under))], ","))
+		}
 		names = nil
 		for _, arg := range args[1:] {
 			for _, name := range strings.FieldsFunc(arg, func(r rune) bool { return r == ',' || unicode.IsSpace(r) }) {

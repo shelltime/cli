@@ -286,7 +286,7 @@ shelltime config disable ai.agent edit,delete
 shelltime config disable ai.showTips           # also: ai.shareContext
 ```
 
-The change goes to `config.local.yaml` when that file has an `ai` section (it replaces the base file's), else to `config.yaml`. Only the lines for the setting change: comments, blank lines and indentation stay. `shelltime q` still asks before it runs a delete command.
+The change goes to `config.local.yaml` when that file has an `ai` section (it replaces the base file's), else to `config.yaml`. Only the lines for the setting change: comments, blank lines and indentation stay. For unusual YAML (an inline `{...}` mapping or a quoted value) the file is written again, which keeps comments but drops blank lines. `shelltime q` still asks before it runs a delete command.
 
 ---
 

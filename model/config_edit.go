@@ -2,7 +2,9 @@ package model
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -33,11 +35,15 @@ func WriteConfigBools(configDir string, settings []ConfigBool) ([]string, error)
 	if files.baseFile == "" {
 		return nil, fmt.Errorf("%w in %s", ErrConfigNotFound, configDir)
 	}
-	// ReadConfigFile skips a local file that doesn't parse, so it decides nothing here either
-	var local map[string]any
+	// ReadConfigFile skips a local file that doesn't load as a config (a syntax error, or a
+	// value of the wrong type), so such a file decides nothing here either
+	var local *ShellTimeConfig
 	if files.localFile != "" {
 		if data, err := os.ReadFile(files.localFile); err == nil {
-			local, _ = decodeConfigMap(data, files.localFormat)
+			var config ShellTimeConfig
+			if unmarshalConfig(data, files.localFormat, &config) == nil {
+				local = &config
+			}
 		}
 	}
 
@@ -45,8 +51,7 @@ func WriteConfigBools(configDir string, settings []ConfigBool) ([]string, error)
 	byFile := map[string][]ConfigBool{}
 	for _, s := range settings {
 		file := files.baseFile
-		// A section left empty (`ai:`) decodes to nil and overrides nothing
-		if section, ok := local[s.Path[0]]; ok && section != nil {
+		if local != nil && setsSection(*local, files.localFormat, s.Path[0]) {
 			file = files.localFile
 		}
 		if _, seen := byFile[file]; !seen {
@@ -61,6 +66,26 @@ func WriteConfigBools(configDir string, settings []ConfigBool) ([]string, error)
 		}
 	}
 	return order, nil
+}
+
+// setsSection reports whether config, decoded from a local file, sets its top-level section key,
+// which mergeConfig then takes over the base file's. It reads the field the decoder filled, so
+// a section left empty (`ai:`) sets nothing, and TOML's case-insensitive keys count too.
+func setsSection(config ShellTimeConfig, format configFormat, key string) bool {
+	v := reflect.ValueOf(config)
+	for i := 0; i < v.NumField(); i++ {
+		name, _, _ := strings.Cut(v.Type().Field(i).Tag.Get(string(format)), ",")
+		if name != key {
+			continue
+		}
+		switch field := v.Field(i); field.Kind() {
+		case reflect.Pointer, reflect.Slice, reflect.Map:
+			return !field.IsNil()
+		default:
+			return !field.IsZero()
+		}
+	}
+	return false
 }
 
 func writeConfigBoolsToFile(file string, settings []ConfigBool) error {
@@ -93,11 +118,16 @@ func writeConfigBoolsToFile(file string, settings []ConfigBool) error {
 }
 
 // replaceFileKeepingMode replaces path with data and gives it perm, so a failed write never
-// leaves a truncated config behind.
+// leaves a truncated config behind. The new file is the writer's, without the old one's
+// extended attributes or other hard links. A folder that takes no new file (a read-only
+// dotfiles checkout holding a writable config) gets the file rewritten in place instead.
 func replaceFileKeepingMode(path string, data []byte, perm os.FileMode) error {
 	tmp, err := os.CreateTemp(filepath.Dir(path), "."+filepath.Base(path)+".*")
 	if err != nil {
-		return fmt.Errorf("failed to write config file: %w", err)
+		if writeErr := os.WriteFile(path, data, perm); writeErr != nil {
+			return fmt.Errorf("failed to write config file: %w", writeErr)
+		}
+		return nil
 	}
 	defer os.Remove(tmp.Name()) // fails harmlessly once renamed
 
@@ -190,7 +220,8 @@ func setMapPath(m map[string]any, path []string, value bool) {
 
 // yamlBoolEdits returns candidate edits of a YAML config: the value or the missing keys
 // patched into the text, then the whole document encoded again, which keeps comments but not
-// blank lines (for flow mappings, quoted values and other shapes the patch leaves alone).
+// blank lines (for flow mappings, quoted values and other shapes the patch leaves alone; never
+// for a file of several documents).
 func yamlBoolEdits(data []byte, path []string, value bool) ([][]byte, error) {
 	var doc yaml.Node
 	if err := yaml.Unmarshal(data, &doc); err != nil {
@@ -200,10 +231,29 @@ func yamlBoolEdits(data []byte, path []string, value bool) ([][]byte, error) {
 	if edited, ok := patchYAMLBool(data, &doc, path, value); ok {
 		edits = append(edits, edited)
 	}
-	if edited, ok := reencodeYAMLBool(data, path, value); ok {
-		edits = append(edits, edited)
+	// Encoding keeps only the first document, and the check after it reads only that one
+	if yamlDocuments(data) <= 1 {
+		if edited, ok := reencodeYAMLBool(data, path, value); ok {
+			edits = append(edits, edited)
+		}
 	}
 	return edits, nil
+}
+
+func yamlDocuments(data []byte) int {
+	dec := yaml.NewDecoder(bytes.NewReader(data))
+	count := 0
+	for {
+		var doc yaml.Node
+		if err := dec.Decode(&doc); err != nil {
+			// io.EOF, or a later document that doesn't parse: count it so nothing is dropped
+			if !errors.Is(err, io.EOF) {
+				count++
+			}
+			return count
+		}
+		count++
+	}
 }
 
 func patchYAMLBool(data []byte, doc *yaml.Node, path []string, value bool) ([]byte, bool) {
