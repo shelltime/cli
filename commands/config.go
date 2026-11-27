@@ -7,5 +7,7 @@ var ConfigCommand *cli.Command = &cli.Command{
 	Usage: "manage shelltime configuration",
 	Subcommands: []*cli.Command{
 		ConfigViewCommand,
+		ConfigEnableCommand,
+		ConfigDisableCommand,
 	},
 }

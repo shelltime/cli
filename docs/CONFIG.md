@@ -214,7 +214,7 @@ ShellTime includes AI-powered command suggestions via `shelltime q`.
 
 ```yaml
 ai:
-  # Show helpful tips when using AI features
+  # Show a tip after every fifth `shelltime q` that has one
   showTips: true
 
   # Send context about where you run `shelltime q` (default: true)
@@ -276,6 +276,17 @@ ai:
     edit: false   # Requires confirmation
     delete: false # Always requires confirmation
 ```
+
+You can change these from the command line instead of editing the file:
+
+```bash
+shelltime config enable ai.agent view          # one level
+shelltime config enable ai.agent view,edit     # several, separated by commas or spaces
+shelltime config disable ai.agent edit,delete
+shelltime config disable ai.showTips           # also: ai.shareContext
+```
+
+The change goes to `config.local.yaml` when that file has an `ai` section (it replaces the base file's), else to `config.yaml`. Only the lines for the setting change: comments, blank lines and indentation stay. `shelltime q` still asks before it runs a delete command.
 
 ---
 
@@ -568,6 +579,7 @@ All ShellTime data lives in `~/.shelltime/`:
 ├── config.yaml          # Main configuration
 ├── config.local.yaml    # Local overrides (add to .gitignore)
 ├── log.log              # CLI logs
+├── query-tip.count      # When `shelltime q` shows its next tip
 ├── sync-pending.jsonl   # Uploads queued for retry
 └── logs/                # Daemon logs (macOS)
 ```

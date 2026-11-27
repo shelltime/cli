@@ -126,6 +126,8 @@ Services initialize in `cmd/daemon/main.go`: check enabled flag → create → s
 ### Configuration
 - Main config: `$HOME/.shelltime/config.yaml` (YAML preferred; `config.yml` and `config.toml` are also accepted)
 - Local overrides: `$HOME/.shelltime/config.local.yaml` (merged over the base, gitignored)
+- `shelltime config enable|disable <setting> [names]` (`commands/config_set.go`, e.g. `ai.agent view,edit`) changes the boolean settings in `configSwitches` through `model.WriteConfigBools` (`model/config_edit.go`): into the local file when it has the setting's top-level section, else the base file. It patches only the lines the setting needs (YAML through yaml.v3 node positions, TOML through go-toml's `unstable` parser) and keeps an edit only if the file then decodes to the old content plus that one value; a YAML shape the patch can't take is encoded again (comments kept, blank lines lost), a TOML one is refused with a message to edit it by hand. It writes through a symlink and keeps the file's mode
+- `shelltime q` shows its auto-run tip on every 5th call that has one (`takeQueryTipTurn`, count in `~/.shelltime/query-tip.count`; `queryTipCountPath`, which `commands/main_test.go` points at a temp dir); `ai.showTips: false` turns it off
 - Daemon socket: `/tmp/shelltime.sock` (configurable via `socketPath`)
 - AICodeOtel gRPC port: configurable via `aiCodeOtel.grpcPort` (default: 54027)
 - Outbound proxy: `proxy.url` / `proxy.noProxy` (http, https, socks5, socks5h). Applied once at startup via `model.ConfigureProxy`; every outbound HTTP client must use `model.NewHTTPClient` or `model.HTTPTransport()` so the proxy applies
