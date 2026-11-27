@@ -245,12 +245,3 @@ func hookBinaryExists(bin string) bool {
 	info, err := os.Stat(bin)
 	return err == nil && !info.IsDir() && (runtime.GOOS == "windows" || info.Mode().Perm()&0o111 != 0)
 }
-
-func containsFold(values []string, s string) bool {
-	for _, v := range values {
-		if strings.EqualFold(v, s) {
-			return true
-		}
-	}
-	return false
-}

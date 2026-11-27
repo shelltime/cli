@@ -60,17 +60,22 @@ func projectHookCommand(agent, event string) string {
 
 // ProjectHooksRoot returns the root of the project dir is in, where its agents look for project
 // hook files: the nearest folder up from dir that holds .git (a folder, or a file in a worktree
-// or submodule), else dir itself. The user's home folder is no project (ErrHomeIsNotAProject).
+// or submodule), else dir itself. The user's home folder is no project (ErrHomeIsNotAProject),
+// and the walk stops below it: a dotfiles repository in ~/.git makes no folder in home part of
+// one.
 func ProjectHooksRoot(dir string) (string, error) {
 	dir, err := filepath.Abs(dir)
 	if err != nil {
 		return "", err
 	}
-	root := dir
-	for d := dir; ; {
+	home, homeErr := os.UserHomeDir()
+	isHome := func(d string) bool { return homeErr == nil && sameFile(d, home) }
+	if isHome(dir) {
+		return "", ErrHomeIsNotAProject
+	}
+	for d := dir; !isHome(d); {
 		if _, err := os.Stat(filepath.Join(d, ".git")); err == nil {
-			root = d
-			break
+			return d, nil
 		}
 		parent := filepath.Dir(d)
 		if parent == d {
@@ -78,10 +83,7 @@ func ProjectHooksRoot(dir string) (string, error) {
 		}
 		d = parent
 	}
-	if home, err := os.UserHomeDir(); err == nil && sameFile(root, home) {
-		return "", ErrHomeIsNotAProject
-	}
-	return root, nil
+	return dir, nil
 }
 
 // AgentHooksStatus is what an agent's hook file says about the ShellTime hooks in it.

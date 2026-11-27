@@ -68,8 +68,18 @@ func TestProjectHooksRoot(t *testing.T) {
 		assert.Equal(t, sub, root, "a folder in it, outside a repository, is one")
 
 		require.NoError(t, os.Mkdir(filepath.Join(home, ".git"), 0755)) // dotfiles kept in git
-		_, err = ProjectHooksRoot(sub)
+		root, err = ProjectHooksRoot(sub)
+		require.NoError(t, err)
+		assert.Equal(t, sub, root, "a dotfiles repository in home doesn't swallow the folders in it")
+		_, err = ProjectHooksRoot(home)
 		assert.ErrorIs(t, err, ErrHomeIsNotAProject)
+
+		repo := filepath.Join(home, "code", "app")
+		require.NoError(t, os.MkdirAll(filepath.Join(repo, ".git"), 0755))
+		require.NoError(t, os.Mkdir(filepath.Join(repo, "web"), 0755))
+		root, err = ProjectHooksRoot(filepath.Join(repo, "web"))
+		require.NoError(t, err)
+		assert.Equal(t, repo, root, "a repository under home is found as before")
 	})
 }
 
