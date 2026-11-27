@@ -54,7 +54,7 @@ var ErrHomeIsNotAProject = errors.New("the home folder isn't a project; run this
 // shelltime from before hook-ingest exits non-zero with its error on stderr; its stdout is
 // dropped and the reply answers instead.
 func projectHookCommand(agent, event string) string {
-	return fmt.Sprintf("PATH=$PATH:%s; command -v %s >/dev/null 2>&1 && command -v %s >/dev/null 2>&1 && out=$(%s %s --agent %s --event %s %s) && printf '%%s\\n' \"$out\" || echo '%s'",
+	return fmt.Sprintf("PATH=${PATH:+$PATH:}%s; command -v %s >/dev/null 2>&1 && command -v %s >/dev/null 2>&1 && out=$(%s %s --agent %s --event %s %s) && printf '%%s\\n' \"$out\" || echo '%s'",
 		projectHookPath, ProjectHookCLI, ProjectHookDaemon,
 		ProjectHookCLI, HookIngestSubcommand, agent, event, ProjectHookFlag,
 		agenthook.PassThrough(agent, event))
@@ -90,8 +90,12 @@ func ProjectHooksRoot(dir string) (string, error) {
 
 // AgentHooksStatus is what an agent's hook file says about the ShellTime hooks in it.
 type AgentHooksStatus struct {
-	// Installed is true when the file registers ShellTime for at least one event.
+	// Installed is true when the file registers ShellTime for at least one event, counting only
+	// hooks the agent runs (Antigravity skips what is marked "enabled": false).
 	Installed bool
+	// Present is true when the file holds ShellTime hooks at all, disabled ones included: what
+	// Uninstall removes.
+	Present bool
 	// MissingEvents are the managed events ShellTime isn't registered for, in install order.
 	MissingEvents []string
 	// Binaries are the shelltime binaries the registered commands run, each once.

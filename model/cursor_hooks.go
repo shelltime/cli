@@ -190,6 +190,15 @@ func (s *CursorHooksService) Status() (AgentHooksStatus, error) {
 		}
 	}
 	status.Installed = len(status.MissingEvents) < len(agenthook.CursorEvents)
+	// Uninstall removes ShellTime's commands under every event, retired ones included
+	for _, f := range hooks {
+		if entries, err := decodeJSONArray(f.Value); err == nil {
+			if _, removed := removeHookEntries(entries, cursorHookMarker); removed > 0 {
+				status.Present = true
+				break
+			}
+		}
+	}
 	return status, nil
 }
 

@@ -85,7 +85,7 @@ func TestProjectHooksRoot(t *testing.T) {
 
 func TestProjectHookCommand(t *testing.T) {
 	assert.Equal(t,
-		`PATH=$PATH:$HOME/.shelltime/bin:/opt/homebrew/bin:/usr/local/bin; command -v shelltime >/dev/null 2>&1 && command -v shelltime-daemon >/dev/null 2>&1 && out=$(shelltime hook-ingest --agent cursor --event beforeSubmitPrompt --project) && printf '%s\n' "$out" || echo '{"continue":true}'`,
+		`PATH=${PATH:+$PATH:}$HOME/.shelltime/bin:/opt/homebrew/bin:/usr/local/bin; command -v shelltime >/dev/null 2>&1 && command -v shelltime-daemon >/dev/null 2>&1 && out=$(shelltime hook-ingest --agent cursor --event beforeSubmitPrompt --project) && printf '%s\n' "$out" || echo '{"continue":true}'`,
 		CursorProjectHookCommand("beforeSubmitPrompt"))
 	assert.True(t, strings.HasSuffix(CursorProjectHookCommand("stop"), `--event stop --project) && printf '%s\n' "$out" || echo '{}'`))
 	assert.True(t, strings.HasSuffix(AntigravityProjectHookCommand("Stop"), `--agent agy --event Stop --project) && printf '%s\n' "$out" || echo '{"decision":"allow"}'`))
@@ -96,7 +96,7 @@ func TestProjectHookCommand(t *testing.T) {
 // HOME as given and payload on stdin, and returns its stdout.
 func runProjectHookCommand(t *testing.T, command, path, home, payload string) string {
 	t.Helper()
-	cmd := exec.Command("/bin/sh", "-c", command)
+	cmd := exec.Command("/bin/sh", "-c", isolateSystemDirs(t, command))
 	cmd.Env = []string{"PATH=" + path, "HOME=" + home}
 	cmd.Stdin = strings.NewReader(payload)
 	cmd.Dir = t.TempDir() // the agents disagree on the folder a hook runs in
@@ -105,17 +105,48 @@ func runProjectHookCommand(t *testing.T, command, path, home, payload string) st
 	return string(out)
 }
 
+// isolateSystemDirs points the command's system folders at empty ones, so a ShellTime installed
+// on the machine running the tests is never found, and never reaches that machine's daemon.
+func isolateSystemDirs(t *testing.T, command string) string {
+	t.Helper()
+	for _, dir := range []string{"/opt/homebrew/bin", "/usr/local/bin"} {
+		require.Contains(t, command, dir)
+		command = strings.ReplaceAll(command, dir, t.TempDir())
+	}
+	return command
+}
+
+// With PATH empty, the command adds no empty entry, which would make sh search the folder the
+// hook runs in (the repository) and run a shelltime found there.
+func TestProjectHookCommand_EmptyPATHDoesNotSearchTheWorkingFolder(t *testing.T) {
+	if _, err := os.Stat("/bin/sh"); err != nil {
+		t.Skip("no /bin/sh")
+	}
+	dir := t.TempDir()
+	writeFile(t, filepath.Join(dir, "shelltime"), "#!/bin/sh\necho planted\n", 0755)
+	writeFile(t, filepath.Join(dir, "shelltime-daemon"), "#!/bin/sh\n", 0755)
+	cmd := exec.Command("/bin/sh", "-c", isolateSystemDirs(t, CursorProjectHookCommand("stop")))
+	cmd.Env = []string{"PATH=", "HOME=" + t.TempDir()}
+	cmd.Dir = dir
+	out, err := cmd.Output()
+	require.NoError(t, err)
+	assert.NotContains(t, string(out), "planted")
+	assert.Equal(t, "{}\n", string(out), "nothing else was found either")
+}
+
 func TestProjectHookCommand_RunsHookIngestOnlyWithTheCLIAndDaemon(t *testing.T) {
 	if _, err := os.Stat("/bin/sh"); err != nil {
 		t.Skip("no /bin/sh")
 	}
-	sysPath := "/usr/bin:/bin"
+	// The command needs nothing from the system (its tools are shell builtins and the fakes
+	// start with #!/bin/sh), so a ShellTime installed in /usr/bin is never found either
+	sysPath := t.TempDir()
 	home := t.TempDir()
 	fake := func(dir, name, script string) {
 		writeFile(t, filepath.Join(dir, name), "#!/bin/sh\n"+script, 0755)
 	}
 	// A fake shelltime that shows how it was run
-	cli := `echo "ran $*"; cat >/dev/null` + "\n"
+	cli := `echo "ran $*"; while read -r _; do :; done` + "\n"
 
 	command := CursorProjectHookCommand("beforeSubmitPrompt")
 	assert.Equal(t, "{\"continue\":true}\n", runProjectHookCommand(t, command, sysPath, home, "{}"), "nothing installed: the agent carries on")
@@ -173,6 +204,50 @@ func TestCursorProjectHooks(t *testing.T) {
 
 	require.NoError(t, svc.Uninstall())
 	assert.JSONEq(t, `{"version":1,"hooks":{"afterFileEdit":[{"command":".cursor/hooks/format.sh"}]}}`, string(mustRead(t, path)))
+}
+
+func TestAntigravityStatus_SkipsDisabledHooks(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	svc := NewAntigravityHooksService()
+	writeFile(t, svc.Path(), `{"shelltime":{
+		"Stop":[{"type":"command","command":"`+legacyHookCommand("/a/shelltime", "agy", "Stop")+`","enabled":false}],
+		"PostToolUse":[{"matcher":"*","enabled":false,"hooks":[{"type":"command","command":"`+legacyHookCommand("/a/shelltime", "agy", "PostToolUse")+`"}]}],
+		"PreInvocation":[{"type":"command","command":"`+legacyHookCommand("/a/shelltime", "agy", "PreInvocation")+`","enabled":true}]}}`, 0644)
+	status, err := svc.Status()
+	require.NoError(t, err)
+	assert.Equal(t, map[string][]string{"PreInvocation": {"/a/shelltime"}}, status.EventBinaries, "Antigravity runs nothing marked enabled: false")
+	assert.Contains(t, status.MissingEvents, "Stop")
+	assert.Contains(t, status.MissingEvents, "PostToolUse")
+
+	writeFile(t, svc.Path(), `{"shelltime":{"enabled":false,
+		"Stop":[{"type":"command","command":"`+legacyHookCommand("/a/shelltime", "agy", "Stop")+`"}]}}`, 0644)
+	status, err = svc.Status()
+	require.NoError(t, err)
+	assert.False(t, status.Installed, "a disabled group runs none of its hooks")
+	assert.True(t, status.Present, "but Uninstall still removes it")
+
+	writeFile(t, svc.Path(), `{"other":{}}`, 0644)
+	status, err = svc.Status()
+	require.NoError(t, err)
+	assert.False(t, status.Present)
+}
+
+func TestCursorStatus_PresentCountsRetiredEvents(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	svc := NewCursorHooksService()
+	writeFile(t, svc.Path(), `{"version":1,"hooks":{
+		"retiredEvent":[{"command":"`+legacyHookCommand("/a/shelltime", "cursor", "retiredEvent")+`"},{"command":"say hi"}],
+		"stop":[{"command":"say done"}]}}`, 0644)
+	status, err := svc.Status()
+	require.NoError(t, err)
+	assert.False(t, status.Installed, "no managed event records")
+	assert.True(t, status.Present, "Uninstall removes the command under the retired event")
+
+	require.NoError(t, svc.Uninstall())
+	status, err = svc.Status()
+	require.NoError(t, err)
+	assert.False(t, status.Present)
+	assert.JSONEq(t, `{"version":1,"hooks":{"retiredEvent":[{"command":"say hi"}],"stop":[{"command":"say done"}]}}`, string(mustRead(t, svc.Path())))
 }
 
 func TestProjectHookSearchDirs(t *testing.T) {
