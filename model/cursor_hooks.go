@@ -190,6 +190,7 @@ func (s *CursorHooksService) Status() (AgentHooksStatus, error) {
 		}
 	}
 	status.Installed = len(status.MissingEvents) < len(agenthook.CursorEvents)
+	status.Present = status.Installed
 	return status, nil
 }
 

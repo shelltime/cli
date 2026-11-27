@@ -206,6 +206,25 @@ func TestAgyInstallAndUninstallCommands(t *testing.T) {
 	assert.JSONEq(t, `{}`, string(data))
 }
 
+func TestAgyUninstallCommand_RemovesADisabledGroup(t *testing.T) {
+	home, repo := setupAgentHooksCommand(t)
+	userPath := filepath.Join(home, ".gemini", "config", "hooks.json")
+	require.NoError(t, os.MkdirAll(filepath.Dir(userPath), 0755))
+	require.NoError(t, os.WriteFile(userPath, []byte(`{"shelltime":{"enabled":false,"Stop":[{"type":"command","command":"/usr/local/bin/shelltime hook-ingest --agent agy --event Stop"}]},"mine":{}}`), 0644))
+	projectPath := filepath.Join(repo, ".agents", "hooks.json")
+	require.NoError(t, os.MkdirAll(filepath.Dir(projectPath), 0755))
+	require.NoError(t, os.WriteFile(projectPath, []byte(`{"shelltime":{"enabled":false}}`), 0644))
+	app := &cli.App{Name: "t", Commands: []*cli.Command{AgyCommand}}
+
+	out := captureColor(t)
+	require.NoError(t, app.Run([]string{"t", "agy", "uninstall"}))
+	text := stripANSI(out.String())
+	assert.Contains(t, text, "Antigravity hooks removed from "+projectPath)
+	assert.Contains(t, text, "Antigravity hooks removed from "+userPath)
+	assert.JSONEq(t, `{}`, string(mustReadFile(t, projectPath)))
+	assert.JSONEq(t, `{"mine":{}}`, string(mustReadFile(t, userPath)), "disabled hooks would run again once enabled")
+}
+
 func TestAgyInstallCommand_LeavesAnInvalidGlobalFileAlone(t *testing.T) {
 	home, repo := setupAgentHooksCommand(t)
 	userPath := filepath.Join(home, ".gemini", "config", "hooks.json")

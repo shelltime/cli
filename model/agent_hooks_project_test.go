@@ -210,6 +210,12 @@ func TestAntigravityStatus_SkipsDisabledHooks(t *testing.T) {
 	status, err = svc.Status()
 	require.NoError(t, err)
 	assert.False(t, status.Installed, "a disabled group runs none of its hooks")
+	assert.True(t, status.Present, "but Uninstall still removes it")
+
+	writeFile(t, svc.Path(), `{"other":{}}`, 0644)
+	status, err = svc.Status()
+	require.NoError(t, err)
+	assert.False(t, status.Present)
 }
 
 func TestProjectHookSearchDirs(t *testing.T) {

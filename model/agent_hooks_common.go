@@ -90,8 +90,12 @@ func ProjectHooksRoot(dir string) (string, error) {
 
 // AgentHooksStatus is what an agent's hook file says about the ShellTime hooks in it.
 type AgentHooksStatus struct {
-	// Installed is true when the file registers ShellTime for at least one event.
+	// Installed is true when the file registers ShellTime for at least one event, counting only
+	// hooks the agent runs (Antigravity skips what is marked "enabled": false).
 	Installed bool
+	// Present is true when the file holds ShellTime hooks at all, disabled ones included: what
+	// Uninstall removes.
+	Present bool
 	// MissingEvents are the managed events ShellTime isn't registered for, in install order.
 	MissingEvents []string
 	// Binaries are the shelltime binaries the registered commands run, each once.

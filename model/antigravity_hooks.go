@@ -146,6 +146,8 @@ func (s *AntigravityHooksService) Status() (AgentHooksStatus, error) {
 	}
 	var group []jsonField
 	if raw, ok := getField(root, AntigravityHookGroup); ok {
+		// Uninstall removes the whole group, whatever it holds
+		status.Present = true
 		group, _ = decodeOrderedObject(raw)
 	}
 	if raw, ok := getField(group, "enabled"); ok && string(bytes.TrimSpace(raw)) == "false" {

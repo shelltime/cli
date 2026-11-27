@@ -821,11 +821,17 @@ func TestDoctorCheckAntigravity(t *testing.T) {
 
 	// A global file Antigravity can't read is reported: it ignores every hook in it
 	require.NoError(t, os.MkdirAll(filepath.Join(home, ".gemini", "config"), 0755))
-	require.NoError(t, os.WriteFile(model.NewAntigravityHooksService().Path(), []byte("{,"), 0644))
+	userPath := model.NewAntigravityHooksService().Path()
+	require.NoError(t, os.WriteFile(userPath, []byte("{,"), 0644))
 	user := findDoctorResult(t, doctorCheckAntigravity(env), "antigravity.user_hooks")
 	assert.Equal(t, doctorWarn, user.Status)
 	assert.Contains(t, user.Fix, "Fix the JSON")
 	assert.Nil(t, user.AutoFix)
+
+	// One that is no JSON problem (a folder in its place) says nothing it can't back up
+	require.NoError(t, os.Remove(userPath))
+	require.NoError(t, os.Mkdir(userPath, 0755))
+	assert.False(t, hasDoctorResult(doctorCheckAntigravity(env), "antigravity.user_hooks"))
 }
 
 func TestCommandDoctor_FixInstallsAgentHooks(t *testing.T) {

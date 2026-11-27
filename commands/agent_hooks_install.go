@@ -95,7 +95,7 @@ func installAgentHooks(a agentHooks) error {
 func removeUserAgentHooks(a agentHooks) error {
 	user := a.user()
 	status, err := user.Status()
-	if err == nil && !status.Installed {
+	if err == nil && !status.Present {
 		return nil
 	}
 	if err == nil {
@@ -125,7 +125,7 @@ func uninstallAgentHooks(a agentHooks) error {
 	case err == nil:
 		svc := a.project(root)
 		status, err := svc.Status()
-		if err == nil && !status.Installed {
+		if err == nil && !status.Present {
 			break
 		}
 		if err == nil {
@@ -148,7 +148,7 @@ func uninstallAgentHooks(a agentHooks) error {
 	switch {
 	case err != nil:
 		color.Yellow.Printf("Couldn't read %s, so any ShellTime hooks in it stay: %v\n", user.Path(), err)
-	case status.Installed:
+	case status.Present:
 		if err := user.Uninstall(); err != nil {
 			color.Yellow.Printf("Couldn't remove the ShellTime hooks from %s: %v\n", user.Path(), err)
 			break
