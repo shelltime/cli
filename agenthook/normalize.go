@@ -210,6 +210,54 @@ func (p payload) number(key string) (float64, bool) {
 	return 0, false
 }
 
+// nonNegInt reads a non-negative integer field (JSON integer or ASCII decimal string).
+// Booleans, floats with fractional parts, negative numbers and values that don't fit in int
+// return false so bad counters never silently become zero.
+func (p payload) nonNegInt(key string) (int, bool) {
+	raw, ok := p[key]
+	if !ok {
+		return 0, false
+	}
+	raw = bytes.TrimSpace(raw)
+	if len(raw) == 0 {
+		return 0, false
+	}
+	if raw[0] == '"' {
+		var s string
+		if err := json.Unmarshal(raw, &s); err != nil {
+			return 0, false
+		}
+		if s == "" {
+			return 0, false
+		}
+		for i := 0; i < len(s); i++ {
+			if s[i] < '0' || s[i] > '9' {
+				return 0, false
+			}
+		}
+		v, err := strconv.Atoi(s)
+		if err != nil || v < 0 {
+			return 0, false
+		}
+		return v, true
+	}
+	// Reject booleans, objects, arrays, null and decimals
+	for i := 0; i < len(raw); i++ {
+		if raw[i] < '0' || raw[i] > '9' {
+			return 0, false
+		}
+	}
+	v, err := strconv.Atoi(string(raw))
+	if err != nil || v < 0 {
+		return 0, false
+	}
+	return v, true
+}
+
+func intPtr(v int) *int {
+	return &v
+}
+
 func (p payload) boolean(key string) (bool, bool) {
 	raw, ok := p[key]
 	if !ok {

@@ -38,9 +38,13 @@ func normalizeCursor(ev *Event, event string, p payload, getenv func(string) str
 		ev.SessionID = p.str("session_id")
 	}
 	ev.Model = p.str("model")
+	if ev.Model == "" {
+		ev.Model = p.str("model_id")
+	}
 	ev.Workspace = firstWorkspace(p.strs("workspace_roots"), p.str("cwd"), getenv("CURSOR_PROJECT_DIR"))
 	p.setStringMetadata(ev, "cursor_version", "cursor_version")
 	p.setStringMetadata(ev, "generation_id", "generation_id")
+	p.setStringMetadata(ev, "model_id", "model_id")
 	// A remote workspace may be a cloud agent's VM or one of the user's SSH hosts, so this is
 	// kept apart from the cloud signals
 	if getenv(cursorCodeRemoteEnvVar) == "true" {
@@ -80,6 +84,9 @@ func normalizeCursor(ev *Event, event string, p payload, getenv func(string) str
 		ev.EventType = EventStop
 		ev.Status = p.str("status")
 		p.setNumberMetadata(ev, "loop_count", "loop_count")
+		// Cursor reports the same turn token counts on both afterAgentResponse and stop
+		// for a given generation_id; read them only on stop so a turn is never counted twice.
+		applyCursorTokenUsage(ev, p)
 	case strings.ToLower(CursorSessionStart):
 		ev.EventType = EventSessionStart
 		p.setBoolMetadata(ev, "is_background_agent", "is_background_agent")
@@ -93,6 +100,46 @@ func normalizeCursor(ev *Event, event string, p payload, getenv func(string) str
 	default:
 		ev.EventType = EventOther
 	}
+}
+
+// applyCursorTokenUsage extracts Cursor's per-turn token counts from a stop payload.
+// Cursor's input_tokens includes cache_read_tokens and cache_write_tokens, so uncached input
+// is computed as max(0, input_tokens - cache_read_tokens - cache_write_tokens).
+func applyCursorTokenUsage(ev *Event, p payload) {
+	cacheRead, hasCacheRead := p.nonNegInt("cache_read_tokens")
+	cacheWrite, hasCacheWrite := firstNonNegInt(p, "cache_write_tokens", "cache_creation_tokens", "cache_creation_input_tokens")
+	rawInput, hasInput := p.nonNegInt("input_tokens")
+	output, hasOutput := p.nonNegInt("output_tokens")
+	reasoning, hasReasoning := p.nonNegInt("reasoning_tokens")
+
+	if hasInput {
+		uncached := rawInput - cacheRead - cacheWrite
+		if uncached < 0 {
+			uncached = 0
+		}
+		ev.InputTokens = intPtr(uncached)
+	}
+	if hasOutput {
+		ev.OutputTokens = intPtr(output)
+	}
+	if hasCacheRead {
+		ev.CacheReadTokens = intPtr(cacheRead)
+	}
+	if hasCacheWrite {
+		ev.CacheCreationTokens = intPtr(cacheWrite)
+	}
+	if hasReasoning {
+		ev.ReasoningTokens = intPtr(reasoning)
+	}
+}
+
+func firstNonNegInt(p payload, keys ...string) (int, bool) {
+	for _, k := range keys {
+		if v, ok := p.nonNegInt(k); ok {
+			return v, true
+		}
+	}
+	return 0, false
 }
 
 // cursorSurface guesses whether a Cursor hook runs in the IDE or in cursor-agent. Cursor
