@@ -222,7 +222,7 @@ Each hook is one self-contained shell command, the same on every machine that ch
 
 ### Cloud agents
 
-In a Cursor Cloud Agent's environment, install ShellTime, sign it in (`shelltime auth --token …`), keep `shelltime-daemon` running and set `SHELLTIME_CLOUD=true` in the environment's variables or secrets; the committed hooks do the rest. Cursor marks a cloud run only in `sessionStart` (`is_background_agent`), which the daemon passes on to the session's later events, so the variable is what marks every event. The Antigravity agent's Gemini API sandbox needs the same setup (its environment takes variables too), and its hooks are marked as cloud by the sandbox's OS user, `antigravity`, without the variable. Either way the machine collects AI coding agent usage only (see `aiCloudOnly` in [CONFIG.md](docs/CONFIG.md)). Claude Code cloud environments (`CLAUDE_CODE_REMOTE=true`) count as cloud too.
+In a Cursor Cloud Agent's environment, install ShellTime, sign it in (`shelltime auth --token …`), keep `shelltime-daemon` running and set `SHELLTIME_CLOUD=true` in the environment's variables or secrets; the committed hooks do the rest. Cursor marks a cloud run only in `sessionStart` (`is_background_agent`), which the daemon passes on to the session's later events, so the variable is what marks every event. The Antigravity agent's Gemini API sandbox needs the same setup (its environment takes variables too); its hooks are marked as cloud by the sandbox's OS user, `antigravity`, even without the variable. With the variable the machine collects AI coding agent usage only (see `aiCloudOnly` in [CONFIG.md](docs/CONFIG.md)). Claude Code cloud environments (`CLAUDE_CODE_REMOTE=true`) count as cloud too.
 
 ## Projects
 

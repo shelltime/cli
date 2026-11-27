@@ -19,8 +19,8 @@ func TestMain(m *testing.M) {
 	if spec := os.Getenv(storeAppenderEnv); spec != "" {
 		os.Exit(runStoreAppenderProcess(spec))
 	}
-	// An Antigravity sandbox runs as the OS user antigravity, which IsAICloudOnly counts as a
-	// cloud VM
+	// An Antigravity sandbox runs as the OS user antigravity, which marks Antigravity events as
+	// cloud
 	agenthook.OSUserLookup = func() (string, error) { return "shelltime-test", nil }
 	os.Exit(runInTempHome(m))
 }

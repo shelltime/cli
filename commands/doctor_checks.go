@@ -450,8 +450,6 @@ func doctorCheckConfig(env *doctorEnv) []doctorResult {
 			source = "aiCloudOnly is on in your config"
 		case agenthook.CloudEnvSignal(os.Getenv) == agenthook.CloudSignalEnv:
 			source = "on by default where SHELLTIME_CLOUD=true"
-		case agenthook.CloudEnvSignal(os.Getenv) == "" && agenthook.InAntigravitySandbox(os.Getenv):
-			source = "on by default in the Antigravity agent's sandbox"
 		}
 		results = append(results, doctorResult{
 			ID:      "config.ai_cloud_only",

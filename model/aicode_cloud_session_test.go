@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/malamtime/cli/agenthook"
 	"github.com/stretchr/testify/require"
 	"gopkg.in/yaml.v3"
 )
@@ -56,6 +57,17 @@ func TestIsAICloudOnly(t *testing.T) {
 			require.Equal(t, tt.want, IsAICloudOnly(tt.cfg, func(k string) string { return tt.env[k] }))
 		})
 	}
+}
+
+// The Antigravity sandbox's OS user marks Antigravity events as cloud, never the machine: a user
+// name is no reason to stop collecting its commands.
+func TestIsAICloudOnly_IgnoresTheSandboxUser(t *testing.T) {
+	orig := agenthook.OSUserLookup
+	agenthook.OSUserLookup = func() (string, error) { return agenthook.AntigravitySandboxUser, nil }
+	t.Cleanup(func() { agenthook.OSUserLookup = orig })
+
+	require.False(t, IsAICloudOnly(ShellTimeConfig{}, func(string) string { return "" }))
+	require.True(t, IsAICloudOnly(ShellTimeConfig{}, func(k string) string { return map[string]string{"SHELLTIME_CLOUD": "true"}[k] }))
 }
 
 // aiCloudOnly is read from either config file, and `shelltime auth` never writes it, so an
