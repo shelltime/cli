@@ -1,0 +1,40 @@
+{
+  "version": 1,
+  "hooks": {
+    "beforeSubmitPrompt": [
+      {
+        "command": "PATH=${PATH:+$PATH:}$HOME/.shelltime/bin:/opt/homebrew/bin:/usr/local/bin; command -v shelltime >/dev/null 2>&1 && command -v shelltime-daemon >/dev/null 2>&1 && out=$(shelltime hook-ingest --agent cursor --event beforeSubmitPrompt --project) && printf '%s\\n' \"$out\" || echo '{\"continue\":true}'"
+      }
+    ],
+    "postToolUse": [
+      {
+        "command": "PATH=${PATH:+$PATH:}$HOME/.shelltime/bin:/opt/homebrew/bin:/usr/local/bin; command -v shelltime >/dev/null 2>&1 && command -v shelltime-daemon >/dev/null 2>&1 && out=$(shelltime hook-ingest --agent cursor --event postToolUse --project) && printf '%s\\n' \"$out\" || echo '{}'"
+      }
+    ],
+    "postToolUseFailure": [
+      {
+        "command": "PATH=${PATH:+$PATH:}$HOME/.shelltime/bin:/opt/homebrew/bin:/usr/local/bin; command -v shelltime >/dev/null 2>&1 && command -v shelltime-daemon >/dev/null 2>&1 && out=$(shelltime hook-ingest --agent cursor --event postToolUseFailure --project) && printf '%s\\n' \"$out\" || echo '{}'"
+      }
+    ],
+    "afterAgentResponse": [
+      {
+        "command": "PATH=${PATH:+$PATH:}$HOME/.shelltime/bin:/opt/homebrew/bin:/usr/local/bin; command -v shelltime >/dev/null 2>&1 && command -v shelltime-daemon >/dev/null 2>&1 && out=$(shelltime hook-ingest --agent cursor --event afterAgentResponse --project) && printf '%s\\n' \"$out\" || echo '{}'"
+      }
+    ],
+    "stop": [
+      {
+        "command": "PATH=${PATH:+$PATH:}$HOME/.shelltime/bin:/opt/homebrew/bin:/usr/local/bin; command -v shelltime >/dev/null 2>&1 && command -v shelltime-daemon >/dev/null 2>&1 && out=$(shelltime hook-ingest --agent cursor --event stop --project) && printf '%s\\n' \"$out\" || echo '{}'"
+      }
+    ],
+    "sessionStart": [
+      {
+        "command": "PATH=${PATH:+$PATH:}$HOME/.shelltime/bin:/opt/homebrew/bin:/usr/local/bin; command -v shelltime >/dev/null 2>&1 && command -v shelltime-daemon >/dev/null 2>&1 && out=$(shelltime hook-ingest --agent cursor --event sessionStart --project) && printf '%s\\n' \"$out\" || echo '{}'"
+      }
+    ],
+    "sessionEnd": [
+      {
+        "command": "PATH=${PATH:+$PATH:}$HOME/.shelltime/bin:/opt/homebrew/bin:/usr/local/bin; command -v shelltime >/dev/null 2>&1 && command -v shelltime-daemon >/dev/null 2>&1 && out=$(shelltime hook-ingest --agent cursor --event sessionEnd --project) && printf '%s\\n' \"$out\" || echo '{}'"
+      }
+    ]
+  }
+}
