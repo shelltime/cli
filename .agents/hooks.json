@@ -1,0 +1,44 @@
+{
+  "shelltime": {
+    "SessionStart": [
+      {
+        "type": "command",
+        "command": "PATH=${PATH:+$PATH:}$HOME/.shelltime/bin:/opt/homebrew/bin:/usr/local/bin; command -v shelltime >/dev/null 2>&1 && command -v shelltime-daemon >/dev/null 2>&1 && out=$(shelltime hook-ingest --agent agy --event SessionStart --project) && printf '%s\\n' \"$out\" || echo '{}'",
+        "timeout": 15
+      }
+    ],
+    "PreInvocation": [
+      {
+        "type": "command",
+        "command": "PATH=${PATH:+$PATH:}$HOME/.shelltime/bin:/opt/homebrew/bin:/usr/local/bin; command -v shelltime >/dev/null 2>&1 && command -v shelltime-daemon >/dev/null 2>&1 && out=$(shelltime hook-ingest --agent agy --event PreInvocation --project) && printf '%s\\n' \"$out\" || echo '{}'",
+        "timeout": 15
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "PATH=${PATH:+$PATH:}$HOME/.shelltime/bin:/opt/homebrew/bin:/usr/local/bin; command -v shelltime >/dev/null 2>&1 && command -v shelltime-daemon >/dev/null 2>&1 && out=$(shelltime hook-ingest --agent agy --event PostToolUse --project) && printf '%s\\n' \"$out\" || echo '{}'",
+            "timeout": 15
+          }
+        ]
+      }
+    ],
+    "PostInvocation": [
+      {
+        "type": "command",
+        "command": "PATH=${PATH:+$PATH:}$HOME/.shelltime/bin:/opt/homebrew/bin:/usr/local/bin; command -v shelltime >/dev/null 2>&1 && command -v shelltime-daemon >/dev/null 2>&1 && out=$(shelltime hook-ingest --agent agy --event PostInvocation --project) && printf '%s\\n' \"$out\" || echo '{}'",
+        "timeout": 15
+      }
+    ],
+    "Stop": [
+      {
+        "type": "command",
+        "command": "PATH=${PATH:+$PATH:}$HOME/.shelltime/bin:/opt/homebrew/bin:/usr/local/bin; command -v shelltime >/dev/null 2>&1 && command -v shelltime-daemon >/dev/null 2>&1 && out=$(shelltime hook-ingest --agent agy --event Stop --project) && printf '%s\\n' \"$out\" || echo '{\"decision\":\"allow\"}'",
+        "timeout": 15
+      }
+    ]
+  }
+}
