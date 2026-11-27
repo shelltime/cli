@@ -450,6 +450,8 @@ func doctorCheckConfig(env *doctorEnv) []doctorResult {
 			source = "aiCloudOnly is on in your config"
 		case agenthook.CloudEnvSignal(os.Getenv) == agenthook.CloudSignalEnv:
 			source = "on by default where SHELLTIME_CLOUD=true"
+		case agenthook.CloudEnvSignal(os.Getenv) == "" && agenthook.InAntigravitySandbox(os.Getenv):
+			source = "on by default in the Antigravity agent's sandbox"
 		}
 		results = append(results, doctorResult{
 			ID:      "config.ai_cloud_only",
@@ -1000,8 +1002,7 @@ type doctorAgentHooks struct {
 	id      string // result id prefix
 	name    string // the agent, as the report names it
 	command string // the install command
-	path    string
-	status  func() (model.AgentHooksStatus, error)
+	hooks   agentHooks
 	fix     *doctorFix
 }
 
@@ -1009,16 +1010,14 @@ func doctorCheckCursor(env *doctorEnv) []doctorResult {
 	if !cursorDetected(doctorLookPath) {
 		return []doctorResult{{ID: "cursor.detected", Status: doctorSkip, Message: "Cursor wasn't found; skipped its checks."}}
 	}
-	svc := model.NewCursorHooksService()
 	return doctorCheckAgentHooks(doctorAgentHooks{
 		id:      "cursor",
 		name:    "Cursor",
 		command: "shelltime cursor install",
-		path:    svc.Path(),
-		status:  svc.Status,
+		hooks:   cursorHooks,
 		fix: &doctorFix{
 			Key:   "cursor.install",
-			Label: "Install the Cursor hooks (shelltime cursor install)",
+			Label: "Install the Cursor hooks into this project (shelltime cursor install)",
 			Run:   doctorRunCursorInstall,
 		},
 	})
@@ -1028,55 +1027,111 @@ func doctorCheckAntigravity(env *doctorEnv) []doctorResult {
 	if !antigravityDetected(doctorLookPath) {
 		return []doctorResult{{ID: "antigravity.detected", Status: doctorSkip, Message: "Antigravity wasn't found; skipped its checks."}}
 	}
-	svc := model.NewAntigravityHooksService()
 	return doctorCheckAgentHooks(doctorAgentHooks{
 		id:      "antigravity",
 		name:    "Antigravity",
 		command: "shelltime agy install",
-		path:    svc.Path(),
-		status:  svc.Status,
+		hooks:   antigravityHooks,
 		fix: &doctorFix{
 			Key:   "antigravity.install",
-			Label: "Install the Antigravity hooks (shelltime agy install)",
+			Label: "Install the Antigravity hooks into this project (shelltime agy install)",
 			Run:   doctorRunAgyInstall,
 		},
 	})
 }
 
-// doctorCheckAgentHooks checks an agent's hook file: the ShellTime hooks are there, for
-// every event, and run a shelltime binary that exists.
+// doctorCheckAgentHooks checks an agent's hooks: the project doctor runs in has them for every
+// event and this machine has what they record with, and the hooks an older version installed
+// in the agent's user-level file still work, if there are any.
 func doctorCheckAgentHooks(a doctorAgentHooks) []doctorResult {
-	fixHint := fmt.Sprintf("Run `%s`, then restart %s.", a.command, a.name)
-	status, err := a.status()
+	var results []doctorResult
+	if root, err := currentProjectRoot(); err != nil {
+		results = append(results, doctorResult{
+			ID:      a.id + ".hooks",
+			Status:  doctorSkip,
+			Message: fmt.Sprintf("%s's hooks are installed into each project; run `shelltime doctor` in a project's repository to check them.", a.name),
+		})
+	} else {
+		results = append(results, doctorCheckProjectHooks(a, a.hooks.project(root))...)
+	}
+	return append(results, doctorCheckUserHooks(a)...)
+}
+
+// doctorCheckProjectHooks checks the hook file of the project doctor runs in.
+func doctorCheckProjectHooks(a doctorAgentHooks, file agentHooksFile) []doctorResult {
+	fixHint := fmt.Sprintf("Run `%s` in this repository, commit %s, then restart %s.", a.command, file.Path(), a.name)
+	status, err := file.Status()
 	switch {
 	case errors.Is(err, model.ErrHookFileInvalid):
 		return []doctorResult{{
 			ID:      a.id + ".hooks",
 			Status:  doctorFail,
-			Message: fmt.Sprintf("%s can't be read, so %s activity isn't reported: %v", a.path, a.name, err),
-			Fix:     fmt.Sprintf("Fix the JSON in %s (no comments, trailing commas or byte order mark), then run `%s`.", a.path, a.command),
+			Message: fmt.Sprintf("%s can't be read, so %s activity in this project isn't reported: %v", file.Path(), a.name, err),
+			Fix:     fmt.Sprintf("Fix the JSON in %s (no comments, trailing commas or byte order mark), then run `%s`.", file.Path(), a.command),
 		}}
 	case err != nil:
-		return []doctorResult{{ID: a.id + ".hooks", Status: doctorSkip, Message: fmt.Sprintf("Couldn't read %s: %v", a.path, err)}}
+		return []doctorResult{{ID: a.id + ".hooks", Status: doctorSkip, Message: fmt.Sprintf("Couldn't read %s: %v", file.Path(), err)}}
 	case !status.Installed:
 		return []doctorResult{{
 			ID:      a.id + ".hooks",
 			Status:  doctorWarn,
-			Message: fmt.Sprintf("%s's ShellTime hooks aren't installed, so your %s sessions won't show up.", a.name, a.name),
+			Message: fmt.Sprintf("This project has no ShellTime hooks for %s, so your %s sessions in it won't show up.", a.name, a.name),
 			Fix:     fixHint,
 			AutoFix: a.fix,
 		}}
 	}
 
-	results := []doctorResult{{ID: a.id + ".hooks", Status: doctorOK, Message: fmt.Sprintf("%s's ShellTime hooks are installed (%s).", a.name, a.path)}}
+	results := []doctorResult{{ID: a.id + ".hooks", Status: doctorOK, Message: fmt.Sprintf("This project's ShellTime hooks for %s are installed (%s).", a.name, file.Path())}}
 	if len(status.MissingEvents) > 0 {
 		results = append(results, doctorResult{
 			ID:      a.id + ".hook_events",
 			Status:  doctorWarn,
-			Message: fmt.Sprintf("%s's ShellTime hooks are out of date (missing %s), so some session details aren't reported.", a.name, strings.Join(status.MissingEvents, ", ")),
+			Message: fmt.Sprintf("This project's ShellTime hooks for %s are out of date (missing %s), so some session details aren't reported.", a.name, strings.Join(status.MissingEvents, ", ")),
 			Fix:     fixHint,
 			AutoFix: a.fix,
 		})
+	}
+	for _, bin := range []string{model.ProjectHookCLI, model.ProjectHookDaemon} {
+		if projectHookToolFound(bin) {
+			continue
+		}
+		results = append(results, doctorResult{
+			ID:      a.id + ".hook_tools",
+			Status:  doctorWarn,
+			Message: fmt.Sprintf("The %s hooks find %s neither on PATH nor in ~/.shelltime/bin, so they skip every event on this machine.", a.name, bin),
+			Fix:     "Reinstall ShellTime, or add the folder that holds shelltime and shelltime-daemon to PATH.",
+		})
+	}
+	return results
+}
+
+// projectHookToolFound reports whether a project hook command finds bin: on PATH, or in
+// ~/.shelltime/bin.
+func projectHookToolFound(bin string) bool {
+	if _, err := doctorLookPath(bin); err == nil {
+		return true
+	}
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return false
+	}
+	info, err := os.Stat(filepath.Join(home, model.COMMAND_BASE_STORAGE_FOLDER, "bin", bin))
+	return err == nil && !info.IsDir() && (runtime.GOOS == "windows" || info.Mode().Perm()&0o111 != 0)
+}
+
+// doctorCheckUserHooks reports the ShellTime hooks an older version installed in the agent's
+// user-level file. Working ones still record every project's events, and the projects' hooks
+// leave those events to them; ones whose binary is gone fail on every event.
+func doctorCheckUserHooks(a doctorAgentHooks) []doctorResult {
+	user := a.hooks.user()
+	status, err := user.Status()
+	if err != nil || !status.Installed {
+		return nil
+	}
+	remove := &doctorFix{
+		Key:   a.id + ".user_hooks",
+		Label: fmt.Sprintf("Remove the ShellTime hooks an older version put in %s", user.Path()),
+		Run:   func(*cli.Context) error { return removeUserAgentHooks(a.hooks) },
 	}
 	for _, bin := range status.Binaries {
 		var problem string
@@ -1090,15 +1145,19 @@ func doctorCheckAgentHooks(a doctorAgentHooks) []doctorResult {
 		default:
 			continue
 		}
-		results = append(results, doctorResult{
-			ID:      a.id + ".hook_binary",
+		return []doctorResult{{
+			ID:      a.id + ".user_hooks",
 			Status:  doctorFail,
-			Message: fmt.Sprintf("%s's hooks run %s, which %s, so no %s activity is recorded.", a.name, bin, problem, a.name),
-			Fix:     fixHint,
-			AutoFix: a.fix,
-		})
+			Message: fmt.Sprintf("The ShellTime hooks an older version put in %s run %s, which %s, so %s reports a failed hook on every event.", user.Path(), bin, problem, a.name),
+			Fix:     fmt.Sprintf("Remove them: ShellTime's hooks go into each project now (`%s` in its repository).", a.command),
+			AutoFix: remove,
+		}}
 	}
-	return results
+	return []doctorResult{{
+		ID:      a.id + ".user_hooks",
+		Status:  doctorInfo,
+		Message: fmt.Sprintf("%s still has the ShellTime hooks of an older version; they record %s in every project. ShellTime installs them into each project now, and `%s` there removes these.", user.Path(), a.name, a.command),
+	}}
 }
 
 // --- AI usage receiver --------------------------------------------------------

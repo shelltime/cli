@@ -6,7 +6,6 @@ import (
 	"io"
 	"log/slog"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"time"
@@ -49,7 +48,7 @@ var HookIngestCommand = &cli.Command{
 	Flags: []cli.Flag{
 		&cli.StringFlag{Name: "agent", Usage: "the agent that runs the hook: cursor, or agy (antigravity)"},
 		&cli.StringFlag{Name: "event", Usage: "the hook event"},
-		&cli.BoolFlag{Name: "project", Usage: "run from a project's hook file (cursor/agy install --project)"},
+		&cli.BoolFlag{Name: "project", Usage: "run from a project's hook file (cursor/agy install)"},
 	},
 	Action: func(c *cli.Context) error {
 		runHookIngest(c.Context, c.String("agent"), c.String("event"), c.Bool("project"))
@@ -67,10 +66,10 @@ var HookIngestCommand = &cli.Command{
 // one takes it, else in the pending file the daemon resends from. Nothing else ever reaches
 // stdout, and a panic still answers.
 //
-// project is set when a project's hook file runs it. The agent runs that file next to the
-// user's own hooks, so the event is left to those when they record it too, unless the event ran
-// in a cloud VM: Cursor Cloud Agents never run the user's hooks, even where a setup script
-// wrote some.
+// project is set when a project's hook file runs it. An older version may have left its hooks
+// in the agent's user-level file, which the agent runs next to the project's, so the event is
+// left to those when they record it too, unless the event ran in a cloud VM: Cursor Cloud
+// Agents never run the user's hooks, even where a setup script wrote some.
 func runHookIngest(ctx context.Context, agent, event string, project bool) {
 	if ctx == nil {
 		ctx = context.Background()
@@ -197,9 +196,11 @@ func hookIngestFlagsFromArgs(args []string) (agent, event string, project bool) 
 	return agent, event, project
 }
 
-// userHooksRecord reports whether the user's own hook file for agent registers ShellTime for
-// event with a binary that is still there, so the agent records the event through it. Anything
-// it can't read counts as not recording, so the project hook records the event instead.
+// userHooksRecord reports whether the agent's user-level hook file still holds a ShellTime hook
+// an older version installed for event, with a binary that is still there, so the agent records
+// the event through it. Those name the binary by its absolute path; a project's commands name
+// it by PATH, and one copied into the user file counts as not recording, like anything this
+// can't read, so the project hook records the event instead.
 func userHooksRecord(agent, event string) bool {
 	var events []string
 	var status model.AgentHooksStatus
@@ -225,15 +226,14 @@ func userHooksRecord(agent, event string) bool {
 	return false
 }
 
-// hookBinaryExists reports whether a hook command's binary is there: the file for a path, else
-// a match on PATH.
+// hookBinaryExists reports whether an older version's hook command runs a binary that is still
+// there: an absolute path to a file.
 func hookBinaryExists(bin string) bool {
-	if filepath.IsAbs(bin) {
-		info, err := os.Stat(bin)
-		return err == nil && !info.IsDir()
+	if !filepath.IsAbs(bin) {
+		return false
 	}
-	_, err := exec.LookPath(bin)
-	return err == nil
+	info, err := os.Stat(bin)
+	return err == nil && !info.IsDir()
 }
 
 func containsFold(values []string, s string) bool {

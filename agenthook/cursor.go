@@ -5,7 +5,8 @@ import (
 	"strings"
 )
 
-// Cursor's hook events (~/.cursor/hooks.json), as registered by `shelltime cursor install`.
+// Cursor's hook events (a project's .cursor/hooks.json), as registered by
+// `shelltime cursor install`.
 const (
 	CursorBeforeSubmitPrompt = "beforeSubmitPrompt"
 	CursorPostToolUse        = "postToolUse"

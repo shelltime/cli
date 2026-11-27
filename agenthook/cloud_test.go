@@ -1,6 +1,7 @@
 package agenthook
 
 import (
+	"errors"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -82,7 +83,50 @@ func TestNormalize_CloudCursor(t *testing.T) {
 	})
 }
 
+// asOSUser makes the user database name the process's user name (or fail when name is "").
+func asOSUser(t *testing.T, name string) {
+	t.Helper()
+	orig := lookupOSUser
+	t.Cleanup(func() { lookupOSUser = orig })
+	lookupOSUser = func() (string, error) {
+		if name == "" {
+			return "", errors.New("unknown userid 1001")
+		}
+		return name, nil
+	}
+}
+
+func TestInAntigravitySandbox(t *testing.T) {
+	asOSUser(t, "antigravity")
+	assert.True(t, InAntigravitySandbox(nil))
+	assert.True(t, InAntigravitySandbox(envOf(map[string]string{"USER": "someone"})), "the user database comes first")
+
+	asOSUser(t, "me")
+	assert.False(t, InAntigravitySandbox(envOf(map[string]string{"USER": "antigravity"})))
+	asOSUser(t, "Antigravity")
+	assert.False(t, InAntigravitySandbox(nil), "the name is matched exactly")
+
+	asOSUser(t, "") // a uid without an entry, as in many containers
+	assert.True(t, InAntigravitySandbox(envOf(map[string]string{"USER": "antigravity"})))
+	assert.True(t, InAntigravitySandbox(envOf(map[string]string{"LOGNAME": "antigravity"})))
+	assert.False(t, InAntigravitySandbox(envOf(map[string]string{"USER": "me", "LOGNAME": "antigravity"})))
+	assert.False(t, InAntigravitySandbox(nil))
+}
+
+func TestNormalize_CloudAntigravitySandbox(t *testing.T) {
+	asOSUser(t, "antigravity")
+
+	ev, err := Normalize("agy", "PostToolUse", []byte(`{"conversationId":"a1","toolCall":{"name":"run_command"}}`), testNow, envOf(map[string]string{"SHELLTIME_CLOUD": "true"}))
+	require.NoError(t, err)
+	assert.Equal(t, CloudSignalAntigravitySandbox, ev.Cloud, "the agent's own sign comes first")
+
+	ev, err = Normalize("cursor", "stop", []byte(`{"conversation_id":"c1"}`), testNow, nil)
+	require.NoError(t, err)
+	assert.Empty(t, ev.Cloud, "the sandbox user marks Antigravity events only")
+}
+
 func TestNormalize_CloudAntigravity(t *testing.T) {
+	asOSUser(t, "me")
 	payload := []byte(`{"conversationId":"a1","is_background_agent":true}`)
 
 	ev, err := Normalize("agy", "Stop", payload, testNow, nil)

@@ -12,7 +12,7 @@ import (
 )
 
 const (
-	// AntigravityHookGroup is the named hook group ShellTime owns in ~/.gemini/config/hooks.json.
+	// AntigravityHookGroup is the named hook group ShellTime owns in an Antigravity hook file.
 	AntigravityHookGroup = "shelltime"
 	// AntigravityHookTimeoutSeconds bounds each hook run, in whole seconds as Antigravity wants.
 	AntigravityHookTimeoutSeconds = 15
@@ -20,28 +20,28 @@ const (
 	antigravityHookAgent = "agy"
 )
 
-// AntigravityHooksService registers `shelltime hook-ingest` for Antigravity's hook events in
-// ~/.gemini/config/hooks.json, which the app and the agy CLI share, or in a project's
-// .agents/hooks.json, which they read in that workspace and the Antigravity agent reads in its
-// Gemini API sandbox. The file's root is an object of named hook groups; ShellTime owns the
-// "shelltime" group and leaves the others alone.
+// AntigravityHooksService registers `shelltime hook-ingest` for Antigravity's hook events in a
+// project's .agents/hooks.json, which the app and the agy CLI run in that workspace (ahead of
+// the global file) and the Antigravity agent reads in its Gemini API sandbox. The file's root is
+// an object of named hook groups; ShellTime owns the "shelltime" group and leaves the others
+// alone. The global ~/.gemini/config/hooks.json, where older versions installed the hooks, is
+// only read and cleaned.
 //
 // Antigravity's parser is strict: a byte order mark, a comment or a trailing comma makes it
 // drop the whole file. A file like that is refused, never rewritten, and the file is always
 // written as strict JSON without a byte order mark.
 type AntigravityHooksService struct {
-	path string
-	// project writes commands that run `--project` (see ProjectHookFlag)
+	path    string
 	project bool
 }
 
+// NewAntigravityHooksService manages the global ~/.gemini/config/hooks.json: Status and
+// Uninstall only.
 func NewAntigravityHooksService() *AntigravityHooksService {
 	return &AntigravityHooksService{path: os.ExpandEnv("$HOME/.gemini/config/hooks.json")}
 }
 
-// NewAntigravityProjectHooksService manages the .agents/hooks.json of the project at root,
-// which Antigravity runs in that workspace next to the user's own hooks, and the Antigravity
-// agent in a Gemini API sandbox reads from the repository it mounts.
+// NewAntigravityProjectHooksService manages the .agents/hooks.json of the project at root.
 func NewAntigravityProjectHooksService(root string) *AntigravityHooksService {
 	return &AntigravityHooksService{path: filepath.Join(root, ".agents", "hooks.json"), project: true}
 }
@@ -51,9 +51,10 @@ func (s *AntigravityHooksService) Path() string {
 	return s.path
 }
 
-// AntigravityHookCommand is the command registered for an Antigravity hook event.
-func AntigravityHookCommand(bin, event string) string {
-	return hookCommand(bin, HookIngestSubcommand, "--agent", antigravityHookAgent, "--event", event)
+// AntigravityProjectHookCommand is the command a project's hook file runs for an Antigravity
+// hook event (see projectHookCommand).
+func AntigravityProjectHookCommand(event string) string {
+	return projectHookCommand(antigravityHookAgent, event)
 }
 
 type antigravityHookHandler struct {
@@ -69,17 +70,13 @@ type antigravityHookMatcher struct {
 
 // antigravityHookGroupValue builds the "shelltime" group. Tool events take matchers, the
 // others a flat list of handlers. PreToolUse is never registered: a reply without a decision
-// denies the tool call. project adds ProjectHookFlag to the commands.
-func antigravityHookGroupValue(bin string, project bool) (json.RawMessage, error) {
+// denies the tool call.
+func antigravityHookGroupValue() (json.RawMessage, error) {
 	var group []jsonField
 	for _, event := range agenthook.AntigravityEvents {
-		command := AntigravityHookCommand(bin, event)
-		if project {
-			command += " " + ProjectHookFlag
-		}
 		handler := antigravityHookHandler{
 			Type:    "command",
-			Command: command,
+			Command: AntigravityProjectHookCommand(event),
 			Timeout: AntigravityHookTimeoutSeconds,
 		}
 		var value any = []antigravityHookHandler{handler}
@@ -95,9 +92,12 @@ func antigravityHookGroupValue(bin string, project bool) (json.RawMessage, error
 	return encodeOrderedObject(group), nil
 }
 
-// Install sets the "shelltime" group, in place when it is already there. It creates the file
-// when missing.
-func (s *AntigravityHooksService) Install(bin string) error {
+// Install sets the "shelltime" group of a project's file, in place when it is already there. It
+// creates the file when missing.
+func (s *AntigravityHooksService) Install() error {
+	if !s.project {
+		return ErrUserHooksRetired
+	}
 	data, mode, err := readJSONFileWithMode(s.path)
 	if err != nil {
 		return err
@@ -106,7 +106,7 @@ func (s *AntigravityHooksService) Install(bin string) error {
 	if err != nil {
 		return err
 	}
-	group, err := antigravityHookGroupValue(bin, s.project)
+	group, err := antigravityHookGroupValue()
 	if err != nil {
 		return err
 	}

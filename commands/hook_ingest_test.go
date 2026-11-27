@@ -372,16 +372,43 @@ func TestHookIngestFlagsFromArgs(t *testing.T) {
 	assert.True(t, project)
 }
 
-// installUserCursorHooks registers ShellTime in ~/.cursor/hooks.json under the test's HOME, with
-// a binary that exists (the test binary) unless bin is given.
+// legacyHookCommand is the command older versions registered in the user-level hook files.
+func legacyHookCommand(bin, agent, event string) string {
+	return bin + " hook-ingest --agent " + agent + " --event " + event
+}
+
+// installUserCursorHooks writes what an older version installed in ~/.cursor/hooks.json under
+// the test's HOME, with a binary that exists (the test binary) unless bin is given.
 func installUserCursorHooks(t *testing.T, bin string) {
+	t.Helper()
+	installUserHooksFor(t, model.NewCursorHooksService().Path(), "cursor", agenthook.CursorEvents, bin)
+}
+
+func installUserHooksFor(t *testing.T, path, agent string, events []string, bin string) {
 	t.Helper()
 	if bin == "" {
 		exe, err := os.Executable()
 		require.NoError(t, err)
 		bin = exe
 	}
-	require.NoError(t, model.NewCursorHooksService().Install(bin))
+	var data []byte
+	var err error
+	if agent == "cursor" {
+		hooks := map[string]any{}
+		for _, event := range events {
+			hooks[event] = []any{map[string]any{"command": legacyHookCommand(bin, agent, event)}}
+		}
+		data, err = json.Marshal(map[string]any{"version": 1, "hooks": hooks})
+	} else {
+		group := map[string]any{}
+		for _, event := range events {
+			group[event] = []any{map[string]any{"type": "command", "command": legacyHookCommand(bin, agent, event), "timeout": 15}}
+		}
+		data, err = json.Marshal(map[string]any{"shelltime": group})
+	}
+	require.NoError(t, err)
+	require.NoError(t, os.MkdirAll(filepath.Dir(path), 0755))
+	require.NoError(t, os.WriteFile(path, data, 0644))
 }
 
 const cursorStopPayload = `{"conversation_id":"c1","status":"completed","workspace_roots":["/tmp/x"]}`
@@ -433,15 +460,7 @@ func TestHookIngest_ProjectHookRecordsWhenUserHooksCantRun(t *testing.T) {
 	t.Run("they don't register the event", func(t *testing.T) {
 		h := setupHookIngest(t, strings.NewReader(cursorStopPayload))
 		h.config.On("ReadConfigFile", mock.Anything).Return(model.ShellTimeConfig{}, nil)
-		exe, err := os.Executable()
-		require.NoError(t, err)
-		path := model.NewCursorHooksService().Path()
-		require.NoError(t, os.MkdirAll(filepath.Dir(path), 0755))
-		other, err := json.Marshal(map[string]any{"version": 1, "hooks": map[string]any{
-			"beforeSubmitPrompt": []any{map[string]any{"command": model.CursorHookCommand(exe, "beforeSubmitPrompt")}},
-		}})
-		require.NoError(t, err)
-		require.NoError(t, os.WriteFile(path, other, 0644))
+		installUserHooksFor(t, model.NewCursorHooksService().Path(), "cursor", []string{"beforeSubmitPrompt"}, "")
 
 		h.run(t, "--agent", "cursor", "--event", "stop", "--project")
 
@@ -477,7 +496,7 @@ func TestHookIngest_ProjectHookRecordsCloudEvents(t *testing.T) {
 	t.Run("SHELLTIME_CLOUD in the environment", func(t *testing.T) {
 		h := setupHookIngest(t, strings.NewReader(`{"conversationId":"a1","terminationReason":"completed"}`))
 		h.config.On("ReadConfigFile", mock.Anything).Return(model.ShellTimeConfig{}, nil)
-		require.NoError(t, model.NewAntigravityHooksService().Install(os.Args[0]))
+		installUserHooksFor(t, model.NewAntigravityHooksService().Path(), "agy", agenthook.AntigravityEvents, "")
 		hookIngestGetenv = func(k string) string { return map[string]string{"SHELLTIME_CLOUD": "true"}[k] }
 
 		h.run(t, "--agent", "agy", "--event", "Stop", "--project")
@@ -521,6 +540,18 @@ func TestHookBinaryExists(t *testing.T) {
 	assert.True(t, hookBinaryExists(exe))
 	assert.False(t, hookBinaryExists(filepath.Join(t.TempDir(), "shelltime")))
 	assert.False(t, hookBinaryExists(t.TempDir()), "a folder isn't a binary")
-	assert.True(t, hookBinaryExists("sh"), "a bare name is looked up on PATH")
-	assert.False(t, hookBinaryExists("shelltime-not-on-path-anywhere"))
+	assert.False(t, hookBinaryExists("sh"), "a project command's PATH name isn't an older version's hook")
+}
+
+func TestUserHooksRecord_ProjectCommandsInTheUserFile(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	path := model.NewCursorHooksService().Path()
+	require.NoError(t, os.MkdirAll(filepath.Dir(path), 0755))
+	data, err := json.Marshal(map[string]any{"version": 1, "hooks": map[string]any{
+		"stop": []any{map[string]any{"command": model.CursorProjectHookCommand("stop")}},
+	}})
+	require.NoError(t, err)
+	require.NoError(t, os.WriteFile(path, data, 0644))
+
+	assert.False(t, userHooksRecord(agenthook.AgentCursor, "stop"), "the project hook must not leave the event to itself")
 }

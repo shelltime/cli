@@ -26,14 +26,14 @@ func CloudSessionIDFromEnv(getenv func(string) string) string {
 // IsAICloudOnly reports whether this machine collects only AI coding agent telemetry, and no
 // shell commands, editor heartbeats, aliases, dotfiles or anything else that would make it a
 // host. cfg.AICloudOnly decides when it is set; unset, the mode is on in a cloud agent's VM, a
-// throwaway machine that isn't one of the user's: a Claude Code cloud environment, or one that
-// sets SHELLTIME_CLOUD=true (agenthook.CloudEnvSignal), as a Cursor Cloud Agent's or a Gemini
-// API sandbox's can.
+// throwaway machine that isn't one of the user's: a Claude Code cloud environment, one that sets
+// SHELLTIME_CLOUD=true (agenthook.CloudEnvSignal), as a Cursor Cloud Agent's can, or the
+// Antigravity agent's Gemini API sandbox (agenthook.InAntigravitySandbox).
 func IsAICloudOnly(cfg ShellTimeConfig, getenv func(string) string) bool {
 	if cfg.AICloudOnly != nil {
 		return *cfg.AICloudOnly
 	}
-	return agenthook.CloudEnvSignal(getenv) != ""
+	return agenthook.CloudEnvSignal(getenv) != "" || agenthook.InAntigravitySandbox(getenv)
 }
 
 // ProxyInjectedToken is the token a Claude Code cloud environment's sessions sign in with when

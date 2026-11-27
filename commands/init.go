@@ -70,14 +70,10 @@ func commandInit(c *cli.Context) error {
 		{name: "Codex", config: "Codex OTEL config", err: codexErr},
 	}
 
-	// Step 6: hooks of the agents without OTEL, only on machines that have them
-	if cursorDetected(initLookPath) {
-		agents = append(agents, agentSetupStep{name: "Cursor", config: "Cursor hooks", err: runInitStep(verbose, installCursorHooks)})
-	}
-	if antigravityDetected(initLookPath) {
-		agents = append(agents, agentSetupStep{name: "Antigravity", config: "Antigravity hooks", err: runInitStep(verbose, installAgyHooks)})
-	}
 	printAgentTelemetrySummary(verbose, agents)
+	// Step 6: the agents without OTEL take hooks in each project's repository, which init has
+	// none of, so it says how to add them on machines that have the agents
+	printProjectAgentHooksHint(initLookPath)
 
 	names := make([]string, len(agents))
 	for i, a := range agents {
@@ -122,6 +118,24 @@ func runInitStep(verbose bool, step func() error) error {
 		_, _ = initStepOutput.Write(held.Bytes())
 	}
 	return err
+}
+
+// printProjectAgentHooksHint says how to track the detected agents whose hooks go into each
+// project's repository: Cursor and Antigravity.
+func printProjectAgentHooksHint(lookPath func(string) (string, error)) {
+	var agents, commands []string
+	if cursorDetected(lookPath) {
+		agents = append(agents, "Cursor")
+		commands = append(commands, "`shelltime cursor install`")
+	}
+	if antigravityDetected(lookPath) {
+		agents = append(agents, "Antigravity")
+		commands = append(commands, "`shelltime agy install`")
+	}
+	if len(agents) == 0 {
+		return
+	}
+	color.Yellow.Printf("To track %s, run %s in each project's repository and commit the hook file.\n", joinWithAnd(agents), joinWithAnd(commands))
 }
 
 // printAgentTelemetrySummary reports the coding agent steps: a line per failure, and,

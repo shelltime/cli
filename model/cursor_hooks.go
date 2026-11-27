@@ -19,29 +19,32 @@ var ErrHookFileInvalid = errors.New("hook file isn't valid JSON")
 
 var utf8BOM = []byte("\xEF\xBB\xBF")
 
-// cursorHookMarker identifies the commands ShellTime registers in ~/.cursor/hooks.json.
+// cursorHookMarker identifies the commands ShellTime registers in a Cursor hook file, in every
+// form a version wrote.
 const cursorHookMarker = HookIngestSubcommand + " --agent cursor"
 
-// CursorHooksService registers `shelltime hook-ingest` for Cursor's hook events in the user's
-// ~/.cursor/hooks.json, which both the IDE and cursor-agent read, or in a project's
-// .cursor/hooks.json, the only one Cursor Cloud Agents run:
+// ErrUserHooksRetired is returned for installing into an agent's user-level hook file: ShellTime
+// installs its hooks into projects only, and only removes the ones older versions left there.
+var ErrUserHooksRetired = errors.New("ShellTime hooks are installed into projects, not the user's hook file")
+
+// CursorHooksService registers `shelltime hook-ingest` for Cursor's hook events in a project's
+// .cursor/hooks.json, which Cursor runs in that project and Cloud Agents run as the only one:
 //
 //	{"version": 1, "hooks": {"<event>": [{"command": "…"}]}}
 //
-// Every other hook and key stays as the user wrote it, in its order.
+// Every other hook and key stays as the user wrote it, in its order. The user's own
+// ~/.cursor/hooks.json, where older versions installed the hooks, is only read and cleaned.
 type CursorHooksService struct {
-	path string
-	// project writes commands that run `--project` (see ProjectHookFlag)
+	path    string
 	project bool
 }
 
+// NewCursorHooksService manages the user's ~/.cursor/hooks.json: Status and Uninstall only.
 func NewCursorHooksService() *CursorHooksService {
 	return &CursorHooksService{path: os.ExpandEnv("$HOME/.cursor/hooks.json")}
 }
 
-// NewCursorProjectHooksService manages the .cursor/hooks.json of the project at root. Cursor
-// runs it in that project next to the user's own hooks, and Cloud Agents run only it, never
-// ~/.cursor/hooks.json.
+// NewCursorProjectHooksService manages the .cursor/hooks.json of the project at root.
 func NewCursorProjectHooksService(root string) *CursorHooksService {
 	return &CursorHooksService{path: filepath.Join(root, ".cursor", "hooks.json"), project: true}
 }
@@ -51,22 +54,19 @@ func (s *CursorHooksService) Path() string {
 	return s.path
 }
 
-// CursorHookCommand is the command registered for a Cursor hook event.
-func CursorHookCommand(bin, event string) string {
-	return hookCommand(bin, HookIngestSubcommand, "--agent", agenthook.AgentCursor, "--event", event)
+// CursorProjectHookCommand is the command a project's hook file runs for a Cursor hook event
+// (see projectHookCommand).
+func CursorProjectHookCommand(event string) string {
+	return projectHookCommand(agenthook.AgentCursor, event)
 }
 
-func (s *CursorHooksService) command(bin, event string) string {
-	if s.project {
-		return CursorHookCommand(bin, event) + " " + ProjectHookFlag
+// Install registers CursorProjectHookCommand for every managed event of a project's file. It
+// creates the file when missing, sets "version": 1 only when absent, and replaces a ShellTime
+// command already there in place (an older form), so running it again changes nothing else.
+func (s *CursorHooksService) Install() error {
+	if !s.project {
+		return ErrUserHooksRetired
 	}
-	return CursorHookCommand(bin, event)
-}
-
-// Install registers bin for every managed event. It creates the file when missing, sets
-// "version": 1 only when absent, and updates a ShellTime command already there in place (a
-// new binary path), so running it again changes nothing else.
-func (s *CursorHooksService) Install(bin string) error {
 	data, mode, err := readJSONFileWithMode(s.path)
 	if err != nil {
 		return err
@@ -113,7 +113,7 @@ func (s *CursorHooksService) Install(bin string) error {
 				return fmt.Errorf("%w: hooks.%s in %s isn't an array", ErrHookFileInvalid, event, s.path)
 			}
 		}
-		entries, err = upsertCursorHookEntry(entries, s.command(bin, event))
+		entries, err = upsertCursorHookEntry(entries, CursorProjectHookCommand(event))
 		if err != nil {
 			return err
 		}
