@@ -39,7 +39,8 @@ func SetupLogger(baseFolder string) {
 
 	f, err := os.OpenFile(logFilePath, os.O_WRONLY|os.O_CREATE|os.O_APPEND, 0600)
 	if err != nil {
-		os.Stdout.WriteString(err.Error())
+		// Never stdout: commands such as hook-ingest and cc statusline answer on it
+		os.Stderr.WriteString(err.Error() + "\n")
 		slog.Error("[ShellTime.xyz] on setup logger error", slog.Any("err", err))
 		return
 	}

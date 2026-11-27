@@ -49,6 +49,11 @@ func (c ShellTimeConfig) LogValue() slog.Value {
 			slog.String("token", maskToken(c.CodeTracking.Token)),
 		))
 	}
+	if c.AgentHooks != nil {
+		attrs = append(attrs, slog.Group("agentHooks",
+			boolPtrAttr("sendContent", c.AgentHooks.SendContent),
+		))
+	}
 	if c.LogCleanup != nil {
 		attrs = append(attrs, slog.Group("logCleanup",
 			boolPtrAttr("enabled", c.LogCleanup.Enabled),

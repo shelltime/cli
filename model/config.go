@@ -220,6 +220,17 @@ func mergeConfig(base, local *ShellTimeConfig) {
 		}
 		base.CodeTracking = &merged
 	}
+	if local.AgentHooks != nil {
+		// Field by field, like codeTracking, so settings added later don't reset each other
+		if base.AgentHooks == nil {
+			base.AgentHooks = &AgentHooksConfig{}
+		}
+		merged := *base.AgentHooks
+		if local.AgentHooks.SendContent != nil {
+			merged.SendContent = local.AgentHooks.SendContent
+		}
+		base.AgentHooks = &merged
+	}
 	if local.AICloudOnly != nil {
 		base.AICloudOnly = local.AICloudOnly
 	}

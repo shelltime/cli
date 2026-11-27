@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"regexp"
 	"strings"
@@ -181,21 +182,36 @@ func TestRunInitStep(t *testing.T) {
 
 func TestPrintAgentTelemetrySummary(t *testing.T) {
 	boom := errors.New("boom")
+	cc := func(err error) agentSetupStep {
+		return agentSetupStep{name: "Claude Code", config: "Claude Code OTEL config", err: err}
+	}
+	codex := func(err error) agentSetupStep {
+		return agentSetupStep{name: "Codex", config: "Codex OTEL config", err: err}
+	}
+	cursor := func(err error) agentSetupStep {
+		return agentSetupStep{name: "Cursor", config: "Cursor hooks", err: err}
+	}
+	agy := func(err error) agentSetupStep {
+		return agentSetupStep{name: "Antigravity", config: "Antigravity hooks", err: err}
+	}
 	tests := []struct {
-		name            string
-		verbose         bool
-		ccErr, codexErr error
-		want, notWant   []string
+		name          string
+		verbose       bool
+		agents        []agentSetupStep
+		want, notWant []string
 	}{
-		{name: "both", want: []string{"Claude Code and Codex telemetry configured"}},
-		{name: "codex failed", codexErr: boom, want: []string{"✅ Claude Code telemetry configured", "Failed to install Codex OTEL config: boom"}},
-		{name: "claude code failed", ccErr: boom, want: []string{"✅ Codex telemetry configured", "Failed to install Claude Code OTEL config: boom"}},
-		{name: "verbose has no summary", verbose: true, notWant: []string{"telemetry configured"}},
+		{name: "both", agents: []agentSetupStep{cc(nil), codex(nil)}, want: []string{"✅ Claude Code and Codex telemetry configured"}},
+		{name: "codex failed", agents: []agentSetupStep{cc(nil), codex(boom)}, want: []string{"✅ Claude Code telemetry configured", "Failed to install Codex OTEL config: boom"}},
+		{name: "claude code failed", agents: []agentSetupStep{cc(boom), codex(nil)}, want: []string{"✅ Codex telemetry configured", "Failed to install Claude Code OTEL config: boom"}},
+		{name: "all four", agents: []agentSetupStep{cc(nil), codex(nil), cursor(nil), agy(nil)}, want: []string{"✅ Claude Code, Codex, Cursor and Antigravity telemetry configured"}},
+		{name: "cursor failed", agents: []agentSetupStep{cc(nil), codex(nil), cursor(boom)}, want: []string{"✅ Claude Code and Codex telemetry configured", "Failed to install Cursor hooks: boom"}},
+		{name: "everything failed", agents: []agentSetupStep{cc(boom), codex(boom)}, notWant: []string{"✅"}},
+		{name: "verbose has no summary", verbose: true, agents: []agentSetupStep{cc(nil), codex(nil)}, notWant: []string{"telemetry configured"}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			out := captureColor(t)
-			printAgentTelemetrySummary(tt.verbose, tt.ccErr, tt.codexErr)
+			printAgentTelemetrySummary(tt.verbose, tt.agents)
 			for _, w := range tt.want {
 				assert.Contains(t, out.String(), w)
 			}
@@ -205,6 +221,43 @@ func TestPrintAgentTelemetrySummary(t *testing.T) {
 			assert.NotContains(t, out.String(), "Privacy")
 		})
 	}
+}
+
+func TestJoinWithOr(t *testing.T) {
+	assert.Equal(t, "", joinWithOr(nil))
+	assert.Equal(t, "Codex", joinWithOr([]string{"Codex"}))
+	assert.Equal(t, "Claude Code or Codex", joinWithOr([]string{"Claude Code", "Codex"}))
+	assert.Equal(t, "Claude Code, Codex or Cursor", joinWithOr([]string{"Claude Code", "Codex", "Cursor"}))
+}
+
+func TestAgentDetection(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	notFound := func(string) (string, error) { return "", exec.ErrNotFound }
+	found := func(want string) func(string) (string, error) {
+		return func(name string) (string, error) {
+			if name == want {
+				return "/usr/local/bin/" + name, nil
+			}
+			return "", exec.ErrNotFound
+		}
+	}
+
+	assert.False(t, cursorDetected(notFound))
+	assert.False(t, antigravityDetected(notFound))
+
+	assert.True(t, cursorDetected(found("cursor")))
+	assert.True(t, cursorDetected(found("cursor-agent")))
+	assert.True(t, antigravityDetected(found("agy")))
+	assert.False(t, antigravityDetected(found("cursor")))
+
+	require.NoError(t, os.MkdirAll(filepath.Join(home, ".gemini"), 0755))
+	assert.False(t, antigravityDetected(notFound), "~/.gemini alone is the Gemini CLI's")
+	require.NoError(t, os.MkdirAll(filepath.Join(home, ".gemini", "antigravity-cli"), 0755))
+	assert.True(t, antigravityDetected(notFound))
+
+	require.NoError(t, os.MkdirAll(filepath.Join(home, ".cursor"), 0755))
+	assert.True(t, cursorDetected(notFound))
 }
 
 // --- gc ----------------------------------------------------------------------------

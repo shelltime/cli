@@ -46,6 +46,8 @@ var (
 	doctorRunDaemonInstall = commandDaemonInstall
 	doctorRunCCInstall     = commandCCInstall
 	doctorRunCodexInstall  = commandCodexInstall
+	doctorRunCursorInstall = commandCursorInstall
+	doctorRunAgyInstall    = commandAgyInstall
 
 	// doctorDaemonStartWait bounds how long the daemon fix waits for the new daemon's socket.
 	doctorDaemonStartWait = 5 * time.Second
@@ -172,6 +174,8 @@ func doctorSections() []doctorSection {
 		{"Shell Hooks", doctorCheckHooks},
 		{"Claude Code", doctorCheckClaude},
 		{"Codex", doctorCheckCodex},
+		{"Cursor", doctorCheckCursor},
+		{"Antigravity", doctorCheckAntigravity},
 		{"AI Usage Receiver", doctorCheckOtelReceiver},
 		{"Sync", doctorCheckSync},
 	}
@@ -985,6 +989,114 @@ func doctorCheckCodex(env *doctorEnv) []doctorResult {
 	return results
 }
 
+// --- Cursor and Antigravity ---------------------------------------------------
+
+// doctorAgentHooks describes one agent whose hooks ShellTime installs, for doctorCheckAgentHooks.
+type doctorAgentHooks struct {
+	id      string // result id prefix
+	name    string // the agent, as the report names it
+	command string // the install command
+	path    string
+	status  func() (model.AgentHooksStatus, error)
+	fix     *doctorFix
+}
+
+func doctorCheckCursor(env *doctorEnv) []doctorResult {
+	if !cursorDetected(doctorLookPath) {
+		return []doctorResult{{ID: "cursor.detected", Status: doctorSkip, Message: "Cursor wasn't found; skipped its checks."}}
+	}
+	svc := model.NewCursorHooksService()
+	return doctorCheckAgentHooks(doctorAgentHooks{
+		id:      "cursor",
+		name:    "Cursor",
+		command: "shelltime cursor install",
+		path:    svc.Path(),
+		status:  svc.Status,
+		fix: &doctorFix{
+			Key:   "cursor.install",
+			Label: "Install the Cursor hooks (shelltime cursor install)",
+			Run:   doctorRunCursorInstall,
+		},
+	})
+}
+
+func doctorCheckAntigravity(env *doctorEnv) []doctorResult {
+	if !antigravityDetected(doctorLookPath) {
+		return []doctorResult{{ID: "antigravity.detected", Status: doctorSkip, Message: "Antigravity wasn't found; skipped its checks."}}
+	}
+	svc := model.NewAntigravityHooksService()
+	return doctorCheckAgentHooks(doctorAgentHooks{
+		id:      "antigravity",
+		name:    "Antigravity",
+		command: "shelltime agy install",
+		path:    svc.Path(),
+		status:  svc.Status,
+		fix: &doctorFix{
+			Key:   "antigravity.install",
+			Label: "Install the Antigravity hooks (shelltime agy install)",
+			Run:   doctorRunAgyInstall,
+		},
+	})
+}
+
+// doctorCheckAgentHooks checks an agent's hook file: the ShellTime hooks are there, for
+// every event, and run a shelltime binary that exists.
+func doctorCheckAgentHooks(a doctorAgentHooks) []doctorResult {
+	fixHint := fmt.Sprintf("Run `%s`, then restart %s.", a.command, a.name)
+	status, err := a.status()
+	switch {
+	case errors.Is(err, model.ErrHookFileInvalid):
+		return []doctorResult{{
+			ID:      a.id + ".hooks",
+			Status:  doctorFail,
+			Message: fmt.Sprintf("%s can't be read, so %s activity isn't reported: %v", a.path, a.name, err),
+			Fix:     fmt.Sprintf("Fix the JSON in %s (no comments, trailing commas or byte order mark), then run `%s`.", a.path, a.command),
+		}}
+	case err != nil:
+		return []doctorResult{{ID: a.id + ".hooks", Status: doctorSkip, Message: fmt.Sprintf("Couldn't read %s: %v", a.path, err)}}
+	case !status.Installed:
+		return []doctorResult{{
+			ID:      a.id + ".hooks",
+			Status:  doctorWarn,
+			Message: fmt.Sprintf("%s's ShellTime hooks aren't installed, so your %s sessions won't show up.", a.name, a.name),
+			Fix:     fixHint,
+			AutoFix: a.fix,
+		}}
+	}
+
+	results := []doctorResult{{ID: a.id + ".hooks", Status: doctorOK, Message: fmt.Sprintf("%s's ShellTime hooks are installed (%s).", a.name, a.path)}}
+	if len(status.MissingEvents) > 0 {
+		results = append(results, doctorResult{
+			ID:      a.id + ".hook_events",
+			Status:  doctorWarn,
+			Message: fmt.Sprintf("%s's ShellTime hooks are out of date (missing %s), so some session details aren't reported.", a.name, strings.Join(status.MissingEvents, ", ")),
+			Fix:     fixHint,
+			AutoFix: a.fix,
+		})
+	}
+	for _, bin := range status.Binaries {
+		var problem string
+		switch info, err := os.Stat(bin); {
+		case err != nil:
+			problem = "doesn't exist"
+		case info.IsDir():
+			problem = "is a folder"
+		case runtime.GOOS != "windows" && info.Mode().Perm()&0o111 == 0:
+			problem = "isn't executable"
+		default:
+			continue
+		}
+		results = append(results, doctorResult{
+			ID:      a.id + ".hook_binary",
+			Status:  doctorFail,
+			Message: fmt.Sprintf("%s's hooks run %s, which %s, so no %s activity is recorded.", a.name, bin, problem, a.name),
+			Fix:     fixHint,
+			AutoFix: a.fix,
+		})
+	}
+	return results
+}
+
 // --- AI usage receiver --------------------------------------------------------
 
 func doctorCheckOtelReceiver(env *doctorEnv) []doctorResult {
@@ -1067,6 +1179,14 @@ func doctorCheckSync(env *doctorEnv) []doctorResult {
 		})
 	default:
 		results = append(results, doctorResult{ID: "sync.pending", Status: doctorOK, Message: "No failed uploads are waiting to be retried."})
+	}
+
+	if hookEvents, err := countNonEmptyLines(model.GetAgentHooksPendingFilePath()); err == nil && hookEvents > 0 {
+		results = append(results, doctorResult{
+			ID:      "sync.agent_hooks",
+			Status:  doctorInfo,
+			Message: fmt.Sprintf("%d Cursor or Antigravity hook event(s) are waiting to be sent; the daemon sends them every 30 minutes.", hookEvents),
+		})
 	}
 
 	if heartbeats, err := countNonEmptyLines(model.GetHeartbeatLogFilePath()); err == nil && heartbeats > 0 {

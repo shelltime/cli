@@ -1,9 +1,9 @@
 package commands
 
 import (
-	"bufio"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -111,23 +111,31 @@ func commandCCStatusline(c *cli.Context) error {
 }
 
 func readStdinWithTimeout(ctx context.Context) ([]byte, error) {
-	stdin := os.Stdin
+	return readWithTimeout(ctx, os.Stdin, 0)
+}
+
+// errInputTooLarge is returned by readWithTimeout for input over its limit.
+var errInputTooLarge = errors.New("input too large")
+
+// readWithTimeout reads r to its end, or returns ctx's error once ctx ends first. A positive
+// limit makes more than limit bytes an error.
+func readWithTimeout(ctx context.Context, r io.Reader, limit int64) ([]byte, error) {
 	resultCh := make(chan []byte, 1)
 	errCh := make(chan error, 1)
 
 	go func() {
-		reader := bufio.NewReader(stdin)
-		var data []byte
-		for {
-			line, err := reader.ReadBytes('\n')
-			data = append(data, line...)
-			if err != nil {
-				if err == io.EOF {
-					break
-				}
-				errCh <- err
-				return
-			}
+		src := r
+		if limit > 0 {
+			src = io.LimitReader(r, limit+1)
+		}
+		data, err := io.ReadAll(src)
+		if err != nil {
+			errCh <- err
+			return
+		}
+		if limit > 0 && int64(len(data)) > limit {
+			errCh <- errInputTooLarge
+			return
 		}
 		resultCh <- data
 	}()

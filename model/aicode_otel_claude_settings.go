@@ -256,37 +256,61 @@ func (s *ClaudeSettingsAICodeOtelEnvService) ResourceMachineName() string {
 
 // readSettings returns the settings file content and mode. A missing file yields nil data.
 func (s *ClaudeSettingsAICodeOtelEnvService) readSettings() ([]byte, os.FileMode, error) {
-	info, err := os.Stat(s.settingsPath)
-	if errors.Is(err, os.ErrNotExist) {
-		return nil, 0644, nil
-	}
-	if err != nil {
-		return nil, 0, fmt.Errorf("failed to stat %s: %w", s.settingsPath, err)
-	}
-
-	data, err := os.ReadFile(s.settingsPath)
-	if err != nil {
-		return nil, 0, fmt.Errorf("failed to read %s: %w", s.settingsPath, err)
-	}
-	return data, info.Mode().Perm(), nil
+	return readJSONFileWithMode(s.settingsPath)
 }
 
 // writeSettings writes via a temp file and rename so a concurrent reader (Claude Code) never sees a
 // partially written file.
 func (s *ClaudeSettingsAICodeOtelEnvService) writeSettings(root []jsonField, mode os.FileMode) error {
+	return writeOrderedJSONFile(s.settingsPath, root, mode)
+}
+
+// readJSONFileWithMode returns a file's content and mode. A missing file yields nil data and
+// 0644, the mode a new file gets.
+func readJSONFileWithMode(path string) ([]byte, os.FileMode, error) {
+	info, err := os.Stat(path)
+	if errors.Is(err, os.ErrNotExist) {
+		return nil, 0644, nil
+	}
+	if err != nil {
+		return nil, 0, fmt.Errorf("failed to stat %s: %w", path, err)
+	}
+
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return nil, 0, fmt.Errorf("failed to read %s: %w", path, err)
+	}
+	return data, info.Mode().Perm(), nil
+}
+
+// formatOrderedJSON renders root as strict JSON indented with two spaces, ending in a newline.
+func formatOrderedJSON(root []jsonField) ([]byte, error) {
 	var out bytes.Buffer
 	if err := json.Indent(&out, encodeOrderedObject(root), "", "  "); err != nil {
-		return fmt.Errorf("failed to format settings: %w", err)
+		return nil, fmt.Errorf("failed to format settings: %w", err)
 	}
 	out.WriteByte('\n')
+	return out.Bytes(), nil
+}
 
-	tmp, err := os.CreateTemp(filepath.Dir(s.settingsPath), ".settings.json.*")
+// writeOrderedJSONFile writes root to path via a temp file and rename, so a concurrent reader
+// (the agent reading its settings) never sees a partially written file, and gives it mode.
+func writeOrderedJSONFile(path string, root []jsonField, mode os.FileMode) error {
+	out, err := formatOrderedJSON(root)
+	if err != nil {
+		return err
+	}
+	return writeFileAtomicMode(path, out, mode)
+}
+
+func writeFileAtomicMode(path string, data []byte, mode os.FileMode) error {
+	tmp, err := os.CreateTemp(filepath.Dir(path), "."+filepath.Base(path)+".*")
 	if err != nil {
 		return fmt.Errorf("failed to create temp file: %w", err)
 	}
 	defer os.Remove(tmp.Name())
 
-	if _, err := tmp.Write(out.Bytes()); err != nil {
+	if _, err := tmp.Write(data); err != nil {
 		tmp.Close()
 		return fmt.Errorf("failed to write temp file: %w", err)
 	}
@@ -296,8 +320,8 @@ func (s *ClaudeSettingsAICodeOtelEnvService) writeSettings(root []jsonField, mod
 	if err := os.Chmod(tmp.Name(), mode); err != nil {
 		return fmt.Errorf("failed to set permissions: %w", err)
 	}
-	if err := os.Rename(tmp.Name(), s.settingsPath); err != nil {
-		return fmt.Errorf("failed to write %s: %w", s.settingsPath, err)
+	if err := os.Rename(tmp.Name(), path); err != nil {
+		return fmt.Errorf("failed to write %s: %w", path, err)
 	}
 	return nil
 }

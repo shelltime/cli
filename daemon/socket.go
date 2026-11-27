@@ -13,6 +13,7 @@ import (
 
 	"github.com/ThreeDotsLabs/watermill"
 	"github.com/ThreeDotsLabs/watermill/message"
+	"github.com/malamtime/cli/agenthook"
 	"github.com/malamtime/cli/model"
 )
 
@@ -36,6 +37,11 @@ const (
 	// the daemon (request/response), used by `shelltime ls` when the bolt store
 	// is enabled and the CLI cannot open the daemon-locked DB.
 	SocketMessageTypeListCommands SocketMessageType = "list_commands"
+	// SocketMessageTypeAgentHook carries one normalized Cursor or Antigravity hook event
+	// (agenthook.Event) from hook-ingest. The daemon queues it for AgentHookBatcher and
+	// acknowledges it with {"status":"ok"}; without that answer hook-ingest saves the event
+	// itself.
+	SocketMessageTypeAgentHook SocketMessageType = "agent_hook"
 )
 
 // ListCommandsResponse is the daemon's reply to a list_commands request.
@@ -118,16 +124,20 @@ type SocketHandler struct {
 	// repos finds the git repository of a session_project message's directory. Nil sends
 	// none.
 	repos *model.GitRepositoryResolver
+	// agentHooks batches the agent_hook messages and sends them.
+	agentHooks *AgentHookBatcher
 }
 
 func NewSocketHandler(config *model.ShellTimeConfig, ch *GoChannel) *SocketHandler {
+	repos := socketRepositoryResolver(*config)
 	return &SocketHandler{
 		config:      config,
 		channel:     ch,
 		stopChan:    make(chan struct{}),
 		ccInfoTimer: NewCCInfoTimerService(config),
 		aiCloudOnly: model.IsAICloudOnly(*config, os.Getenv),
-		repos:       socketRepositoryResolver(*config),
+		repos:       repos,
+		agentHooks:  NewAgentHookBatcher(*config, repos),
 	}
 }
 
@@ -144,6 +154,9 @@ func socketRepositoryResolver(config model.ShellTimeConfig) *model.GitRepository
 // the daemon started with.
 func (p *SocketHandler) SetConfigService(cs model.ConfigService) {
 	p.configService = cs
+	if p.agentHooks != nil {
+		p.agentHooks.SetConfigService(cs)
+	}
 }
 
 // codeTrackingEnabled reports whether editor heartbeats are accepted, from the config on
@@ -189,6 +202,7 @@ func (p *SocketHandler) StartAnthropicUsageSync() {
 
 func (p *SocketHandler) Stop() {
 	p.stopAccepting()
+	p.shutdownAgentHooks(time.Second)
 	p.channel.Close()
 	if p.ccInfoTimer != nil {
 		p.ccInfoTimer.Stop()
@@ -203,6 +217,7 @@ func (p *SocketHandler) Stop() {
 func (p *SocketHandler) Shutdown(timeout time.Duration) {
 	p.stopAccepting()
 	beginShutdown()
+	p.shutdownAgentHooks(min(timeout, agentHookShutdownTimeout))
 	if !p.channel.Drain(timeout) {
 		// A long handler (a sync to a slow server) holds the heartbeats queued behind it,
 		// and closing the channel would drop them
@@ -235,6 +250,17 @@ func (p *SocketHandler) saveQueuedHeartbeats() int {
 		}
 	}
 	return saved
+}
+
+// shutdownAgentHooks sends the queued agent hook events within timeout and saves the rest.
+// Only the first call does anything.
+func (p *SocketHandler) shutdownAgentHooks(timeout time.Duration) {
+	if p.agentHooks == nil {
+		return
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+	defer cancel()
+	p.agentHooks.Shutdown(ctx)
 }
 
 func (p *SocketHandler) stopAccepting() {
@@ -327,6 +353,9 @@ func (p *SocketHandler) handleConnection(conn net.Conn) {
 		}
 	case SocketMessageTypeSessionPullRequests:
 		p.handleSessionPullRequests(msg)
+	case SocketMessageTypeAgentHook:
+		// Coding agent telemetry, like OTEL: it passes in AI cloud only mode
+		p.handleAgentHook(conn, msg)
 	default:
 		slog.Error("Unknown message type:", slog.String("messageType", string(msg.Type)))
 	}
@@ -367,6 +396,30 @@ func (p *SocketHandler) handleSessionPullRequests(msg SocketMessage) {
 		}
 		slog.Debug("session_pull_requests sent", slog.String("sessionId", req.SessionID), slog.Int("count", len(req.URLs)))
 	}()
+}
+
+// handleAgentHook queues one hook event and acknowledges it. hook-ingest saves an event the
+// daemon didn't acknowledge, so the answer only goes out once the event is queued.
+func (p *SocketHandler) handleAgentHook(conn net.Conn, msg SocketMessage) {
+	encoder := json.NewEncoder(conn)
+	buf, err := json.Marshal(msg.Payload)
+	if err != nil {
+		slog.Error("Error encoding agent_hook payload", slog.Any("err", err))
+		encoder.Encode(map[string]string{"status": "error"})
+		return
+	}
+	var ev agenthook.Event
+	if err := json.Unmarshal(buf, &ev); err != nil {
+		slog.Error("Error decoding agent_hook payload", slog.Any("err", err))
+		encoder.Encode(map[string]string{"status": "error"})
+		return
+	}
+	if p.agentHooks == nil {
+		encoder.Encode(map[string]string{"status": "disabled"})
+		return
+	}
+	p.agentHooks.Add(ev)
+	encoder.Encode(map[string]string{"status": "ok"})
 }
 
 func (p *SocketHandler) handleStatus(conn net.Conn) {

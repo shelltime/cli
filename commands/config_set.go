@@ -27,6 +27,7 @@ var configSwitches = []configSwitch{
 	{"ai.agent.delete", func(c model.ShellTimeConfig) bool { return c.AI != nil && c.AI.Agent.Delete }},
 	{"ai.showTips", shouldShowTips},
 	{"ai.shareContext", func(c model.ShellTimeConfig) bool { return shareContextEnabled(c.AI) }},
+	{"agentHooks.sendContent", func(c model.ShellTimeConfig) bool { return c.AgentHooksSendContent() }},
 }
 
 const configSwitchDescription = `Settings:
@@ -35,6 +36,9 @@ const configSwitchDescription = `Settings:
   ai.agent.delete     shelltime q runs suggested delete commands once you confirm
   ai.showTips         shelltime q shows tips
   ai.shareContext     shelltime q sends context about where you run it
+  agentHooks.sendContent
+                      the Cursor and Antigravity hooks send prompt, response and
+                      tool input text (off: only the activity)
 
 Name several settings of one section after it, separated by commas or spaces.
 The change goes to config.local.* when that file has the setting's section
@@ -64,7 +68,8 @@ var ConfigDisableCommand *cli.Command = &cli.Command{
 Examples:
   shelltime config disable ai.agent delete
   shelltime config disable ai.agent view,edit,delete
-  shelltime config disable ai.showTips`,
+  shelltime config disable ai.showTips
+  shelltime config disable agentHooks.sendContent`,
 	Action: func(c *cli.Context) error { return configSetSwitches(c, false) },
 }
 

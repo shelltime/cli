@@ -25,6 +25,7 @@ var (
 	COMMAND_CURSOR_STORAGE_FILE = COMMAND_STORAGE_FOLDER + "/cursor.txt"
 	HEARTBEAT_LOG_FILE          = COMMAND_BASE_STORAGE_FOLDER + "/coding-heartbeat.data.log"
 	SYNC_PENDING_FILE           = COMMAND_BASE_STORAGE_FOLDER + "/sync-pending.jsonl"
+	AGENT_HOOKS_PENDING_FILE    = COMMAND_BASE_STORAGE_FOLDER + "/agent-hooks.pending.jsonl"
 )
 
 func InitFolder(baseFolder string) {
@@ -38,6 +39,7 @@ func InitFolder(baseFolder string) {
 	COMMAND_CURSOR_STORAGE_FILE = COMMAND_STORAGE_FOLDER + "/cursor.txt"
 	HEARTBEAT_LOG_FILE = COMMAND_BASE_STORAGE_FOLDER + "/coding-heartbeat.data.log"
 	SYNC_PENDING_FILE = COMMAND_BASE_STORAGE_FOLDER + "/sync-pending.jsonl"
+	AGENT_HOOKS_PENDING_FILE = COMMAND_BASE_STORAGE_FOLDER + "/agent-hooks.pending.jsonl"
 }
 
 // key: ${shell}|${sessionID}|${command}|${username}

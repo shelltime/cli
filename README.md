@@ -43,7 +43,7 @@ The fastest way to get set up is a single command:
 shelltime init
 ```
 
-`shelltime init` authenticates the CLI (in the browser, with `--email` to approve on your iPhone in the ShellTime iOS app, or with `--token`), installs the shell hooks and the daemon, and tries to wire up Claude Code and Codex OTEL integration for you. It prints one line per step; `shelltime init --verbose` shows each step's details.
+`shelltime init` authenticates the CLI (in the browser, with `--email` to approve on your iPhone in the ShellTime iOS app, or with `--token`), installs the shell hooks and the daemon, and tries to wire up Claude Code and Codex OTEL integration for you, plus the Cursor and Antigravity hooks when those are installed. It prints one line per step; `shelltime init --verbose` shows each step's details.
 
 Shell hooks go to the shells you use: zsh, bash or fish when its config file (`~/.zshrc`, `~/.bashrc`, `~/.config/fish/config.fish`) exists, and your login shell (`$SHELL`), whose config file is created if missing. To add a shell later, create its config file and run `shelltime hooks install`.
 
@@ -55,6 +55,8 @@ shelltime hooks install
 shelltime daemon install
 shelltime cc install
 shelltime codex install
+shelltime cursor install   # if you use Cursor
+shelltime agy install      # if you use Google Antigravity
 ```
 
 ## What ShellTime Does
@@ -106,6 +108,10 @@ shelltime codex install
 | `shelltime codex uninstall` | Remove ShellTime OTEL config from `~/.codex/config.toml` |
 | `shelltime codex backfill` | Upload past Codex usage from local session files |
 | `shelltime codex projects` | Same as `shelltime cc projects`: the projects of both agents are grouped together |
+| `shelltime cursor install` | Add the ShellTime hooks to `~/.cursor/hooks.json` (Cursor IDE and `cursor-agent`) |
+| `shelltime cursor uninstall` | Remove the ShellTime hooks from `~/.cursor/hooks.json` |
+| `shelltime agy install` | Add the ShellTime hook group to `~/.gemini/config/hooks.json` (Antigravity app and `agy` CLI); `shelltime antigravity` works too |
+| `shelltime agy uninstall` | Remove the ShellTime hook group from `~/.gemini/config/hooks.json` |
 
 ### Environment helpers
 
@@ -201,6 +207,15 @@ For formatting details and platform notes, see [docs/CC_STATUSLINE.md](docs/CC_S
 
 Besides tokens and cost, both tools then send your prompts, tool details (shell commands, file paths, truncated tool input or output, errors) and the assistant's responses. To keep some of these out, set `OTEL_LOG_USER_PROMPTS`, `OTEL_LOG_TOOL_DETAILS` or `OTEL_LOG_ASSISTANT_RESPONSES` to `0` in the `env` of `~/.claude/settings.json`, or `otel.log_user_prompt` / `otel.log_agent_responses` to `false` in `~/.codex/config.toml`. Re-running the install command resets them. `shelltime doctor` warns when a config written by an older version is missing newer keys, and `shelltime doctor --fix` re-runs the install.
 
+## Cursor and Antigravity Hooks
+
+Cursor and Google Antigravity have no OpenTelemetry export, so ShellTime reads their native hooks instead: the agent runs `shelltime hook-ingest` for each event with the event's JSON on stdin, and ShellTime answers with the reply that lets the agent carry on. It never blocks, denies or changes anything the agent does.
+
+- **Cursor**: `shelltime cursor install` registers `beforeSubmitPrompt`, `postToolUse`, `postToolUseFailure`, `afterAgentResponse`, `stop`, `sessionStart` and `sessionEnd` in `~/.cursor/hooks.json`, which the IDE and `cursor-agent` both read. Your other hooks stay as they are.
+- **Antigravity**: `shelltime agy install` adds a `shelltime` hook group (`SessionStart`, `PreInvocation`, `PostToolUse`, `PostInvocation`, `Stop`) to `~/.gemini/config/hooks.json`, shared by the app and the `agy` CLI. Antigravity ignores the whole file when it isn't strict JSON, so a file with comments, trailing commas or a byte order mark is left alone with an error, never rewritten.
+
+Restart the agent after installing. Events go to the daemon, which sends them in batches; without a running daemon they wait in `~/.shelltime/agent-hooks.pending.jsonl` until it sends them. The hooks send your prompts, the agent's responses, tool names and inputs (shell commands, file paths) and the workspace folder; tool output is never read. Data masking and your exclude patterns apply, and `shelltime config disable agentHooks.sendContent` keeps prompt, response and tool input text out, so only the activity is sent. `shelltime doctor` checks both files and that the binary they run still exists; re-run the install after moving `shelltime`.
+
 ## Projects
 
 ShellTime groups your coding agent sessions into projects by the git repository they ran in, so a renamed or moved clone, a worktree or a subfolder stays one project. The repository comes from the folder's `origin` remote (else `upstream`, else the first remote), sent as `https://<host>/<path>` with any credentials in the remote URL removed. Claude Code reports it itself (`shelltime cc install` turns this on); for Codex and older Claude Code setups the daemon asks git about the session's folder. Sessions outside a repository, or in one without a remote, are grouped by machine and folder.
@@ -254,7 +269,7 @@ For Codex, and for Claude Code sessions without the mod, the ShellTime server lo
 - **Exclusion patterns** skip matching commands entirely, so they are never recorded.
 - **Encryption** (`encrypted: true`, set in the config `shelltime auth` creates) makes the daemon encrypt command uploads with your token's public key (RSA + AES-GCM). It only applies in daemon mode. If the key can't be fetched, is empty, or encryption fails, the upload fails instead of going out unencrypted or with a key the server cannot unwrap.
 - **`shelltime auth`** writes `~/.shelltime` as mode `0700` and `config.yaml` as mode `0600`.
-- **AI coding telemetry** includes prompts and tool details unless you turn them off (see [Claude Code and Codex Telemetry](#claude-code-and-codex-telemetry)). `--no-prompts` keeps prompt text out of a backfill.
+- **AI coding telemetry** includes prompts and tool details unless you turn them off (see [Claude Code and Codex Telemetry](#claude-code-and-codex-telemetry) and [Cursor and Antigravity Hooks](#cursor-and-antigravity-hooks)). `--no-prompts` keeps prompt text out of a backfill.
 - **Local config overrides** keep secrets like tokens out of your main config file.
 
 ## Development

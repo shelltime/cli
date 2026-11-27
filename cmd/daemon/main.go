@@ -167,6 +167,16 @@ func main() {
 		}
 	}
 
+	// Resend the Cursor and Antigravity hook events saved while no daemon or server took them.
+	// Those hooks are coding agent telemetry, so this runs in AI cloud only mode too.
+	agentHookResyncService := daemon.NewAgentHookResyncService(cfg)
+	agentHookResyncService.SetConfigService(daemonConfigService)
+	if err := agentHookResyncService.Start(ctx); err != nil {
+		slog.Error("Failed to start agent hook resync service", slog.Any("err", err))
+	} else {
+		defer agentHookResyncService.Stop()
+	}
+
 	codexInstalled, err := daemon.CodexInstallationStatus()
 	if err != nil {
 		if reason, ok := daemon.CodexSyncSkipReason(err); ok {
