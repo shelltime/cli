@@ -96,13 +96,24 @@ func TestProjectHookCommand(t *testing.T) {
 // HOME as given and payload on stdin, and returns its stdout.
 func runProjectHookCommand(t *testing.T, command, path, home, payload string) string {
 	t.Helper()
-	cmd := exec.Command("/bin/sh", "-c", command)
+	cmd := exec.Command("/bin/sh", "-c", isolateSystemDirs(t, command))
 	cmd.Env = []string{"PATH=" + path, "HOME=" + home}
 	cmd.Stdin = strings.NewReader(payload)
 	cmd.Dir = t.TempDir() // the agents disagree on the folder a hook runs in
 	out, err := cmd.Output()
 	require.NoError(t, err, "the hook never fails")
 	return string(out)
+}
+
+// isolateSystemDirs points the command's system folders at empty ones, so a ShellTime installed
+// on the machine running the tests is never found, and never reaches that machine's daemon.
+func isolateSystemDirs(t *testing.T, command string) string {
+	t.Helper()
+	for _, dir := range []string{"/opt/homebrew/bin", "/usr/local/bin"} {
+		require.Contains(t, command, dir)
+		command = strings.ReplaceAll(command, dir, t.TempDir())
+	}
+	return command
 }
 
 // With PATH empty, the command adds no empty entry, which would make sh search the folder the
@@ -114,25 +125,28 @@ func TestProjectHookCommand_EmptyPATHDoesNotSearchTheWorkingFolder(t *testing.T)
 	dir := t.TempDir()
 	writeFile(t, filepath.Join(dir, "shelltime"), "#!/bin/sh\necho planted\n", 0755)
 	writeFile(t, filepath.Join(dir, "shelltime-daemon"), "#!/bin/sh\n", 0755)
-	cmd := exec.Command("/bin/sh", "-c", CursorProjectHookCommand("stop"))
+	cmd := exec.Command("/bin/sh", "-c", isolateSystemDirs(t, CursorProjectHookCommand("stop")))
 	cmd.Env = []string{"PATH=", "HOME=" + t.TempDir()}
 	cmd.Dir = dir
 	out, err := cmd.Output()
 	require.NoError(t, err)
-	assert.Equal(t, "{}\n", string(out), "the planted binary never runs")
+	assert.NotContains(t, string(out), "planted")
+	assert.Equal(t, "{}\n", string(out), "nothing else was found either")
 }
 
 func TestProjectHookCommand_RunsHookIngestOnlyWithTheCLIAndDaemon(t *testing.T) {
 	if _, err := os.Stat("/bin/sh"); err != nil {
 		t.Skip("no /bin/sh")
 	}
-	sysPath := "/usr/bin:/bin"
+	// The command needs nothing from the system (its tools are shell builtins and the fakes
+	// start with #!/bin/sh), so a ShellTime installed in /usr/bin is never found either
+	sysPath := t.TempDir()
 	home := t.TempDir()
 	fake := func(dir, name, script string) {
 		writeFile(t, filepath.Join(dir, name), "#!/bin/sh\n"+script, 0755)
 	}
 	// A fake shelltime that shows how it was run
-	cli := `echo "ran $*"; cat >/dev/null` + "\n"
+	cli := `echo "ran $*"; while read -r _; do :; done` + "\n"
 
 	command := CursorProjectHookCommand("beforeSubmitPrompt")
 	assert.Equal(t, "{\"continue\":true}\n", runProjectHookCommand(t, command, sysPath, home, "{}"), "nothing installed: the agent carries on")
