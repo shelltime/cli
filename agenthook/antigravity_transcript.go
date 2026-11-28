@@ -15,6 +15,9 @@ const (
 	antigravityTranscriptChunkBytes = 64 << 10
 	// maxAntigravityTranscriptBytes bounds the maximum total bytes scanned from EOF.
 	maxAntigravityTranscriptBytes = 4 << 20
+	// antigravityLowerStepThreshold stops the backward scan after this many consecutive
+	// rows below startStep, preventing a single out-of-order late update from cutting off earlier steps.
+	antigravityLowerStepThreshold = 3
 )
 
 var (
@@ -37,8 +40,8 @@ type antigravityStepUsage struct {
 // applyAntigravityTranscriptUsage reads the current invocation's completed model steps from
 // Antigravity's transcript.jsonl (all completed MODEL / PLANNER_RESPONSE steps with
 // step_index >= initialNumSteps, deduplicated per step_index) and sums their token counts onto ev.
-// Works across Antigravity App, IDE, and agy CLI. Missing, unreadable, non-regular, or unmatched
-// transcripts are silently ignored so hook recording never fails.
+// Works across Antigravity App, IDE, and agy CLI. Missing, unreadable, non-regular, truncated,
+// or unmatched transcripts are silently ignored so hook recording never fails or undercounts.
 func applyAntigravityTranscriptUsage(ev *Event, transcriptPath string, p payload) {
 	startStep, ok := p.nonNegInt("initialNumSteps")
 	if !ok || transcriptPath == "" {
@@ -76,9 +79,16 @@ func applyAntigravityTranscriptUsage(ev *Event, transcriptPath string, p payload
 }
 
 // readAntigravityInvocationUsage scans path backwards in bounded chunks from EOF, collecting
-// the latest completed model row for each step_index >= startStep (and <= maxStep when maxStep >= 0),
-// and stops as soon as a row with step_index < startStep is reached.
+// the latest completed model row for each step_index >= startStep (and <= maxStep when maxStep >= 0).
+// Non-usage lines are filtered cheaply without full JSON unmarshalling. If the 4 MiB scan cap is
+// reached before finding the invocation boundary, it returns false rather than reporting partial counts.
 func readAntigravityInvocationUsage(path string, startStep, maxStep int) (antigravityStepUsage, bool) {
+	// Stat before Open so a FIFO or device node named *.jsonl can never block Open.
+	statInfo, err := os.Stat(path)
+	if err != nil || !statInfo.Mode().IsRegular() || statInfo.Size() == 0 {
+		return antigravityStepUsage{}, false
+	}
+
 	f, err := os.Open(path)
 	if err != nil {
 		return antigravityStepUsage{}, false
@@ -97,34 +107,48 @@ func readAntigravityInvocationUsage(path string, startStep, maxStep int) (antigr
 	pos := info.Size()
 	var scanned int64
 	var carry []byte
+	consecutiveBelow := 0
 
 	processLine := func(line []byte) (stop bool) {
 		line = bytes.TrimSpace(line)
-		if len(line) == 0 || !bytes.Contains(line, antigravityStepIndexNeedle) {
+		if len(line) == 0 {
 			return false
 		}
-		// Fast check for non-usage lines that still carry step_index: we only need to stop
-		// when step_index falls below startStep, so skip full unmarshal when a line has no
-		// token fields unless we haven't checked its step_index yet.
-		var row payload
-		if err := json.Unmarshal(line, &row); err != nil || row == nil {
-			return false
-		}
-		idx, ok := row.nonNegInt("step_index")
+		idx, ok := extractJSONNonNegInt(line, antigravityStepIndexNeedle)
 		if !ok {
 			return false
 		}
 		if idx < startStep {
-			return true
+			consecutiveBelow++
+			if consecutiveBelow >= antigravityLowerStepThreshold {
+				return true
+			}
+			// Also stop immediately on a completed model step from an earlier invocation.
+			if bytes.Contains(line, antigravityTokensNeedle) {
+				var row payload
+				if err := json.Unmarshal(line, &row); err == nil && row != nil && isCompletedAntigravityModelStep(row) {
+					return true
+				}
+			}
+			return false
 		}
+		consecutiveBelow = 0
+
 		if maxStep >= 0 && idx > maxStep {
 			return false
 		}
-		if !bytes.Contains(line, antigravityTokensNeedle) || !isCompletedAntigravityModelStep(row) {
+		if !bytes.Contains(line, antigravityTokensNeedle) {
 			return false
 		}
 		// Scanning backwards: the first completed row seen for a given step_index is the newest.
 		if _, exists := steps[idx]; exists {
+			return false
+		}
+		var row payload
+		if err := json.Unmarshal(line, &row); err != nil || row == nil {
+			return false
+		}
+		if !isCompletedAntigravityModelStep(row) {
 			return false
 		}
 		input, hasInput := row.nonNegInt("input_tokens")
@@ -202,6 +226,12 @@ func readAntigravityInvocationUsage(path string, startStep, maxStep int) (antigr
 		}
 	}
 
+	// If we hit the scan cap before reaching BOF or an earlier invocation boundary,
+	// omit usage rather than reporting a truncated partial sum as exact.
+	if pos > 0 && !stop {
+		return antigravityStepUsage{}, false
+	}
+
 	if len(steps) == 0 {
 		return antigravityStepUsage{}, false
 	}
@@ -225,6 +255,39 @@ func readAntigravityInvocationUsage(path string, startStep, maxStep int) (antigr
 		}
 	}
 	return total, true
+}
+
+// extractJSONNonNegInt scans a JSON object line for `"key": <int>` without full decoding.
+func extractJSONNonNegInt(line, keyNeedle []byte) (int, bool) {
+	pos := bytes.Index(line, keyNeedle)
+	if pos < 0 {
+		return 0, false
+	}
+	rest := bytes.TrimSpace(line[pos+len(keyNeedle):])
+	if len(rest) == 0 || rest[0] != ':' {
+		return 0, false
+	}
+	rest = bytes.TrimSpace(rest[1:])
+	if len(rest) == 0 {
+		return 0, false
+	}
+	if rest[0] == '"' {
+		rest = rest[1:]
+		end := bytes.IndexByte(rest, '"')
+		if end <= 0 {
+			return 0, false
+		}
+		return parseNonNegIntBytes(bytes.TrimSpace(rest[:end]))
+	}
+	end := 0
+	for end < len(rest) {
+		c := rest[end]
+		if c == ',' || c == '}' || c == ' ' || c == '\t' || c == '\r' || c == '\n' {
+			break
+		}
+		end++
+	}
+	return parseNonNegIntBytes(rest[:end])
 }
 
 func isCompletedAntigravityModelStep(row payload) bool {
