@@ -16,7 +16,7 @@ var (
 	claudeProcessKeywords      = []string{"claude"}
 	codexProcessKeywords       = []string{"codex", "chatgpt"}
 	cursorProcessKeywords      = []string{"cursor"}
-	antigravityProcessKeywords = []string{"antigravity", "agy"}
+	antigravityProcessKeywords = []string{"antigravity"}
 )
 
 // listProcessNamesFunc lists running process names. It is a var so tests can stub it.
@@ -71,5 +71,16 @@ func isCursorRunning() bool {
 }
 
 func isAntigravityRunning() bool {
-	return isProcessRunning(antigravityProcessKeywords)
+	names, err := listProcessNamesFunc()
+	if err != nil {
+		slog.Debug("Failed to list processes, assuming client is running", slog.Any("err", err))
+		return true
+	}
+	for _, name := range names {
+		base := filepath.Base(name)
+		if strings.EqualFold(base, "agy") || matchKnownName(base, antigravityProcessKeywords) != "" {
+			return true
+		}
+	}
+	return false
 }

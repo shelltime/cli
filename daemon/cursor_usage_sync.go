@@ -212,7 +212,7 @@ func (s *CursorUsageSyncService) syncTokenUsage(ctx context.Context, auth *model
 		return nil
 	}
 
-	uploaded, err := uploadDaemonUsageSessions(ctx, s.config, model.AICodeClientCursor, parsed.Sessions)
+	uploaded, err := uploadDaemonUsageSessions(ctx, s.config, model.AICodeClientCursor, parsed.Sessions, true)
 	if err != nil {
 		return err
 	}
@@ -252,11 +252,14 @@ func (s *CursorUsageSyncService) saveState(st cursorUsageSyncState) {
 
 // uploadDaemonUsageSessions checks server backfill status and uploads new/updated events
 // idempotently via /api/v1/cc/backfill, followed by /api/v1/cc/backfill/complete.
+// When skipCountCheck is true (for incremental window fetches like Cursor), already-backfilled
+// sessions are still uploaded so server-side event_id deduplication accepts new events.
 func uploadDaemonUsageSessions(
 	ctx context.Context,
 	config model.ShellTimeConfig,
 	clientType string,
 	sessions []*model.BackfillSession,
+	skipCountCheck bool,
 ) (int, error) {
 	if config.Token == "" || len(sessions) == 0 {
 		return 0, nil
@@ -301,7 +304,7 @@ func uploadDaemonUsageSessions(
 		if st.Status == model.AICodeBackfillStatusLive || st.Status == model.AICodeBackfillStatusArchived {
 			continue
 		}
-		if st.Status == model.AICodeBackfillStatusBackfilled && st.EventCount >= len(sess.Events) {
+		if !skipCountCheck && st.Status == model.AICodeBackfillStatusBackfilled && st.EventCount >= len(sess.Events) {
 			continue
 		}
 		toUpload = append(toUpload, sess)

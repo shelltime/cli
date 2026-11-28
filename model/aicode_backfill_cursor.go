@@ -9,6 +9,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log/slog"
 	"math"
 	"net/http"
 	"sort"
@@ -362,7 +363,9 @@ func fetchCursorScopeUsage(
 		for _, raw := range events {
 			rec, err := normalizeCursorUsageEvent(raw, sinceMs, untilMs, teamID)
 			if err != nil {
-				return nil, err
+				slog.Debug("Skipping malformed Cursor usage event", slog.Any("err", err))
+				normalized = append(normalized, nil)
+				continue
 			}
 			normalized = append(normalized, rec)
 		}

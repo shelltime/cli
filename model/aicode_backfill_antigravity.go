@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io/fs"
+	"net/url"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -252,18 +253,22 @@ func ParseAntigravityDBFiles(files []string, opts BackfillOptions) (*BackfillPar
 
 	learnedModels := map[int]agyLearnedModel{}
 	var pending []dbResult
-	badFiles := 0
+	badItems := 0
+	var failedFiles []string
 
 	for _, path := range files {
 		st, err := os.Stat(path)
 		if err != nil {
-			badFiles++
+			badItems++
+			failedFiles = append(failedFiles, path)
 			continue
 		}
 		sessionID := strings.TrimSuffix(filepath.Base(path), ".db")
-		cands, models, err := readAntigravityDatabase(path, sessionID, st.ModTime().UnixMilli())
+		cands, models, rowBad, err := readAntigravityDatabase(path, sessionID, st.ModTime().UnixMilli())
+		badItems += rowBad
 		if err != nil {
-			badFiles++
+			badItems++
+			failedFiles = append(failedFiles, path)
 			continue
 		}
 		if cands == nil && models == nil {
@@ -362,9 +367,10 @@ func ParseAntigravityDBFiles(files []string, opts BackfillOptions) (*BackfillPar
 	})
 
 	return &BackfillParseResult{
-		Sessions: sessions,
-		Files:    len(files),
-		BadLines: badFiles,
+		Sessions:    sessions,
+		Files:       len(files),
+		BadLines:    badItems,
+		FailedFiles: failedFiles,
 	}, nil
 }
 
@@ -671,19 +677,24 @@ func parseAgyMetadata(raw []byte, isStep bool) (agyMetadata, error) {
 	}, nil
 }
 
-func readAntigravityDatabase(path, sessionID string, fallbackTimestampMs int64) ([]agyUsageCandidate, map[int]agyLearnedModel, error) {
-	// Open read-only with query_only pragma so WAL files are read without writing.
-	dsn := "file:" + path + "?_pragma=busy_timeout(100)&_pragma=query_only(ON)"
-	db, err := sql.Open("sqlite", dsn)
+func readAntigravityDatabase(path, sessionID string, fallbackTimestampMs int64) ([]agyUsageCandidate, map[int]agyLearnedModel, int, error) {
+	// Open strictly read-only with URI-encoded path so paths containing ?, #, or % work safely
+	// and SQLite never creates -wal/-shm files next to a live agent DB.
+	dsnURL := url.URL{
+		Scheme:   "file",
+		Path:     path,
+		RawQuery: "mode=ro&_pragma=busy_timeout(100)&_pragma=query_only(ON)",
+	}
+	db, err := sql.Open("sqlite", dsnURL.String())
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, 0, err
 	}
 	defer db.Close()
 
 	tables := map[string]bool{}
 	rows, err := db.Query("SELECT name FROM sqlite_master WHERE type = 'table'")
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, 0, err
 	}
 	for rows.Next() {
 		var name string
@@ -694,9 +705,10 @@ func readAntigravityDatabase(path, sessionID string, fallbackTimestampMs int64) 
 	_ = rows.Close()
 
 	if !tables["gen_metadata"] && !tables["steps"] {
-		return nil, nil, nil
+		return nil, nil, 0, nil
 	}
 
+	badRows := 0
 	readMeta := func(query string, pageRows int, isStep bool) ([]agyIndexedMetadata, error) {
 		var entries []agyIndexedMetadata
 		var after int64 = -1
@@ -717,22 +729,26 @@ func readAntigravityDatabase(path, sessionID string, fallbackTimestampMs int64) 
 			for qRows.Next() {
 				count++
 				var rowID int64
-				var idx int
+				var idx sql.NullInt64
 				var blob []byte
 				if err := qRows.Scan(&rowID, &idx, &blob); err != nil {
-					_ = qRows.Close()
-					return nil, err
+					badRows++
+					continue
 				}
 				lastRowID = rowID
+				if !idx.Valid {
+					badRows++
+					continue
+				}
 				if isStep && len(blob) == 0 {
 					continue
 				}
 				entry, err := parseAgyMetadata(blob, isStep)
 				if err != nil {
-					_ = qRows.Close()
-					return nil, err
+					badRows++
+					continue
 				}
-				entries = append(entries, agyIndexedMetadata{idx: idx, entry: entry})
+				entries = append(entries, agyIndexedMetadata{idx: int(idx.Int64), entry: entry})
 			}
 			_ = qRows.Close()
 			if count < pageRows {
@@ -749,11 +765,11 @@ func readAntigravityDatabase(path, sessionID string, fallbackTimestampMs int64) 
 	if tables["gen_metadata"] {
 		generations, err = readMeta(
 			"SELECT rowid AS row_id, idx, data FROM gen_metadata WHERE rowid > ? ORDER BY rowid LIMIT ?",
-			1,
+			64,
 			false,
 		)
 		if err != nil {
-			return nil, nil, err
+			return nil, nil, badRows, err
 		}
 	}
 
@@ -781,7 +797,7 @@ func readAntigravityDatabase(path, sessionID string, fallbackTimestampMs int64) 
 			true,
 		)
 		if err != nil {
-			return nil, nil, err
+			return nil, nil, badRows, err
 		}
 	}
 
@@ -798,7 +814,7 @@ func readAntigravityDatabase(path, sessionID string, fallbackTimestampMs int64) 
 	}
 
 	cands := buildAgyUsageCandidates(sessionID, generations, steps, trajectoryTs, fallbackTimestampMs)
-	return cands, models, nil
+	return cands, models, badRows, nil
 }
 
 type agyUsageCandidate struct {

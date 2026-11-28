@@ -134,7 +134,7 @@ func (s *AntigravityUsageSyncService) syncOnce(ctx context.Context) error {
 		return err
 	}
 	if parsed != nil && len(parsed.Sessions) > 0 {
-		uploaded, err := uploadDaemonUsageSessions(ctx, s.config, model.AICodeClientAntigravity, parsed.Sessions)
+		uploaded, err := uploadDaemonUsageSessions(ctx, s.config, model.AICodeClientAntigravity, parsed.Sessions, false)
 		if err != nil {
 			return err
 		}
@@ -145,8 +145,18 @@ func (s *AntigravityUsageSyncService) syncOnce(ctx context.Context) error {
 		}
 	}
 
+	failed := make(map[string]bool)
+	if parsed != nil {
+		for _, p := range parsed.FailedFiles {
+			failed[p] = true
+		}
+	}
+
 	s.mu.Lock()
 	for path, fp := range nextFPs {
+		if failed[path] {
+			continue
+		}
 		s.fingerprints[path] = fp
 	}
 	s.mu.Unlock()
