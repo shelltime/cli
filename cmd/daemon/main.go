@@ -196,6 +196,24 @@ func main() {
 		}
 	}
 
+	if !aiCloudOnly && cfg.CursorUsageSyncEnabled() {
+		cursorUsageSyncService := daemon.NewCursorUsageSyncService(cfg)
+		if err := cursorUsageSyncService.Start(ctx); err != nil {
+			slog.Error("Failed to start Cursor usage sync service", slog.Any("err", err))
+		} else {
+			defer cursorUsageSyncService.Stop()
+		}
+	}
+
+	if !aiCloudOnly && cfg.AntigravityUsageSyncEnabled() {
+		antigravityUsageSyncService := daemon.NewAntigravityUsageSyncService(cfg)
+		if err := antigravityUsageSyncService.Start(ctx); err != nil {
+			slog.Error("Failed to start Antigravity usage sync service", slog.Any("err", err))
+		} else {
+			defer antigravityUsageSyncService.Stop()
+		}
+	}
+
 	// Create processor instance
 	processor := daemon.NewSocketHandler(&cfg, pubsub)
 	processor.SetConfigService(daemonConfigService)

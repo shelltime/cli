@@ -330,3 +330,52 @@ func TestBackfillOptionsFromFlags(t *testing.T) {
 	_, err = parse("--since", "2026-09-30", "--until", "2026-09-01")
 	assert.ErrorContains(t, err, "must not be after")
 }
+
+func TestCursorBackfill_UploadsSessions(t *testing.T) {
+	bs := setupBackfillTest(t, "test-token")
+
+	nowMs := time.Now().Add(-2 * time.Hour).UTC().UnixMilli()
+	cursorAPI := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/aiserver.v1.DashboardService/GetTeams":
+			_, _ = w.Write([]byte(`{"teams":[]}`))
+		case "/aiserver.v1.DashboardService/GetMe":
+			_, _ = w.Write([]byte(`{"userId":123,"email":"dev@example.com"}`))
+		case "/aiserver.v1.DashboardService/GetFilteredUsageEvents":
+			_, _ = fmt.Fprintf(w, `{"usageEventsDisplay":[{"timestamp":%d,"model":"claude-4-sonnet","conversationId":"cursor-conv-1","tokenUsage":{"inputTokens":1200,"outputTokens":300,"cacheReadTokens":400,"cacheWriteTokens":100,"totalCents":4.5}}]}`, nowMs)
+		default:
+			w.WriteHeader(http.StatusNotFound)
+		}
+	}))
+	defer cursorAPI.Close()
+
+	t.Setenv("CURSOR_AUTH_TOKEN", "test-cursor-jwt")
+	t.Setenv("CURSOR_API_ENDPOINT", cursorAPI.URL)
+
+	require.NoError(t, runBackfill(t, CursorBackfillCommand, "cursor"))
+
+	require.Len(t, bs.uploads, 1)
+	upload := bs.uploads[0]
+	assert.Equal(t, model.AICodeClientCursor, upload.ClientType)
+	assert.Equal(t, []string{"cursor-conv-1"}, upload.CompletedSessionIDs)
+	require.Len(t, upload.Events, 1)
+	ev := upload.Events[0]
+	assert.Equal(t, model.AICodeEventApiRequest, ev.EventType)
+	assert.Equal(t, "claude-4-sonnet", ev.Model)
+	require.NotNil(t, ev.InputTokens)
+	assert.Equal(t, 1200, *ev.InputTokens)
+	require.NotNil(t, ev.CostUSD)
+	assert.InDelta(t, 0.045, *ev.CostUSD, 1e-6)
+	require.Len(t, bs.completeCalls, 1)
+	assert.Equal(t, model.AICodeClientCursor, bs.completeCalls[0].ClientType)
+}
+
+func TestAgyBackfill_EmptyDirSucceeds(t *testing.T) {
+	bs := setupBackfillTest(t, "test-token")
+	root := t.TempDir()
+	t.Setenv("ANTIGRAVITY_DATA_DIR", root)
+
+	require.NoError(t, runBackfill(t, AgyBackfillCommand, "agy", "--dry-run"))
+	assert.Empty(t, bs.uploads)
+	assert.Empty(t, bs.completeCalls)
+}

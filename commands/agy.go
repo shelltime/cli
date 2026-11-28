@@ -11,6 +11,7 @@ var AgyCommand = &cli.Command{
 	Subcommands: []*cli.Command{
 		AgyInstallCommand,
 		AgyUninstallCommand,
+		AgyBackfillCommand,
 	},
 }
 

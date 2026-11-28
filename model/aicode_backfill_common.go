@@ -79,9 +79,10 @@ func AttachBackfillRepositories(ctx context.Context, sessions []*BackfillSession
 
 // BackfillParseResult is what a transcript parser found on disk.
 type BackfillParseResult struct {
-	Sessions []*BackfillSession
-	Files    int
-	BadLines int
+	Sessions    []*BackfillSession
+	Files       int
+	BadLines    int
+	FailedFiles []string
 }
 
 // backfillHash derives both the event id and the in-memory dedup key from a

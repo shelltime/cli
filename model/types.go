@@ -59,6 +59,40 @@ func (c ShellTimeConfig) AgentHooksSendContent() bool {
 	return c.AgentHooks == nil || c.AgentHooks.SendContent == nil || *c.AgentHooks.SendContent
 }
 
+// CursorConfig configures optional Cursor API credentials and usage sync.
+// When credentials are unset, ShellTime checks CURSOR_AUTH_TOKEN, CURSOR_API_KEY, and local Cursor auth files.
+type CursorConfig struct {
+	Enabled     *bool  `toml:"enabled,omitempty" yaml:"enabled,omitempty" json:"enabled,omitempty"`
+	APIKey      string `toml:"apiKey,omitempty" yaml:"apiKey,omitempty" json:"apiKey,omitempty"`
+	APIEndpoint string `toml:"apiEndpoint,omitempty" yaml:"apiEndpoint,omitempty" json:"apiEndpoint,omitempty"`
+}
+
+// AntigravityConfig configures optional Google Antigravity usage sync.
+type AntigravityConfig struct {
+	Enabled *bool `toml:"enabled,omitempty" yaml:"enabled,omitempty" json:"enabled,omitempty"`
+}
+
+// CursorUsageSyncEnabled reports whether the daemon should poll Cursor quota and token usage:
+// explicitly controlled by cursor.enabled, otherwise enabled when aiCodeOtel.enabled is true or cursor.apiKey is set.
+func (c ShellTimeConfig) CursorUsageSyncEnabled() bool {
+	if c.Cursor != nil && c.Cursor.Enabled != nil {
+		return *c.Cursor.Enabled
+	}
+	if c.Cursor != nil && c.Cursor.APIKey != "" {
+		return true
+	}
+	return c.AICodeOtel != nil && c.AICodeOtel.Enabled != nil && *c.AICodeOtel.Enabled
+}
+
+// AntigravityUsageSyncEnabled reports whether the daemon should poll local Antigravity state DBs:
+// explicitly controlled by antigravity.enabled, otherwise enabled when aiCodeOtel.enabled is true.
+func (c ShellTimeConfig) AntigravityUsageSyncEnabled() bool {
+	if c.Antigravity != nil && c.Antigravity.Enabled != nil {
+		return *c.Antigravity.Enabled
+	}
+	return c.AICodeOtel != nil && c.AICodeOtel.Enabled != nil && *c.AICodeOtel.Enabled
+}
+
 // CodeTracking configuration for coding activity heartbeat tracking
 type CodeTracking struct {
 	Enabled     *bool  `toml:"enabled" yaml:"enabled" json:"enabled"`
@@ -112,6 +146,12 @@ type ShellTimeConfig struct {
 
 	// AgentHooks configures what the Cursor and Antigravity hooks send
 	AgentHooks *AgentHooksConfig `toml:"agentHooks,omitempty" yaml:"agentHooks,omitempty" json:"agentHooks,omitempty"`
+
+	// Cursor configures optional Cursor API credentials and usage sync
+	Cursor *CursorConfig `toml:"cursor,omitempty" yaml:"cursor,omitempty" json:"cursor,omitempty"`
+
+	// Antigravity configures optional Google Antigravity usage sync
+	Antigravity *AntigravityConfig `toml:"antigravity,omitempty" yaml:"antigravity,omitempty" json:"antigravity,omitempty"`
 
 	// AICloudOnly collects only AI coding agent telemetry (aiCodeOtel) and nothing about the
 	// machine: no shell commands, editor heartbeats, aliases or dotfiles, so it never becomes a

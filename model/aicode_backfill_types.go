@@ -6,8 +6,10 @@ import "time"
 // "claude-code", which the server maps to claude_code; backfill sends the
 // canonical values directly.
 const (
-	AICodeClientClaudeCode = "claude_code"
-	AICodeClientCodex      = "codex"
+	AICodeClientClaudeCode  = "claude_code"
+	AICodeClientCodex       = "codex"
+	AICodeClientCursor      = "cursor"
+	AICodeClientAntigravity = "antigravity"
 )
 
 // Backfill session statuses reported by the server.

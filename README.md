@@ -247,16 +247,20 @@ Codex decides which windows are present. ShellTime displays the windows returned
 
 ## Backfilling AI Usage
 
-Live tracking only records sessions that run while the OTEL configuration is installed and the daemon is running. To upload earlier sessions from the transcripts Claude Code and Codex keep on disk:
+Live tracking records sessions while OTEL or daemon sync is running. To upload historical usage for Claude Code, Codex, Cursor, or Google Antigravity:
 
 ```bash
-shelltime cc backfill --dry-run   # show what would be uploaded
-shelltime cc backfill             # upload Claude Code sessions
-shelltime codex backfill          # upload Codex sessions
+shelltime cc backfill --dry-run      # show what would be uploaded
+shelltime cc backfill                # upload Claude Code sessions
+shelltime codex backfill             # upload Codex sessions
+shelltime cursor backfill            # upload Cursor token & cost usage
+shelltime agy backfill               # upload Antigravity token usage
 ```
 
-- Claude Code transcripts are read from `~/.claude/projects` and `~/.config/claude/projects`, or the directories in `CLAUDE_CONFIG_DIR`. Codex sessions are read from `~/.codex/sessions` and `~/.codex/archived_sessions`, or `CODEX_HOME`.
-- Prompts, token usage, models and tool calls are uploaded as if they had been tracked live; the server adds costs. Lines of code, commits and active time are not in the transcripts.
+- Claude Code transcripts are read from `~/.claude/projects` and `~/.config/claude/projects`, or `CLAUDE_CONFIG_DIR`. Codex sessions are read from `~/.codex/sessions` and `~/.codex/archived_sessions`, or `CODEX_HOME`.
+- Cursor usage is fetched from Cursor's `GetFilteredUsageEvents` API using `CURSOR_AUTH_TOKEN`, `CURSOR_API_KEY`, `cursor.apiKey` in config, `~/.cursor/auth.json`, or Cursor IDE's local `state.vscdb`. The daemon also syncs Cursor subscription quota (`GetCurrentPeriodUsage`) and recent token usage every 10 minutes while Cursor is running.
+- Antigravity usage is parsed from local conversation SQLite databases under `~/.gemini/antigravity*` and `~/.config/antigravity` (or `ANTIGRAVITY_DATA_DIR`). The daemon also scans modified conversation databases every 10 minutes while Antigravity (`agy`) is running.
+- Prompts, token usage, models and tool calls are uploaded as if they had been tracked live; the server fills in costs when the agent did not report one.
 - Sessions the server already has from live tracking are skipped, as are sessions still running. Running the command again only uploads what is missing.
 - Flags: `--since` / `--until` (`YYYY-MM-DD`) limit the range, `--no-prompts` uploads prompt lengths without the text, and `--ai-summary` also generates AI session summaries, which use your monthly AI credits.
 - Claude Code deletes transcripts after 30 days by default (`cleanupPeriodDays`), so only recent history may be available.
