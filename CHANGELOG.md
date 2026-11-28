@@ -1,5 +1,23 @@
 # Changelog
 
+## [0.1.100](https://github.com/shelltime/cli/compare/v0.1.99...v0.1.100) (2026-11-28)
+
+
+### Features
+
+* **agenthook:** capture token usage from Cursor and Antigravity hooks ([#363](https://github.com/shelltime/cli/issues/363)) ([57b781d](https://github.com/shelltime/cli/commit/57b781d58dc9554b237bc23799bbd05419e0c571))
+* **aicode:** add Cursor and Antigravity usage backfill and daemon sync ([#364](https://github.com/shelltime/cli/issues/364)) ([3521be0](https://github.com/shelltime/cli/commit/3521be01a8a75df328bf96d02b3fcb245f63ed05))
+
+
+### Bug Fixes
+
+* **agenthook:** link Cursor and Antigravity pull requests for PR comments ([#365](https://github.com/shelltime/cli/issues/365)) ([8685792](https://github.com/shelltime/cli/commit/8685792a3e6136d64e8719ee73408591e2b56cec))
+
+
+### Miscellaneous Chores
+
+* **agents:** install shelltime hooks for agy and cursor ([#361](https://github.com/shelltime/cli/issues/361)) ([48a978b](https://github.com/shelltime/cli/commit/48a978b61155c374828484388d4961ce246c8603))
+
 ## [0.1.99](https://github.com/shelltime/cli/compare/v0.1.98...v0.1.99) (2026-11-27)
 
 
