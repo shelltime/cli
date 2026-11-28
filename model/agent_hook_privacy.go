@@ -23,6 +23,7 @@ func ApplyAgentHookPrivacy(ev *agenthook.Event, cfg ShellTimeConfig) {
 		ev.ToolInput = ""
 		ev.Response = ""
 		ev.Error = ""
+		ev.PullRequestURLs = nil
 		ev.SetMetadata("excluded", true)
 	}
 	if cfg.DataMasking == nil || *cfg.DataMasking {

@@ -92,6 +92,12 @@ type Event struct {
 	// so the daemon drops it unless the session is a cloud run (whose agent runs no user-level
 	// hooks), which only the daemon remembers across events.
 	YieldToUserHooks bool `json:"yield_to_user_hooks,omitempty"`
+
+	// PullRequestURLs travels from hook-ingest to the daemon (and the pending file) only,
+	// never to POST /api/v1/agent-hooks: it holds normalized pull request URLs opened by a
+	// successful `gh pr create` or GitHub MCP `create_pull_request` tool call so the daemon
+	// can link them via POST /api/v1/cc/session-pull-requests.
+	PullRequestURLs []string `json:"pull_request_urls,omitempty"`
 }
 
 // SetMetadata sets one metadata key, creating the map when needed.

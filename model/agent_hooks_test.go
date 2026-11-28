@@ -57,6 +57,7 @@ func TestApplyAgentHookPrivacy_MaskingOff(t *testing.T) {
 
 func TestApplyAgentHookPrivacy_Exclude(t *testing.T) {
 	ev := privacyTestEvent()
+	ev.PullRequestURLs = []string{"https://github.com/acme/web/pull/1"}
 	ApplyAgentHookPrivacy(&ev, ShellTimeConfig{Exclude: []string{`^curl `}})
 
 	assert.Empty(t, ev.Command)
@@ -64,6 +65,7 @@ func TestApplyAgentHookPrivacy_Exclude(t *testing.T) {
 	assert.Empty(t, ev.Response)
 	assert.Empty(t, ev.Error, "an error may repeat the command")
 	assert.Empty(t, ev.Prompt, "so may the prompt")
+	assert.Empty(t, ev.PullRequestURLs, "excluded command drops PR links")
 	assert.Equal(t, true, ev.Metadata["excluded"])
 	assert.Equal(t, "/repo/main.go", ev.FilePath)
 
@@ -76,6 +78,7 @@ func TestApplyAgentHookPrivacy_Exclude(t *testing.T) {
 
 func TestApplyAgentHookPrivacy_NoContent(t *testing.T) {
 	ev := privacyTestEvent()
+	ev.PullRequestURLs = []string{"https://github.com/acme/web/pull/2"}
 	ev.SetMetadata("attachments", []string{"/repo/secret-plan.md"})
 	ev.SetMetadata("loop_count", 2)
 	ApplyAgentHookPrivacy(&ev, ShellTimeConfig{AgentHooks: &AgentHooksConfig{SendContent: new(false)}})
@@ -84,6 +87,7 @@ func TestApplyAgentHookPrivacy_NoContent(t *testing.T) {
 	assert.Empty(t, ev.Response)
 	assert.Empty(t, ev.ToolInput)
 	assert.Empty(t, ev.Error)
+	assert.Equal(t, []string{"https://github.com/acme/web/pull/2"}, ev.PullRequestURLs, "PR links stay when sendContent is off")
 	assert.NotContains(t, ev.Metadata, "attachments")
 	assert.Equal(t, 2, ev.Metadata["loop_count"], "other metadata stays")
 	assert.NotEmpty(t, ev.Command, "activity is still sent")
@@ -453,12 +457,17 @@ func TestSendAgentHookEvents(t *testing.T) {
 	for i := range events {
 		events[i] = agenthook.Event{ID: "id", Agent: agenthook.AgentCursor, EventType: agenthook.EventStop}
 	}
+	events[0].PullRequestURLs = []string{"https://github.com/acme/web/pull/1"}
+	events[0].YieldToUserHooks = true
 	cfg := ShellTimeConfig{APIEndpoint: srv.URL, Token: "tok"}
 	require.NoError(t, SendAgentHookEvents(context.Background(), cfg, events))
 
 	require.Len(t, requests, 2)
 	assert.Len(t, requests[0].Events, AgentHookMaxEventsPerRequest)
 	assert.Len(t, requests[1].Events, 2)
+	assert.Empty(t, requests[0].Events[0].PullRequestURLs, "stripped on wire")
+	assert.False(t, requests[0].Events[0].YieldToUserHooks, "stripped on wire")
+	assert.Equal(t, []string{"https://github.com/acme/web/pull/1"}, events[0].PullRequestURLs, "caller slice is untouched")
 	assert.NotEmpty(t, requests[0].Host)
 	assert.Equal(t, "CLI tok", auth[0])
 }

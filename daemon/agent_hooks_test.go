@@ -693,3 +693,235 @@ func TestAgentHookResync_StartStop(t *testing.T) {
 	s.Stop()
 	s.Stop()
 }
+
+func TestAgentHookBatcher_LinksPullRequestsAndStripsFromHookPayload(t *testing.T) {
+	isolateAgentHookHome(t)
+
+	var (
+		mu       sync.Mutex
+		hookReqs []model.AgentHookRequest
+		prCalls  []struct {
+			SessionID string
+			URLs      []string
+		}
+	)
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		mu.Lock()
+		defer mu.Unlock()
+		switch r.URL.Path {
+		case "/api/v1/agent-hooks":
+			var req model.AgentHookRequest
+			require.NoError(t, json.NewDecoder(r.Body).Decode(&req))
+			hookReqs = append(hookReqs, req)
+			_ = json.NewEncoder(w).Encode(model.AgentHookResponse{Success: true, EventsProcessed: len(req.Events)})
+		case "/api/v1/cc/session-pull-requests":
+			var req struct {
+				SessionID string   `json:"sessionId"`
+				URLs      []string `json:"urls"`
+			}
+			require.NoError(t, json.NewDecoder(r.Body).Decode(&req))
+			prCalls = append(prCalls, struct {
+				SessionID string
+				URLs      []string
+			}{req.SessionID, req.URLs})
+			w.WriteHeader(http.StatusNoContent)
+		default:
+			t.Errorf("unexpected path %s", r.URL.Path)
+			w.WriteHeader(http.StatusNotFound)
+		}
+	}))
+	t.Cleanup(srv.Close)
+
+	b := NewAgentHookBatcher(model.ShellTimeConfig{
+		APIEndpoint: srv.URL,
+		Token:       "tok",
+		// PR linking still works when prompt/response content is disabled
+		AgentHooks: &model.AgentHooksConfig{SendContent: new(false)},
+	}, nil)
+	b.flushInterval = time.Hour
+
+	// Seed session for workspace, then send a Cursor postToolUse with empty conversation_id.
+	b.Add(hookEvent("s0", "cursor-sess-1", "/repo"))
+	prEv := agenthook.Event{
+		ID:              "t1",
+		Agent:           agenthook.AgentCursor,
+		EventType:       agenthook.EventToolUse,
+		Workspace:       "/repo",
+		ToolName:        "Shell",
+		Command:         "gh pr create --fill",
+		PullRequestURLs: []string{"https://github.com/acme/web/pull/12"},
+	}
+	b.Add(prEv)
+	b.flush(context.Background())
+
+	// Sending the same (session, url) again within TTL is deduplicated.
+	prEv.ID = "t2"
+	b.Add(prEv)
+	b.flush(context.Background())
+
+	mu.Lock()
+	defer mu.Unlock()
+	require.Len(t, hookReqs, 2)
+	for _, req := range hookReqs {
+		for _, ev := range req.Events {
+			assert.Empty(t, ev.PullRequestURLs, "pull_request_urls must never be sent to /api/v1/agent-hooks")
+		}
+	}
+	require.Len(t, prCalls, 1)
+	assert.Equal(t, "cursor-sess-1", prCalls[0].SessionID, "lent session id is used for PR linking")
+	assert.Equal(t, []string{"https://github.com/acme/web/pull/12"}, prCalls[0].URLs)
+}
+
+func TestAgentHookBatcher_ExcludedCommandDoesNotLinkPullRequest(t *testing.T) {
+	isolateAgentHookHome(t)
+	srv := newAgentHookServer(t, http.StatusOK)
+
+	var linked int
+	b := NewAgentHookBatcher(model.ShellTimeConfig{
+		APIEndpoint: srv.URL,
+		Token:       "tok",
+		Exclude:     []string{"gh pr create"},
+	}, nil)
+	b.flushInterval = time.Hour
+	b.sendPullRequests = func(_ context.Context, _ model.ShellTimeConfig, _ string, _ []string) error {
+		linked++
+		return nil
+	}
+
+	b.Add(agenthook.Event{
+		ID:              "t1",
+		Agent:           agenthook.AgentAntigravity,
+		SessionID:       "agy-sess-1",
+		EventType:       agenthook.EventToolUse,
+		Workspace:       "/repo",
+		ToolName:        "run_command",
+		Command:         "gh pr create --fill",
+		PullRequestURLs: []string{"https://github.com/acme/web/pull/12"},
+	})
+	b.flush(context.Background())
+
+	assert.Equal(t, 1, srv.requestCount())
+	assert.Zero(t, linked, "excluded command must not link its PR")
+}
+
+func TestAgentHookResync_DispatchesSavedPullRequests(t *testing.T) {
+	isolateAgentHookHome(t)
+
+	// First fail during batcher flush so the event is persisted with its PullRequestURLs.
+	failing := newAgentHookServer(t, http.StatusServiceUnavailable)
+	b := NewAgentHookBatcher(model.ShellTimeConfig{APIEndpoint: failing.URL, Token: "tok"}, nil)
+	b.flushInterval = time.Hour
+	b.Add(agenthook.Event{
+		ID:              "t1",
+		Agent:           agenthook.AgentAntigravity,
+		SessionID:       "agy-sess-2",
+		EventType:       agenthook.EventToolUse,
+		Workspace:       "/repo",
+		ToolName:        "run_command",
+		Command:         "gh pr create --fill",
+		PullRequestURLs: []string{"https://github.com/acme/cli/pull/99"},
+	})
+	b.flush(context.Background())
+
+	saved := savedAgentHookEvents(t)
+	require.Len(t, saved, 1)
+	assert.Equal(t, []string{"https://github.com/acme/cli/pull/99"}, saved[0].PullRequestURLs)
+
+	// Now resync against a healthy server.
+	okSrv := newAgentHookServer(t, http.StatusOK)
+	var linkedSession string
+	var linkedURLs []string
+	s := NewAgentHookResyncService(model.ShellTimeConfig{APIEndpoint: okSrv.URL, Token: "tok"})
+	s.sendPullRequests = func(_ context.Context, _ model.ShellTimeConfig, sessionID string, urls []string) error {
+		linkedSession = sessionID
+		linkedURLs = append([]string(nil), urls...)
+		return nil
+	}
+	s.resync(context.Background())
+
+	req := waitAgentHookRequest(t, okSrv)
+	require.Len(t, req.Events, 1)
+	assert.Empty(t, req.Events[0].PullRequestURLs, "stripped before /api/v1/agent-hooks")
+	assert.Equal(t, "agy-sess-2", linkedSession)
+	assert.Equal(t, []string{"https://github.com/acme/cli/pull/99"}, linkedURLs)
+	assert.NoFileExists(t, model.GetAgentHooksPendingFilePath())
+}
+
+func TestAgentHookBatcher_SendRepositoryFalseSuppressesPullRequestLinking(t *testing.T) {
+	isolateAgentHookHome(t)
+	srv := newAgentHookServer(t, http.StatusOK)
+
+	var linked int
+	b := NewAgentHookBatcher(model.ShellTimeConfig{
+		APIEndpoint: srv.URL,
+		Token:       "tok",
+		AICodeOtel:  &model.AICodeOtel{SendRepository: new(false)},
+	}, nil)
+	b.flushInterval = time.Hour
+	b.sendPullRequests = func(_ context.Context, _ model.ShellTimeConfig, _ string, _ []string) error {
+		linked++
+		return nil
+	}
+
+	b.Add(agenthook.Event{
+		ID:              "t1",
+		Agent:           agenthook.AgentCursor,
+		SessionID:       "cursor-sess-norepo",
+		EventType:       agenthook.EventToolUse,
+		Workspace:       "/repo",
+		ToolName:        "Shell",
+		Command:         "gh pr create --fill",
+		PullRequestURLs: []string{"https://github.com/acme/web/pull/12"},
+	})
+	b.flush(context.Background())
+
+	assert.Equal(t, 1, srv.requestCount())
+	assert.Zero(t, linked, "aiCodeOtel.sendRepository: false must suppress PR links too")
+}
+
+func TestAgentHookBatcher_PreservesRetryablePullRequestFailuresForResync(t *testing.T) {
+	isolateAgentHookHome(t)
+	srv := newAgentHookServer(t, http.StatusOK)
+
+	b := NewAgentHookBatcher(model.ShellTimeConfig{APIEndpoint: srv.URL, Token: "tok"}, nil)
+	b.flushInterval = time.Hour
+	b.sendPullRequests = func(_ context.Context, _ model.ShellTimeConfig, _ string, _ []string) error {
+		return &model.HTTPStatusError{StatusCode: http.StatusServiceUnavailable}
+	}
+
+	b.Add(agenthook.Event{
+		ID:              "t1",
+		Agent:           agenthook.AgentCursor,
+		SessionID:       "cursor-sess-retry",
+		EventType:       agenthook.EventToolUse,
+		Workspace:       "/repo",
+		ToolName:        "Shell",
+		Command:         "gh pr create --fill",
+		PullRequestURLs: []string{"https://github.com/acme/web/pull/77"},
+	})
+	b.flush(context.Background())
+
+	assert.Equal(t, 1, srv.requestCount())
+	saved := savedAgentHookEvents(t)
+	require.Len(t, saved, 1, "retryable PR-link failure must be saved for resync")
+	assert.Equal(t, []string{"https://github.com/acme/web/pull/77"}, saved[0].PullRequestURLs)
+
+	// Resync also keeps the pending line if PR linking still fails with a retryable error.
+	s := NewAgentHookResyncService(model.ShellTimeConfig{APIEndpoint: srv.URL, Token: "tok"})
+	s.sendPullRequests = func(_ context.Context, _ model.ShellTimeConfig, _ string, _ []string) error {
+		return &model.HTTPStatusError{StatusCode: http.StatusBadGateway}
+	}
+	s.resync(context.Background())
+	require.Len(t, savedAgentHookEvents(t), 1, "still kept when resync PR-link fails retryably")
+
+	// Next resync succeeds and clears the pending file.
+	var linkedURLs []string
+	s.sendPullRequests = func(_ context.Context, _ model.ShellTimeConfig, sessionID string, urls []string) error {
+		assert.Equal(t, "cursor-sess-retry", sessionID)
+		linkedURLs = append([]string(nil), urls...)
+		return nil
+	}
+	s.resync(context.Background())
+	assert.Equal(t, []string{"https://github.com/acme/web/pull/77"}, linkedURLs)
+	assert.NoFileExists(t, model.GetAgentHooksPendingFilePath())
+}
