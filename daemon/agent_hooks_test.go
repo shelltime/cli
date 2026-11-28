@@ -846,3 +846,82 @@ func TestAgentHookResync_DispatchesSavedPullRequests(t *testing.T) {
 	assert.Equal(t, []string{"https://github.com/acme/cli/pull/99"}, linkedURLs)
 	assert.NoFileExists(t, model.GetAgentHooksPendingFilePath())
 }
+
+func TestAgentHookBatcher_SendRepositoryFalseSuppressesPullRequestLinking(t *testing.T) {
+	isolateAgentHookHome(t)
+	srv := newAgentHookServer(t, http.StatusOK)
+
+	var linked int
+	b := NewAgentHookBatcher(model.ShellTimeConfig{
+		APIEndpoint: srv.URL,
+		Token:       "tok",
+		AICodeOtel:  &model.AICodeOtel{SendRepository: new(false)},
+	}, nil)
+	b.flushInterval = time.Hour
+	b.sendPullRequests = func(_ context.Context, _ model.ShellTimeConfig, _ string, _ []string) error {
+		linked++
+		return nil
+	}
+
+	b.Add(agenthook.Event{
+		ID:              "t1",
+		Agent:           agenthook.AgentCursor,
+		SessionID:       "cursor-sess-norepo",
+		EventType:       agenthook.EventToolUse,
+		Workspace:       "/repo",
+		ToolName:        "Shell",
+		Command:         "gh pr create --fill",
+		PullRequestURLs: []string{"https://github.com/acme/web/pull/12"},
+	})
+	b.flush(context.Background())
+
+	assert.Equal(t, 1, srv.requestCount())
+	assert.Zero(t, linked, "aiCodeOtel.sendRepository: false must suppress PR links too")
+}
+
+func TestAgentHookBatcher_PreservesRetryablePullRequestFailuresForResync(t *testing.T) {
+	isolateAgentHookHome(t)
+	srv := newAgentHookServer(t, http.StatusOK)
+
+	b := NewAgentHookBatcher(model.ShellTimeConfig{APIEndpoint: srv.URL, Token: "tok"}, nil)
+	b.flushInterval = time.Hour
+	b.sendPullRequests = func(_ context.Context, _ model.ShellTimeConfig, _ string, _ []string) error {
+		return &model.HTTPStatusError{StatusCode: http.StatusServiceUnavailable}
+	}
+
+	b.Add(agenthook.Event{
+		ID:              "t1",
+		Agent:           agenthook.AgentCursor,
+		SessionID:       "cursor-sess-retry",
+		EventType:       agenthook.EventToolUse,
+		Workspace:       "/repo",
+		ToolName:        "Shell",
+		Command:         "gh pr create --fill",
+		PullRequestURLs: []string{"https://github.com/acme/web/pull/77"},
+	})
+	b.flush(context.Background())
+
+	assert.Equal(t, 1, srv.requestCount())
+	saved := savedAgentHookEvents(t)
+	require.Len(t, saved, 1, "retryable PR-link failure must be saved for resync")
+	assert.Equal(t, []string{"https://github.com/acme/web/pull/77"}, saved[0].PullRequestURLs)
+
+	// Resync also keeps the pending line if PR linking still fails with a retryable error.
+	s := NewAgentHookResyncService(model.ShellTimeConfig{APIEndpoint: srv.URL, Token: "tok"})
+	s.sendPullRequests = func(_ context.Context, _ model.ShellTimeConfig, _ string, _ []string) error {
+		return &model.HTTPStatusError{StatusCode: http.StatusBadGateway}
+	}
+	s.resync(context.Background())
+	require.Len(t, savedAgentHookEvents(t), 1, "still kept when resync PR-link fails retryably")
+
+	// Next resync succeeds and clears the pending file.
+	var linkedURLs []string
+	s.sendPullRequests = func(_ context.Context, _ model.ShellTimeConfig, sessionID string, urls []string) error {
+		assert.Equal(t, "cursor-sess-retry", sessionID)
+		linkedURLs = append([]string(nil), urls...)
+		return nil
+	}
+	s.resync(context.Background())
+	assert.Equal(t, []string{"https://github.com/acme/web/pull/77"}, linkedURLs)
+	assert.NoFileExists(t, model.GetAgentHooksPendingFilePath())
+}

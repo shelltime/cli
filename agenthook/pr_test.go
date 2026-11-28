@@ -73,7 +73,14 @@ func TestNormalize_CursorPullRequests(t *testing.T) {
 		}
 	})
 
-	t.Run("ignores non-create commands, PR URLs in command body, and postToolUseFailure", func(t *testing.T) {
+	t.Run("structured MCP response prefers canonical html_url and ignores PRs referenced in body", func(t *testing.T) {
+		body := `{` + common + `,"tool_name":"mcp__github__create_pull_request","tool_input":{"owner":"acme","repo":"server"},"tool_output":{"html_url":"https://github.com/acme/server/pull/42","body":"Follow-up to https://github.com/acme/server/pull/10","title":"Fix https://github.com/acme/server/pull/9"}}`
+		ev, err := Normalize("cursor", CursorPostToolUse, []byte(body), testNow, nil)
+		require.NoError(t, err)
+		assert.Equal(t, []string{"https://github.com/acme/server/pull/42"}, ev.PullRequestURLs)
+	})
+
+	t.Run("ignores non-create commands, quoted text mentions, PR URLs in command body, and postToolUseFailure", func(t *testing.T) {
 		cases := []struct {
 			event string
 			body  string
@@ -81,6 +88,14 @@ func TestNormalize_CursorPullRequests(t *testing.T) {
 			{
 				event: CursorPostToolUse,
 				body:  `{` + common + `,"tool_name":"Shell","tool_input":{"command":"gh pr view 12"},"tool_output":"https://github.com/acme/web/pull/12"}`,
+			},
+			{
+				event: CursorPostToolUse,
+				body:  `{` + common + `,"tool_name":"Shell","tool_input":{"command":"echo \"gh pr create\""},"tool_output":"https://github.com/acme/web/pull/12"}`,
+			},
+			{
+				event: CursorPostToolUse,
+				body:  `{` + common + `,"tool_name":"Shell","tool_input":{"command":"grep -rn \"gh pr create\" docs/"},"tool_output":"https://github.com/acme/web/pull/12"}`,
 			},
 			{
 				event: CursorPostToolUse,

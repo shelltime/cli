@@ -277,7 +277,11 @@ func (b *AgentHookBatcher) flush(ctx context.Context) {
 		err := b.send(ctx, cfg, stripDaemonOnlyHookEvents(chunk))
 		if err == nil {
 			sent += len(chunk)
-			b.dispatchPullRequests(ctx, cfg, collectSessionPullRequests(chunk))
+			if failedPRs := b.dispatchPullRequests(ctx, cfg, collectSessionPullRequests(chunk)); len(failedPRs) > 0 {
+				if retryEvents := eventsWithFailedPullRequests(chunk, failedPRs); len(retryEvents) > 0 {
+					b.save(retryEvents, "pull request link failed")
+				}
+			}
 			continue
 		}
 		if ctx.Err() != nil || agentHookSendCanWait(err) {
@@ -357,11 +361,39 @@ func stripDaemonOnlyHookEvents(events []agenthook.Event) []agenthook.Event {
 	return out
 }
 
-func (b *AgentHookBatcher) dispatchPullRequests(ctx context.Context, cfg model.ShellTimeConfig, batches []sessionPullRequestBatch) {
+// eventsWithFailedPullRequests returns copies of events in chunk that carry retryable failed
+// PR links, narrowed to only the URLs that still need linking (each (session, url) kept once).
+// Re-sending the event through AgentHookResyncService is safe because POST /api/v1/agent-hooks
+// deduplicates by event id.
+func eventsWithFailedPullRequests(chunk []agenthook.Event, failed map[agentHookPRKey]bool) []agenthook.Event {
+	var retry []agenthook.Event
+	kept := map[agentHookPRKey]bool{}
+	for _, ev := range chunk {
+		if ev.SessionID == "" || len(ev.PullRequestURLs) == 0 {
+			continue
+		}
+		var urls []string
+		for _, u := range ev.PullRequestURLs {
+			key := agentHookPRKey{sessionID: ev.SessionID, url: u}
+			if failed[key] && !kept[key] {
+				kept[key] = true
+				urls = append(urls, u)
+			}
+		}
+		if len(urls) > 0 {
+			ev.PullRequestURLs = urls
+			retry = append(retry, ev)
+		}
+	}
+	return retry
+}
+
+func (b *AgentHookBatcher) dispatchPullRequests(ctx context.Context, cfg model.ShellTimeConfig, batches []sessionPullRequestBatch) map[agentHookPRKey]bool {
 	if b.sendPullRequests == nil || len(batches) == 0 {
-		return
+		return nil
 	}
 	now := b.now()
+	var retryable map[agentHookPRKey]bool
 	for _, batch := range batches {
 		var fresh []string
 		b.mu.Lock()
@@ -382,6 +414,14 @@ func (b *AgentHookBatcher) dispatchPullRequests(ctx context.Context, cfg model.S
 			if err := b.sendPullRequests(ctx, cfg, batch.sessionID, part); err != nil {
 				slog.Warn("Failed to send agent hook session pull requests",
 					slog.String("sessionId", batch.sessionID), slog.Int("count", len(part)), slog.Any("err", err))
+				if ctx.Err() != nil || agentHookSendCanWait(err) {
+					if retryable == nil {
+						retryable = make(map[agentHookPRKey]bool)
+					}
+					for _, u := range part {
+						retryable[agentHookPRKey{sessionID: batch.sessionID, url: u}] = true
+					}
+				}
 				continue
 			}
 			b.mu.Lock()
@@ -396,6 +436,7 @@ func (b *AgentHookBatcher) dispatchPullRequests(ctx context.Context, cfg model.S
 				slog.String("sessionId", batch.sessionID), slog.Int("count", len(part)))
 		}
 	}
+	return retryable
 }
 
 func dispatchSessionPullRequests(
@@ -403,10 +444,11 @@ func dispatchSessionPullRequests(
 	cfg model.ShellTimeConfig,
 	send func(ctx context.Context, cfg model.ShellTimeConfig, sessionID string, urls []string) error,
 	batches []sessionPullRequestBatch,
-) {
+) map[agentHookPRKey]bool {
 	if send == nil || len(batches) == 0 {
-		return
+		return nil
 	}
+	var retryable map[agentHookPRKey]bool
 	for _, batch := range batches {
 		for start := 0; start < len(batch.urls); start += maxSessionPullRequestsPerRequest {
 			end := min(start+maxSessionPullRequestsPerRequest, len(batch.urls))
@@ -414,18 +456,28 @@ func dispatchSessionPullRequests(
 			if err := send(ctx, cfg, batch.sessionID, part); err != nil {
 				slog.Warn("Failed to send resynced agent hook session pull requests",
 					slog.String("sessionId", batch.sessionID), slog.Int("count", len(part)), slog.Any("err", err))
+				if ctx.Err() != nil || agentHookSendCanWait(err) {
+					if retryable == nil {
+						retryable = make(map[agentHookPRKey]bool)
+					}
+					for _, u := range part {
+						retryable[agentHookPRKey{sessionID: batch.sessionID, url: u}] = true
+					}
+				}
 				continue
 			}
 			slog.Debug("resynced agent hook session_pull_requests sent",
 				slog.String("sessionId", batch.sessionID), slog.Int("count", len(part)))
 		}
 	}
+	return retryable
 }
 
 // prepareAgentHookEvents readies events to leave the machine under cfg, for the batcher and
 // the resync service alike: with aiCodeOtel.sendRepository on, an event with a workspace and
-// no repository gets the workspace's (repos nil adds none); off, every repository is removed.
-// Then the privacy settings apply. It can run more than once on the same events.
+// no repository gets the workspace's (repos nil adds none); off, every repository (and any
+// pull request URLs, which name owner/repo) is removed. Then the privacy settings apply. It
+// can run more than once on the same events.
 func prepareAgentHookEvents(ctx context.Context, cfg model.ShellTimeConfig, repos *model.GitRepositoryResolver, events []agenthook.Event) {
 	sendsRepository := cfg.SendsRepository()
 	repositories := map[string]string{}
@@ -436,6 +488,7 @@ func prepareAgentHookEvents(ctx context.Context, cfg model.ShellTimeConfig, repo
 		switch {
 		case !sendsRepository:
 			ev.Repository = ""
+			ev.PullRequestURLs = nil
 		case repos != nil && ev.Repository == "" && ev.Workspace != "":
 			url, ok := repositories[ev.Workspace]
 			if !ok {

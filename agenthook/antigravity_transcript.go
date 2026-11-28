@@ -82,38 +82,91 @@ func applyAntigravityTranscriptUsage(ev *Event, transcriptPath string, p payload
 	}
 }
 
-// readAntigravityInvocationUsage scans path backwards in bounded chunks from EOF, collecting
-// the latest completed model row for each step_index >= startStep (and <= maxStep when maxStep >= 0).
-// Non-usage lines are filtered cheaply without full JSON unmarshalling. If the 4 MiB scan cap is
-// reached before finding the invocation boundary, it returns false rather than reporting partial counts.
-func readAntigravityInvocationUsage(path string, startStep, maxStep int) (antigravityStepUsage, bool) {
+// scanJSONLBackwards scans a regular .jsonl file backwards from EOF in bounded chunks
+// (at most maxAntigravityTranscriptBytes), invoking processLine on each complete line from
+// newest to oldest until processLine returns true or BOF is reached. reachedBoundary is true
+// when the scan stopped early via processLine or reached BOF; ok is false if the file is
+// missing, unreadable, non-regular, empty, or not a .jsonl file.
+func scanJSONLBackwards(path string, processLine func(line []byte) (stop bool)) (reachedBoundary bool, ok bool) {
+	path = expandHomePath(path)
+	if !strings.EqualFold(filepath.Ext(path), ".jsonl") {
+		return false, false
+	}
 	// Stat before Open so a FIFO or device node named *.jsonl can never block Open.
 	statInfo, err := os.Stat(path)
 	if err != nil || !statInfo.Mode().IsRegular() || statInfo.Size() == 0 {
-		return antigravityStepUsage{}, false
+		return false, false
 	}
-
 	f, err := os.Open(path)
 	if err != nil {
-		return antigravityStepUsage{}, false
+		return false, false
 	}
 	defer f.Close()
 
 	info, err := f.Stat()
 	if err != nil || !info.Mode().IsRegular() || info.Size() == 0 {
-		return antigravityStepUsage{}, false
+		return false, false
 	}
-
-	steps := map[int]antigravityStepUsage{}
-	latestStep := -1
-	latestModel := ""
 
 	pos := info.Size()
 	var scanned int64
 	var carry []byte
+	stop := false
+
+	for pos > 0 && scanned < maxAntigravityTranscriptBytes && !stop {
+		chunkSize := int64(antigravityTranscriptChunkBytes)
+		if chunkSize > pos {
+			chunkSize = pos
+		}
+		if remaining := int64(maxAntigravityTranscriptBytes) - scanned; chunkSize > remaining {
+			chunkSize = remaining
+		}
+		pos -= chunkSize
+		buf := make([]byte, chunkSize)
+		if _, err := f.ReadAt(buf, pos); err != nil && err != io.EOF {
+			break
+		}
+		scanned += chunkSize
+
+		if len(carry) > 0 {
+			buf = append(buf, carry...)
+			carry = nil
+		}
+
+		// Split lines from the end of buf; keep the leading fragment in carry when pos > 0.
+		end := len(buf)
+		for {
+			nl := bytes.LastIndexByte(buf[:end], '\n')
+			if nl < 0 {
+				if pos == 0 {
+					stop = processLine(buf[:end])
+				} else {
+					carry = append([]byte(nil), buf[:end]...)
+				}
+				break
+			}
+			if processLine(buf[nl+1 : end]) {
+				stop = true
+				break
+			}
+			end = nl
+		}
+	}
+
+	return pos == 0 || stop, true
+}
+
+// readAntigravityInvocationUsage scans path backwards in bounded chunks from EOF, collecting
+// the latest completed model row for each step_index >= startStep (and <= maxStep when maxStep >= 0).
+// Non-usage lines are filtered cheaply without full JSON unmarshalling. If the 4 MiB scan cap is
+// reached before finding the invocation boundary, it returns false rather than reporting partial counts.
+func readAntigravityInvocationUsage(path string, startStep, maxStep int) (antigravityStepUsage, bool) {
+	steps := map[int]antigravityStepUsage{}
+	latestStep := -1
+	latestModel := ""
 	consecutiveBelow := 0
 
-	processLine := func(line []byte) (stop bool) {
+	reachedBoundary, ok := scanJSONLBackwards(path, func(line []byte) (stop bool) {
 		line = bytes.TrimSpace(line)
 		if len(line) == 0 {
 			return false
@@ -177,52 +230,11 @@ func readAntigravityInvocationUsage(path string, startStep, maxStep int) (antigr
 			latestModel = u.model
 		}
 		return false
-	}
-
-	stop := false
-	for pos > 0 && scanned < maxAntigravityTranscriptBytes && !stop {
-		chunkSize := int64(antigravityTranscriptChunkBytes)
-		if chunkSize > pos {
-			chunkSize = pos
-		}
-		if remaining := int64(maxAntigravityTranscriptBytes) - scanned; chunkSize > remaining {
-			chunkSize = remaining
-		}
-		pos -= chunkSize
-		buf := make([]byte, chunkSize)
-		if _, err := f.ReadAt(buf, pos); err != nil && err != io.EOF {
-			break
-		}
-		scanned += chunkSize
-
-		if len(carry) > 0 {
-			buf = append(buf, carry...)
-			carry = nil
-		}
-
-		// Split lines from the end of buf; keep the leading fragment in carry when pos > 0.
-		end := len(buf)
-		for {
-			nl := bytes.LastIndexByte(buf[:end], '\n')
-			if nl < 0 {
-				if pos == 0 {
-					stop = processLine(buf[:end])
-				} else {
-					carry = append([]byte(nil), buf[:end]...)
-				}
-				break
-			}
-			if processLine(buf[nl+1 : end]) {
-				stop = true
-				break
-			}
-			end = nl
-		}
-	}
+	})
 
 	// If we hit the scan cap before reaching BOF or an earlier invocation boundary,
 	// omit usage rather than reporting a truncated partial sum as exact.
-	if pos > 0 && !stop {
+	if !ok || !reachedBoundary {
 		return antigravityStepUsage{}, false
 	}
 

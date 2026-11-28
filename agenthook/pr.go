@@ -3,10 +3,7 @@ package agenthook
 import (
 	"bytes"
 	"encoding/json"
-	"io"
 	"net/url"
-	"os"
-	"path/filepath"
 	"regexp"
 	"sort"
 	"strconv"
@@ -17,14 +14,28 @@ const maxPullRequestURLsPerEvent = 20
 
 var (
 	// ghPRCreatePattern finds `gh pr create` in a shell command, including when chained
-	// or quoted inside `bash -lc "..."`.
-	ghPRCreatePattern = regexp.MustCompile(`(?:^|[\s;&|("'])gh\s+pr\s+create\b`)
+	// or invoked via a shell `-c` wrapper (`bash -lc "gh pr create ..."`), without matching
+	// arbitrary quoted text such as `echo "gh pr create"`.
+	ghPRCreatePattern = regexp.MustCompile(`(?:^|[\s;&|(]|-[a-zA-Z]*c\s+["'])gh\s+pr\s+create\b`)
 	// prURLPattern finds pull request URLs in tool output text.
 	prURLPattern = regexp.MustCompile(`https?://[^\s"'<>)\]]+/[^\s"'<>)\]]+/[^\s"'<>)\]]+/pull/\d+`)
 )
 
-// prOutputIgnoredKeys are JSON object keys that hold tool inputs or stderr rather than
-// successful tool stdout, so URLs mentioned in PR bodies or `gh` stderr warnings are ignored.
+// prCanonicalURLKeys name fields on a structured PR-creation response (such as GitHub MCP
+// `create_pull_request`) that carry the created pull request's canonical URL directly.
+// When any of these holds a PR URL, sibling prose fields like `body` are never scanned.
+var prCanonicalURLKeys = []string{
+	"html_url",
+	"htmlUrl",
+	"pull_request_url",
+	"pullRequestUrl",
+	"pr_url",
+	"prUrl",
+	"url",
+}
+
+// prOutputIgnoredKeys are JSON object keys that hold tool inputs, stderr, or prose fields
+// rather than created-PR output, so URLs mentioned in PR bodies or `gh` stderr notices are ignored.
 var prOutputIgnoredKeys = map[string]bool{
 	"stderr":      true,
 	"error":       true,
@@ -36,6 +47,9 @@ var prOutputIgnoredKeys = map[string]bool{
 	"toolinput":   true,
 	"tool_call":   true,
 	"toolcall":    true,
+	"body":        true,
+	"description": true,
+	"title":       true,
 }
 
 // antigravityTranscriptOutputKeys name the fields on a transcript.jsonl tool step row
@@ -99,8 +113,9 @@ func extractAntigravityToolPRURLs(p payload, transcriptPath string) []string {
 
 // extractPullRequestURLsFromRaw extracts distinct normalized pull request URLs from a
 // JSON tool output value (string, object, or array). A structured object that reports an
-// error or non-zero exit code yields none; one with a `stdout` field scans `stdout` alone
-// so `gh` stderr notices about existing PRs are never linked.
+// error or non-zero exit code yields none; one with a canonical PR URL field (`html_url`,
+// `url`, ...) uses that alone; one with a `stdout` field scans `stdout` alone so `gh`
+// stderr notices about existing PRs are never linked.
 func extractPullRequestURLsFromRaw(raw json.RawMessage) []string {
 	var out []string
 	seen := map[string]bool{}
@@ -135,6 +150,19 @@ func collectPullRequestURLsFromRaw(raw json.RawMessage, seen map[string]bool, ou
 		}
 		if payloadIndicatesToolError(obj) {
 			return
+		}
+		// Prefer the canonical URL of a structured PR response (e.g. GitHub MCP
+		// `create_pull_request`) so URLs referenced in sibling fields like `body` are ignored.
+		for _, key := range prCanonicalURLKeys {
+			if s := obj.str(key); s != "" {
+				if norm, ok := normalizePullRequestURL(s); ok {
+					if !seen[norm] {
+						seen[norm] = true
+						*out = append(*out, norm)
+					}
+					return
+				}
+			}
 		}
 		if stdout, ok := obj["stdout"]; ok {
 			collectPullRequestURLsFromRaw(stdout, seen, out)
@@ -225,32 +253,10 @@ func normalizePullRequestURL(raw string) (string, bool) {
 // command arguments or stderr). Missing, unreadable, non-regular, or unflushed transcripts
 // return nil so hook recording never fails or blocks.
 func extractAntigravityTranscriptPRURLs(transcriptPath string, stepIdx int) []string {
-	path := expandHomePath(transcriptPath)
-	if !strings.EqualFold(filepath.Ext(path), ".jsonl") {
-		return nil
-	}
-	statInfo, err := os.Stat(path)
-	if err != nil || !statInfo.Mode().IsRegular() || statInfo.Size() == 0 {
-		return nil
-	}
-	f, err := os.Open(path)
-	if err != nil {
-		return nil
-	}
-	defer f.Close()
-
-	info, err := f.Stat()
-	if err != nil || !info.Mode().IsRegular() || info.Size() == 0 {
-		return nil
-	}
-
-	pos := info.Size()
-	var scanned int64
-	var carry []byte
 	consecutiveBelow := 0
 	var found []string
 
-	processLine := func(line []byte) (stop bool) {
+	scanJSONLBackwards(transcriptPath, func(line []byte) (stop bool) {
 		line = bytes.TrimSpace(line)
 		if len(line) == 0 {
 			return false
@@ -290,47 +296,7 @@ func extractAntigravityTranscriptPRURLs(transcriptPath string, stepIdx int) []st
 			return true
 		}
 		return false
-	}
-
-	stop := false
-	for pos > 0 && scanned < maxAntigravityTranscriptBytes && !stop {
-		chunkSize := int64(antigravityTranscriptChunkBytes)
-		if chunkSize > pos {
-			chunkSize = pos
-		}
-		if remaining := int64(maxAntigravityTranscriptBytes) - scanned; chunkSize > remaining {
-			chunkSize = remaining
-		}
-		pos -= chunkSize
-		buf := make([]byte, chunkSize)
-		if _, err := f.ReadAt(buf, pos); err != nil && err != io.EOF {
-			break
-		}
-		scanned += chunkSize
-
-		if len(carry) > 0 {
-			buf = append(buf, carry...)
-			carry = nil
-		}
-
-		end := len(buf)
-		for {
-			nl := bytes.LastIndexByte(buf[:end], '\n')
-			if nl < 0 {
-				if pos == 0 {
-					stop = processLine(buf[:end])
-				} else {
-					carry = append([]byte(nil), buf[:end]...)
-				}
-				break
-			}
-			if processLine(buf[nl+1 : end]) {
-				stop = true
-				break
-			}
-			end = nl
-		}
-	}
+	})
 
 	return found
 }

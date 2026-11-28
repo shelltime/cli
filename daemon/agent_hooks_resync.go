@@ -141,7 +141,16 @@ func (s *AgentHookResyncService) resync(ctx context.Context) {
 		err := s.send(ctx, cfg, stripDaemonOnlyHookEvents(chunk))
 		if err == nil {
 			sent += end - start
-			dispatchSessionPullRequests(ctx, cfg, s.sendPullRequests, collectSessionPullRequests(chunk))
+			if failedPRs := dispatchSessionPullRequests(ctx, cfg, s.sendPullRequests, collectSessionPullRequests(chunk)); len(failedPRs) > 0 {
+				for j, ev := range chunk {
+					for _, u := range ev.PullRequestURLs {
+						if failedPRs[agentHookPRKey{sessionID: ev.SessionID, url: u}] {
+							kept = append(kept, eventLines[start+j])
+							break
+						}
+					}
+				}
+			}
 			continue
 		}
 		if ctx.Err() != nil || agentHookSendCanWait(err) {
