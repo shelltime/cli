@@ -453,7 +453,7 @@ func parseProtobufFields(data []byte) (pbFields, error) {
 
 func pbNumberAt(f pbFields, key int) int {
 	entries := f[key]
-	if len(entries) == 0 || !entries[0].isNum {
+	if len(entries) == 0 || !entries[0].isNum || entries[0].num > 1<<31-1 {
 		return 0
 	}
 	return int(entries[0].num)
@@ -854,7 +854,7 @@ func buildAgyUsageCandidates(
 
 	var out []agyUsageCandidate
 	process := func(source string, entries []agyIndexedMetadata) {
-		for index, item := range entries {
+		for _, item := range entries {
 			entry := item.entry
 			for usageIdx, usage := range entry.usages {
 				modelID := pbNumberAt(usage, 1)
@@ -895,11 +895,12 @@ func buildAgyUsageCandidates(
 						keys = append(keys, fmt.Sprintf("antigravity:%d:%s", fieldKey, id))
 					}
 				}
-
-				dedupeKey := fmt.Sprintf("antigravity:%s:%s:%d:%d", sessionID, source, index, usageIdx)
-				if len(keys) > 0 {
-					dedupeKey = keys[0]
+				if len(keys) == 0 {
+					// Key unkeyed records by session + item.idx + usageIdx (not source) so matching
+					// step/generation rows and backup-root copies merge via union-find.
+					keys = []string{fmt.Sprintf("antigravity:%s:idx:%d:%d", sessionID, item.idx, usageIdx)}
 				}
+				dedupeKey := keys[0]
 
 				tsMs := fallbackTs
 				tsQuality := 0

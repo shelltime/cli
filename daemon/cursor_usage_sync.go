@@ -23,12 +23,14 @@ var fetchCursorUsageSessionsFunc = model.FetchCursorUsageSessions
 // CursorUsageSyncService periodically fetches Cursor subscription quota and recent billed
 // token usage and syncs them to the ShellTime server while Cursor is running.
 type CursorUsageSyncService struct {
-	config    model.ShellTimeConfig
-	interval  time.Duration
-	statePath string
-	ticker    *time.Ticker
-	stopChan  chan struct{}
-	wg        sync.WaitGroup
+	config     model.ShellTimeConfig
+	interval   time.Duration
+	statePath  string
+	hasPending bool
+	mu         sync.Mutex
+	ticker     *time.Ticker
+	stopChan   chan struct{}
+	wg         sync.WaitGroup
 }
 
 type cursorUsageSyncState struct {
@@ -90,7 +92,12 @@ func (s *CursorUsageSyncService) sync(parentCtx context.Context) {
 		return
 	}
 
-	if !isCursorRunning() {
+	running := isCursorRunning()
+	s.mu.Lock()
+	pending := s.hasPending
+	s.mu.Unlock()
+
+	if !running && !pending {
 		slog.Debug("Skipping cursor usage sync", slog.String("reason", "cursor_not_running"))
 		return
 	}
@@ -111,11 +118,13 @@ func (s *CursorUsageSyncService) sync(parentCtx context.Context) {
 		return
 	}
 
-	if err := syncCursorQuota(ctx, s.config, auth); err != nil {
-		if reason, ok := CursorSyncSkipReason(err); ok {
-			slog.Info("Skipping cursor quota sync", slog.String("reason", reason))
-		} else {
-			slog.Warn("Failed to sync cursor quota", slog.Any("err", err))
+	if running {
+		if err := syncCursorQuota(ctx, s.config, auth); err != nil {
+			if reason, ok := CursorSyncSkipReason(err); ok {
+				slog.Info("Skipping cursor quota sync", slog.String("reason", reason))
+			} else {
+				slog.Warn("Failed to sync cursor quota", slog.Any("err", err))
+			}
 		}
 	}
 
@@ -212,6 +221,9 @@ func (s *CursorUsageSyncService) syncTokenUsage(ctx context.Context, auth *model
 		return err
 	}
 	if parsed == nil || len(parsed.Sessions) == 0 {
+		s.mu.Lock()
+		s.hasPending = false
+		s.mu.Unlock()
 		s.saveState(cursorUsageSyncState{LastSyncedUnix: now.Unix()})
 		return nil
 	}
@@ -223,6 +235,9 @@ func (s *CursorUsageSyncService) syncTokenUsage(ctx context.Context, auth *model
 	if uploaded > 0 {
 		slog.Debug("Synced cursor token usage", slog.Int("events", uploaded), slog.Int("sessions", len(parsed.Sessions)))
 	}
+	s.mu.Lock()
+	s.hasPending = activeCount > 0
+	s.mu.Unlock()
 	if activeCount == 0 {
 		s.saveState(cursorUsageSyncState{LastSyncedUnix: now.Unix()})
 	}

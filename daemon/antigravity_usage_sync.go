@@ -24,6 +24,7 @@ type AntigravityUsageSyncService struct {
 	config       model.ShellTimeConfig
 	interval     time.Duration
 	fingerprints map[string]string
+	hasPending   bool
 	mu           sync.Mutex
 	ticker       *time.Ticker
 	stopChan     chan struct{}
@@ -81,7 +82,11 @@ func (s *AntigravityUsageSyncService) sync(parentCtx context.Context) {
 		return
 	}
 
-	if !isAntigravityRunning() {
+	s.mu.Lock()
+	pending := s.hasPending
+	s.mu.Unlock()
+
+	if !isAntigravityRunning() && !pending {
 		slog.Debug("Skipping antigravity usage sync", slog.String("reason", "antigravity_not_running"))
 		return
 	}
@@ -107,6 +112,9 @@ func (s *AntigravityUsageSyncService) syncOnce(ctx context.Context) error {
 		return err
 	}
 	if len(files) == 0 {
+		s.mu.Lock()
+		s.hasPending = false
+		s.mu.Unlock()
 		return nil
 	}
 
@@ -126,6 +134,9 @@ func (s *AntigravityUsageSyncService) syncOnce(ctx context.Context) error {
 	s.mu.Unlock()
 
 	if len(changed) == 0 {
+		s.mu.Lock()
+		s.hasPending = false
+		s.mu.Unlock()
 		return nil
 	}
 
@@ -172,6 +183,7 @@ func (s *AntigravityUsageSyncService) syncOnce(ctx context.Context) error {
 	}
 
 	s.mu.Lock()
+	s.hasPending = activeCount > 0 || (parsed != nil && len(parsed.FailedFiles) > 0)
 	for path, fp := range nextFPs {
 		if failed[path] {
 			continue

@@ -314,7 +314,8 @@ func fetchCursorScopeUsage(
 		previousEvents []any
 	)
 
-	for page := 1; ; page++ {
+	const cursorUsageMaxPages = 200
+	for page := 1; page <= cursorUsageMaxPages; page++ {
 		payload := map[string]any{
 			"page":      page,
 			"pageSize":  cursorUsagePageSize,
@@ -367,6 +368,9 @@ func fetchCursorScopeUsage(
 			if cursorPagesMayOverlap(previousEvents, events) {
 				overlap = cursorBoundaryOverlap(cursorCanonicalList(previousEvents), cursorCanonicalList(events))
 			}
+		}
+		if len(events) > 0 && overlap == len(events) {
+			break
 		}
 		previousEvents = events
 
