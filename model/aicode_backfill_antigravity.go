@@ -726,17 +726,20 @@ func readAntigravityDatabase(path, sessionID string, fallbackTimestampMs int64) 
 			}
 			count := 0
 			var lastRowID int64
+			hasLastRowID := false
 			for qRows.Next() {
 				count++
 				var rowID int64
-				var idx sql.NullInt64
+				var idxRaw any
 				var blob []byte
-				if err := qRows.Scan(&rowID, &idx, &blob); err != nil {
+				if err := qRows.Scan(&rowID, &idxRaw, &blob); err != nil {
 					badRows++
 					continue
 				}
 				lastRowID = rowID
-				if !idx.Valid {
+				hasLastRowID = true
+				idxVal, ok := idxRaw.(int64)
+				if !ok {
 					badRows++
 					continue
 				}
@@ -748,10 +751,14 @@ func readAntigravityDatabase(path, sessionID string, fallbackTimestampMs int64) 
 					badRows++
 					continue
 				}
-				entries = append(entries, agyIndexedMetadata{idx: int(idx.Int64), entry: entry})
+				entries = append(entries, agyIndexedMetadata{idx: int(idxVal), entry: entry})
 			}
+			rowErr := qRows.Err()
 			_ = qRows.Close()
-			if count < pageRows {
+			if rowErr != nil {
+				return nil, rowErr
+			}
+			if count < pageRows || !hasLastRowID || (hasAfter && lastRowID <= after) {
 				break
 			}
 			after = lastRowID

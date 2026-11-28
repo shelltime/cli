@@ -216,14 +216,16 @@ func (s *CursorUsageSyncService) syncTokenUsage(ctx context.Context, auth *model
 		return nil
 	}
 
-	uploaded, _, err := uploadDaemonUsageSessions(ctx, s.config, model.AICodeClientCursor, parsed.Sessions, opts, true)
+	uploaded, activeCount, err := uploadDaemonUsageSessions(ctx, s.config, model.AICodeClientCursor, parsed.Sessions, opts, true)
 	if err != nil {
 		return err
 	}
 	if uploaded > 0 {
 		slog.Debug("Synced cursor token usage", slog.Int("events", uploaded), slog.Int("sessions", len(parsed.Sessions)))
 	}
-	s.saveState(cursorUsageSyncState{LastSyncedUnix: now.Unix()})
+	if activeCount == 0 {
+		s.saveState(cursorUsageSyncState{LastSyncedUnix: now.Unix()})
+	}
 	return nil
 }
 

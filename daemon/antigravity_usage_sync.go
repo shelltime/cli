@@ -129,19 +129,25 @@ func (s *AntigravityUsageSyncService) syncOnce(ctx context.Context) error {
 		return nil
 	}
 
-	opts := model.BackfillOptions{
+	parseOpts := model.BackfillOptions{
 		Since: since,
 		Until: now,
 		Now:   now,
 	}
-	parsed, err := parseAntigravityDBFilesFunc(changed, opts)
+	parsed, err := parseAntigravityDBFilesFunc(changed, parseOpts)
 	if err != nil {
 		return err
 	}
 	activeCount := 0
 	if parsed != nil && len(parsed.Sessions) > 0 {
+		// Files were already pruned by mtime via CollectAntigravityDBFiles; omit Since here so
+		// multi-day conversations that received new events today are not dropped by their Start time.
+		uploadOpts := model.BackfillOptions{
+			Until: now,
+			Now:   now,
+		}
 		var uploaded int
-		uploaded, activeCount, err = uploadDaemonUsageSessions(ctx, s.config, model.AICodeClientAntigravity, parsed.Sessions, opts, false)
+		uploaded, activeCount, err = uploadDaemonUsageSessions(ctx, s.config, model.AICodeClientAntigravity, parsed.Sessions, uploadOpts, false)
 		if err != nil {
 			return err
 		}

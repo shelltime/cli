@@ -91,12 +91,12 @@ func fetchCursorUsageSessionsWithClient(ctx context.Context, auth *CursorAuthDat
 		return &BackfillParseResult{}, nil
 	}
 
-	accountKey, err := cursorAccountKeyFromJWT(auth.AccessToken)
+	teamIDs, userID, err := fetchCursorMembership(ctx, endpoint, auth.AccessToken, client)
 	if err != nil {
 		return nil, err
 	}
 
-	teamIDs, userID, err := fetchCursorMembership(ctx, endpoint, auth.AccessToken, client)
+	accountKey, err := cursorAccountKey(auth.AccessToken, userID)
 	if err != nil {
 		return nil, err
 	}
@@ -172,28 +172,39 @@ func fetchCursorUsageSessionsWithClient(ctx context.Context, auth *CursorAuthDat
 	}, nil
 }
 
-func cursorAccountKeyFromJWT(token string) (string, error) {
+func cursorAccountKey(token string, userID int64) (string, error) {
+	if sub := cursorJWTSubject(token); sub != "" {
+		sum := sha256.Sum256([]byte(sub))
+		return hex.EncodeToString(sum[:]), nil
+	}
+	if userID > 0 {
+		sum := sha256.Sum256([]byte(fmt.Sprintf("user:%d", userID)))
+		return hex.EncodeToString(sum[:]), nil
+	}
+	return "", ErrCursorTokenInvalid
+}
+
+func cursorJWTSubject(token string) string {
 	parts := strings.Split(token, ".")
 	if len(parts) < 2 {
-		// Allow non-JWT opaque tokens by hashing the token itself as account key.
-		sum := sha256.Sum256([]byte(token))
-		return hex.EncodeToString(sum[:]), nil
+		return ""
 	}
 	decoded, err := base64.RawURLEncoding.DecodeString(parts[1])
 	if err != nil {
-		sum := sha256.Sum256([]byte(token))
-		return hex.EncodeToString(sum[:]), nil
+		decoded, err = base64.URLEncoding.DecodeString(parts[1])
+		if err != nil {
+			return ""
+		}
 	}
 	var claims map[string]any
 	if err := json.Unmarshal(decoded, &claims); err != nil {
-		return "", ErrCursorTokenInvalid
+		return ""
 	}
 	sub, ok := claims["sub"].(string)
-	if !ok || strings.TrimSpace(sub) == "" {
-		return "", ErrCursorTokenInvalid
+	if !ok {
+		return ""
 	}
-	sum := sha256.Sum256([]byte(sub))
-	return hex.EncodeToString(sum[:]), nil
+	return strings.TrimSpace(sub)
 }
 
 func cursorDashboardPost(ctx context.Context, endpoint, method, accessToken string, body []byte, client *http.Client) (map[string]any, error) {
@@ -335,10 +346,9 @@ func fetchCursorScopeUsage(
 					return nil, fmt.Errorf("cursor GetFilteredUsageEvents returned invalid totalUsageEventsCount")
 				}
 				c := int(cFloat)
-				if total != nil && *total != c {
-					return nil, fmt.Errorf("cursor GetFilteredUsageEvents totalUsageEventsCount changed mid-pagination")
+				if total == nil || c > *total {
+					total = &c
 				}
-				total = &c
 			}
 			if rawEvents, exists := body["usageEventsDisplay"]; exists {
 				arr, ok := rawEvents.([]any)
@@ -377,22 +387,12 @@ func fetchCursorScopeUsage(
 	}
 
 	rawCount := len(normalized)
-	if total != nil && rawCount < *total {
-		return nil, fmt.Errorf("cursor GetFilteredUsageEvents returned incomplete pages (%d < %d)", rawCount, *total)
-	}
-	removalsRemaining := 0
-	if total != nil {
-		removalsRemaining = rawCount - *total
-	}
-
 	occurrences := map[string]int{}
 	records := make([]cursorNormalizedRecord, 0, rawCount)
 	for _, p := range pages {
-		removalCount := min(removalsRemaining, p.overlap)
-		removalsRemaining -= removalCount
-		for idx := p.start; idx < p.end; idx++ {
+		for idx := p.start + p.overlap; idx < p.end; idx++ {
 			rec := normalized[idx]
-			if idx < p.start+removalCount || rec == nil {
+			if rec == nil {
 				continue
 			}
 			occ := occurrences[rec.identityHash]
@@ -400,9 +400,6 @@ func fetchCursorScopeUsage(
 			rec.dedupeKey = fmt.Sprintf("cursor-account:%s:%s:%d", accountKey, rec.identityHash, occ)
 			records = append(records, *rec)
 		}
-	}
-	if removalsRemaining != 0 {
-		return nil, fmt.Errorf("cursor GetFilteredUsageEvents inconsistent page boundaries (remaining=%d)", removalsRemaining)
 	}
 
 	return records, nil
