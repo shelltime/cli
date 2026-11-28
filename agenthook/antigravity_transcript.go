@@ -22,7 +22,8 @@ const (
 
 var (
 	antigravityStepIndexNeedle = []byte(`"step_index"`)
-	antigravityTokensNeedle    = []byte(`"input_tokens"`)
+	antigravityInputNeedle     = []byte(`"input_tokens"`)
+	antigravityOutputNeedle    = []byte(`"output_tokens"`)
 )
 
 type antigravityStepUsage struct {
@@ -48,7 +49,10 @@ func applyAntigravityTranscriptUsage(ev *Event, transcriptPath string, p payload
 		return
 	}
 	maxStep := -1
-	if endStep, ok := firstNonNegInt(p, "finalNumSteps", "numSteps"); ok && endStep > startStep {
+	if endStep, ok := firstNonNegInt(p, "finalNumSteps", "numSteps"); ok {
+		if endStep <= startStep {
+			return
+		}
 		maxStep = endStep - 1
 	}
 
@@ -120,24 +124,14 @@ func readAntigravityInvocationUsage(path string, startStep, maxStep int) (antigr
 		}
 		if idx < startStep {
 			consecutiveBelow++
-			if consecutiveBelow >= antigravityLowerStepThreshold {
-				return true
-			}
-			// Also stop immediately on a completed model step from an earlier invocation.
-			if bytes.Contains(line, antigravityTokensNeedle) {
-				var row payload
-				if err := json.Unmarshal(line, &row); err == nil && row != nil && isCompletedAntigravityModelStep(row) {
-					return true
-				}
-			}
-			return false
+			return consecutiveBelow >= antigravityLowerStepThreshold
 		}
 		consecutiveBelow = 0
 
 		if maxStep >= 0 && idx > maxStep {
 			return false
 		}
-		if !bytes.Contains(line, antigravityTokensNeedle) {
+		if !bytes.Contains(line, antigravityInputNeedle) && !bytes.Contains(line, antigravityOutputNeedle) {
 			return false
 		}
 		// Scanning backwards: the first completed row seen for a given step_index is the newest.
@@ -153,7 +147,7 @@ func readAntigravityInvocationUsage(path string, startStep, maxStep int) (antigr
 		}
 		input, hasInput := row.nonNegInt("input_tokens")
 		output, hasOutput := row.nonNegInt("output_tokens")
-		if !hasInput || !hasOutput {
+		if !hasInput && !hasOutput {
 			return false
 		}
 		u := antigravityStepUsage{
