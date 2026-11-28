@@ -123,7 +123,7 @@ func TestCursorUsageSyncService_SyncsQuotaAndTokens(t *testing.T) {
 		APIEndpoint: srv.URL,
 	})
 	svc.statePath = filepath.Join(t.TempDir(), "state.json")
-	svc.sync()
+	svc.sync(context.Background())
 
 	assert.Equal(t, int32(1), quotaHits.Load())
 	assert.Equal(t, int32(1), statusHits.Load())
@@ -132,6 +132,6 @@ func TestCursorUsageSyncService_SyncsQuotaAndTokens(t *testing.T) {
 
 	// When Cursor is not running, sync skips immediately.
 	listProcessNamesFunc = func() ([]string, error) { return []string{"zsh"}, nil }
-	svc.sync()
+	svc.sync(context.Background())
 	assert.Equal(t, int32(1), quotaHits.Load())
 }

@@ -539,13 +539,13 @@ func cursorPagesMayOverlap(prev, curr []any) bool {
 	if !ok {
 		return true
 	}
-	firstTs, ok := firstMap["timestamp"]
-	if !ok {
+	firstTs, err := parseCursorTimestampMs(firstMap["timestamp"])
+	if err != nil {
 		return true
 	}
 	for _, ev := range prev {
 		if m, ok := ev.(map[string]any); ok {
-			if m["timestamp"] == firstTs {
+			if ts, err := parseCursorTimestampMs(m["timestamp"]); err == nil && ts == firstTs {
 				return true
 			}
 		}

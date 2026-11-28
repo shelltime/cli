@@ -48,12 +48,12 @@ func (s *AntigravityUsageSyncService) Start(ctx context.Context) error {
 	go func() {
 		defer s.wg.Done()
 
-		s.sync()
+		s.sync(ctx)
 
 		for {
 			select {
 			case <-s.ticker.C:
-				s.sync()
+				s.sync(ctx)
 			case <-s.stopChan:
 				return
 			case <-ctx.Done():
@@ -76,7 +76,7 @@ func (s *AntigravityUsageSyncService) Stop() {
 	slog.Info("Antigravity usage sync service stopped")
 }
 
-func (s *AntigravityUsageSyncService) sync() {
+func (s *AntigravityUsageSyncService) sync(parentCtx context.Context) {
 	if s.config.Token == "" {
 		return
 	}
@@ -86,7 +86,10 @@ func (s *AntigravityUsageSyncService) sync() {
 		return
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	if parentCtx == nil {
+		parentCtx = context.Background()
+	}
+	ctx, cancel := context.WithTimeout(parentCtx, 30*time.Second)
 	defer cancel()
 
 	if err := s.syncOnce(ctx); err != nil {
@@ -126,15 +129,19 @@ func (s *AntigravityUsageSyncService) syncOnce(ctx context.Context) error {
 		return nil
 	}
 
-	parsed, err := parseAntigravityDBFilesFunc(changed, model.BackfillOptions{
+	opts := model.BackfillOptions{
 		Since: since,
+		Until: now,
 		Now:   now,
-	})
+	}
+	parsed, err := parseAntigravityDBFilesFunc(changed, opts)
 	if err != nil {
 		return err
 	}
+	activeCount := 0
 	if parsed != nil && len(parsed.Sessions) > 0 {
-		uploaded, err := uploadDaemonUsageSessions(ctx, s.config, model.AICodeClientAntigravity, parsed.Sessions, false)
+		var uploaded int
+		uploaded, activeCount, err = uploadDaemonUsageSessions(ctx, s.config, model.AICodeClientAntigravity, parsed.Sessions, opts, false)
 		if err != nil {
 			return err
 		}
@@ -148,6 +155,12 @@ func (s *AntigravityUsageSyncService) syncOnce(ctx context.Context) error {
 	failed := make(map[string]bool)
 	if parsed != nil {
 		for _, p := range parsed.FailedFiles {
+			failed[p] = true
+		}
+	}
+	if activeCount > 0 {
+		// Re-scan changed DBs on the next tick so recently active sessions upload once settled.
+		for _, p := range changed {
 			failed[p] = true
 		}
 	}

@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -246,7 +247,11 @@ func readAccessTokenFromVscdb(dbPath string) string {
 	if _, err := os.Stat(dbPath); err != nil {
 		return ""
 	}
-	dsn := "file:" + dbPath + "?mode=ro&_pragma=busy_timeout(100)&_pragma=query_only(ON)"
+	dsn := (&url.URL{
+		Scheme:   "file",
+		Path:     dbPath,
+		RawQuery: "mode=ro&_pragma=busy_timeout(100)&_pragma=query_only(ON)",
+	}).String()
 	db, err := sql.Open("sqlite", dsn)
 	if err != nil {
 		return ""

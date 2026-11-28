@@ -14,7 +14,7 @@ import (
 
 const (
 	cursorUsageInitialLookback = 24 * time.Hour
-	cursorUsageSyncOverlap     = 15 * time.Minute
+	cursorUsageSyncOverlap     = 45 * time.Minute
 	cursorUsageStateFileName   = "cursor_usage_sync_state.json"
 )
 
@@ -57,12 +57,12 @@ func (s *CursorUsageSyncService) Start(ctx context.Context) error {
 	go func() {
 		defer s.wg.Done()
 
-		s.sync()
+		s.sync(ctx)
 
 		for {
 			select {
 			case <-s.ticker.C:
-				s.sync()
+				s.sync(ctx)
 			case <-s.stopChan:
 				return
 			case <-ctx.Done():
@@ -85,7 +85,7 @@ func (s *CursorUsageSyncService) Stop() {
 	slog.Info("Cursor usage sync service stopped")
 }
 
-func (s *CursorUsageSyncService) sync() {
+func (s *CursorUsageSyncService) sync(parentCtx context.Context) {
 	if s.config.Token == "" {
 		return
 	}
@@ -95,7 +95,10 @@ func (s *CursorUsageSyncService) sync() {
 		return
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	if parentCtx == nil {
+		parentCtx = context.Background()
+	}
+	ctx, cancel := context.WithTimeout(parentCtx, 30*time.Second)
 	defer cancel()
 
 	auth, err := loadCursorAuthFunc(ctx, s.config.Cursor)
@@ -199,11 +202,12 @@ func (s *CursorUsageSyncService) syncTokenUsage(ctx context.Context, auth *model
 		}
 	}
 
-	parsed, err := fetchCursorUsageSessionsFunc(ctx, auth, model.BackfillOptions{
+	opts := model.BackfillOptions{
 		Since: since,
 		Until: now,
 		Now:   now,
-	})
+	}
+	parsed, err := fetchCursorUsageSessionsFunc(ctx, auth, opts)
 	if err != nil {
 		return err
 	}
@@ -212,7 +216,7 @@ func (s *CursorUsageSyncService) syncTokenUsage(ctx context.Context, auth *model
 		return nil
 	}
 
-	uploaded, err := uploadDaemonUsageSessions(ctx, s.config, model.AICodeClientCursor, parsed.Sessions, true)
+	uploaded, _, err := uploadDaemonUsageSessions(ctx, s.config, model.AICodeClientCursor, parsed.Sessions, opts, true)
 	if err != nil {
 		return err
 	}
@@ -250,8 +254,9 @@ func (s *CursorUsageSyncService) saveState(st cursorUsageSyncState) {
 	_ = os.WriteFile(s.statePath, raw, 0600)
 }
 
-// uploadDaemonUsageSessions checks server backfill status and uploads new/updated events
-// idempotently via /api/v1/cc/backfill, followed by /api/v1/cc/backfill/complete.
+// uploadDaemonUsageSessions filters settled sessions within opts (respecting the backfill settle
+// window so in-progress sessions are not finalized early), checks server backfill status, and
+// uploads new/updated events idempotently via /api/v1/cc/backfill + /api/v1/cc/backfill/complete.
 // When skipCountCheck is true (for incremental window fetches like Cursor), already-backfilled
 // sessions are still uploaded so server-side event_id deduplication accepts new events.
 func uploadDaemonUsageSessions(
@@ -259,11 +264,17 @@ func uploadDaemonUsageSessions(
 	config model.ShellTimeConfig,
 	clientType string,
 	sessions []*model.BackfillSession,
+	opts model.BackfillOptions,
 	skipCountCheck bool,
-) (int, error) {
+) (int, int, error) {
 	if config.Token == "" || len(sessions) == 0 {
-		return 0, nil
+		return 0, 0, nil
 	}
+	settled, activeCount := model.SelectBackfillSessions(sessions, opts)
+	if len(settled) == 0 {
+		return 0, activeCount, nil
+	}
+	sessions = settled
 	endpoint := model.Endpoint{
 		Token:       config.Token,
 		APIEndpoint: config.APIEndpoint,
@@ -276,7 +287,7 @@ func uploadDaemonUsageSessions(
 		}
 	}
 	if len(sessionIDs) == 0 {
-		return 0, nil
+		return 0, activeCount, nil
 	}
 
 	statuses := map[string]model.AICodeBackfillSessionStatus{}
@@ -284,7 +295,7 @@ func uploadDaemonUsageSessions(
 		end := min(start+model.AICodeBackfillMaxSessionIDs, len(sessionIDs))
 		rows, err := model.FetchAICodeBackfillStatus(ctx, endpoint, clientType, sessionIDs[start:end])
 		if err != nil {
-			return 0, err
+			return 0, activeCount, err
 		}
 		for _, st := range rows {
 			statuses[st.SessionID] = st
@@ -310,7 +321,7 @@ func uploadDaemonUsageSessions(
 		toUpload = append(toUpload, sess)
 	}
 	if len(toUpload) == 0 {
-		return 0, nil
+		return 0, activeCount, nil
 	}
 
 	batches := model.PackBackfillBatches(
@@ -325,7 +336,7 @@ func uploadDaemonUsageSessions(
 	for _, batch := range batches {
 		resp, err := model.SendAICodeBackfill(ctx, endpoint, batch)
 		if err != nil {
-			return accepted, err
+			return accepted, activeCount, err
 		}
 		accepted += resp.Accepted
 	}
@@ -348,5 +359,5 @@ func uploadDaemonUsageSessions(
 		slog.Warn("Failed to finalize daemon usage sync", slog.String("clientType", clientType), slog.Any("err", err))
 	}
 
-	return accepted, nil
+	return accepted, activeCount, nil
 }

@@ -236,6 +236,9 @@ func mergeConfig(base, local *ShellTimeConfig) {
 			base.Cursor = &CursorConfig{}
 		}
 		merged := *base.Cursor
+		if local.Cursor.Enabled != nil {
+			merged.Enabled = local.Cursor.Enabled
+		}
 		if local.Cursor.APIKey != "" {
 			merged.APIKey = local.Cursor.APIKey
 		}
@@ -243,6 +246,16 @@ func mergeConfig(base, local *ShellTimeConfig) {
 			merged.APIEndpoint = local.Cursor.APIEndpoint
 		}
 		base.Cursor = &merged
+	}
+	if local.Antigravity != nil {
+		if base.Antigravity == nil {
+			base.Antigravity = &AntigravityConfig{}
+		}
+		merged := *base.Antigravity
+		if local.Antigravity.Enabled != nil {
+			merged.Enabled = local.Antigravity.Enabled
+		}
+		base.Antigravity = &merged
 	}
 	if local.AICloudOnly != nil {
 		base.AICloudOnly = local.AICloudOnly

@@ -1,6 +1,7 @@
 package daemon
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -81,18 +82,18 @@ func TestAntigravityUsageSyncService_SkipsUnchangedDBs(t *testing.T) {
 	})
 
 	// First tick parses and uploads.
-	svc.sync()
+	svc.sync(context.Background())
 	assert.Equal(t, int32(1), parseCalls.Load())
 	assert.Equal(t, int32(1), backfillHits.Load())
 	assert.Equal(t, int32(1), completeHits.Load())
 
 	// Second tick with unchanged fingerprint skips parsing entirely.
-	svc.sync()
+	svc.sync(context.Background())
 	assert.Equal(t, int32(1), parseCalls.Load())
 
 	// Third tick with updated WAL fingerprint re-parses and uploads.
 	fp = "100:1/50:2"
-	svc.sync()
+	svc.sync(context.Background())
 	assert.Equal(t, int32(2), parseCalls.Load())
 	assert.Equal(t, int32(2), backfillHits.Load())
 }
