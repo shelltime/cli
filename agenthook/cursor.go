@@ -64,7 +64,11 @@ func normalizeCursor(ev *Event, event string, p payload, getenv func(string) str
 		applyToolInput(ev, p.str("tool_name"), p["tool_input"])
 		ev.DurationMs = durationMs(p.number("duration"))
 		p.setStringMetadata(ev, "tool_use_id", "tool_use_id")
-		// tool_output is never collected: it can be large and hold anything the tool read
+		// tool_output is never collected: it can be large and hold anything the tool read.
+		// For PR-creating tool calls we only extract normalized PR URLs for the daemon to link.
+		if isPRCreateToolCall(ev.ToolName, ev.Command) {
+			ev.PullRequestURLs = extractCursorToolPRURLs(p)
+		}
 	case strings.ToLower(CursorPostToolUseFailure):
 		ev.EventType = EventToolFailure
 		applyToolInput(ev, p.str("tool_name"), p["tool_input"])

@@ -33,20 +33,22 @@ type AgentHookResyncService struct {
 	// repos resolves the repository of events saved without one (hook-ingest has no git
 	// lookup); nil adds none, like the batcher's when aiCodeOtel.sendRepository is off.
 	repos *model.GitRepositoryResolver
-	// send is replaced in tests
-	send     func(ctx context.Context, cfg model.ShellTimeConfig, events []agenthook.Event) error
-	ticker   *time.Ticker
-	stopChan chan struct{}
-	stopOnce sync.Once
-	wg       sync.WaitGroup
+	// send and sendPullRequests are replaced in tests
+	send             func(ctx context.Context, cfg model.ShellTimeConfig, events []agenthook.Event) error
+	sendPullRequests func(ctx context.Context, cfg model.ShellTimeConfig, sessionID string, urls []string) error
+	ticker           *time.Ticker
+	stopChan         chan struct{}
+	stopOnce         sync.Once
+	wg               sync.WaitGroup
 }
 
 func NewAgentHookResyncService(config model.ShellTimeConfig) *AgentHookResyncService {
 	return &AgentHookResyncService{
-		config:   config,
-		repos:    socketRepositoryResolver(config),
-		send:     model.SendAgentHookEvents,
-		stopChan: make(chan struct{}),
+		config:           config,
+		repos:            socketRepositoryResolver(config),
+		send:             model.SendAgentHookEvents,
+		sendPullRequests: model.SendSessionPullRequests,
+		stopChan:         make(chan struct{}),
 	}
 }
 
@@ -135,9 +137,11 @@ func (s *AgentHookResyncService) resync(ctx context.Context) {
 	sent, dropped := 0, 0
 	for start := 0; start < len(events); start += agentHookResyncChunkSize {
 		end := min(start+agentHookResyncChunkSize, len(events))
-		err := s.send(ctx, cfg, events[start:end])
+		chunk := events[start:end]
+		err := s.send(ctx, cfg, stripDaemonOnlyHookEvents(chunk))
 		if err == nil {
 			sent += end - start
+			dispatchSessionPullRequests(ctx, cfg, s.sendPullRequests, collectSessionPullRequests(chunk))
 			continue
 		}
 		if ctx.Err() != nil || agentHookSendCanWait(err) {

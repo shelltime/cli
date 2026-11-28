@@ -41,15 +41,17 @@ type AgentHookBatcher struct {
 	repos *model.GitRepositoryResolver
 
 	// Replaced in tests
-	send          func(ctx context.Context, cfg model.ShellTimeConfig, events []agenthook.Event) error
-	now           func() time.Time
-	flushInterval time.Duration
-	maxBatch      int
+	send             func(ctx context.Context, cfg model.ShellTimeConfig, events []agenthook.Event) error
+	sendPullRequests func(ctx context.Context, cfg model.ShellTimeConfig, sessionID string, urls []string) error
+	now              func() time.Time
+	flushInterval    time.Duration
+	maxBatch         int
 
 	mu       sync.Mutex
 	pending  []agenthook.Event
 	sessions map[agentHookSessionKey]agentHookSession
 	clouds   map[agentHookCloudKey]agentHookCloud
+	sentPRs  map[agentHookPRKey]time.Time
 	started  bool
 	closed   bool
 
@@ -74,6 +76,10 @@ type agentHookCloudKey struct {
 	agent, sessionID string
 }
 
+type agentHookPRKey struct {
+	sessionID, url string
+}
+
 // agentHookCloud is a session an event showed was a cloud run, with that event's signal.
 type agentHookCloud struct {
 	signal string
@@ -85,18 +91,20 @@ type agentHookCloud struct {
 func NewAgentHookBatcher(cfg model.ShellTimeConfig, repos *model.GitRepositoryResolver) *AgentHookBatcher {
 	ctx, cancel := context.WithCancel(context.Background())
 	return &AgentHookBatcher{
-		config:        cfg,
-		repos:         repos,
-		send:          model.SendAgentHookEvents,
-		now:           time.Now,
-		flushInterval: agentHookFlushInterval,
-		maxBatch:      agentHookMaxBatch,
-		sessions:      make(map[agentHookSessionKey]agentHookSession),
-		clouds:        make(map[agentHookCloudKey]agentHookCloud),
-		flushCh:       make(chan struct{}, 1),
-		ctx:           ctx,
-		cancel:        cancel,
-		done:          make(chan struct{}),
+		config:           cfg,
+		repos:            repos,
+		send:             model.SendAgentHookEvents,
+		sendPullRequests: model.SendSessionPullRequests,
+		now:              time.Now,
+		flushInterval:    agentHookFlushInterval,
+		maxBatch:         agentHookMaxBatch,
+		sessions:         make(map[agentHookSessionKey]agentHookSession),
+		clouds:           make(map[agentHookCloudKey]agentHookCloud),
+		sentPRs:          make(map[agentHookPRKey]time.Time),
+		flushCh:          make(chan struct{}, 1),
+		ctx:              ctx,
+		cancel:           cancel,
+		done:             make(chan struct{}),
 	}
 }
 
@@ -232,6 +240,11 @@ func (b *AgentHookBatcher) pruneSessionsLocked() {
 			delete(b.clouds, key)
 		}
 	}
+	for key, seen := range b.sentPRs {
+		if now.Sub(seen) >= agentHookSessionTTL {
+			delete(b.sentPRs, key)
+		}
+	}
 }
 
 // flush sends the queued events, chunk by chunk. After a chunk fails in a way that can work
@@ -261,9 +274,10 @@ func (b *AgentHookBatcher) flush(ctx context.Context) {
 	sent, dropped := 0, 0
 	chunks := model.SplitAgentHookEvents(events, model.AgentHookMaxEventsPerRequest, model.AgentHookMaxRequestBytes)
 	for i, chunk := range chunks {
-		err := b.send(ctx, cfg, chunk)
+		err := b.send(ctx, cfg, stripDaemonOnlyHookEvents(chunk))
 		if err == nil {
 			sent += len(chunk)
+			b.dispatchPullRequests(ctx, cfg, collectSessionPullRequests(chunk))
 			continue
 		}
 		if ctx.Err() != nil || agentHookSendCanWait(err) {
@@ -281,6 +295,131 @@ func (b *AgentHookBatcher) flush(ctx context.Context) {
 		slog.Warn("Server refused agent hook events, dropping them", slog.Int("count", len(chunk)), slog.Any("err", err))
 	}
 	slog.Debug("Agent hook events sent", slog.Int("sent", sent), slog.Int("dropped", dropped))
+}
+
+const maxSessionPullRequestsPerRequest = 20
+
+type sessionPullRequestBatch struct {
+	sessionID string
+	urls      []string
+}
+
+// collectSessionPullRequests groups unique pull request URLs carried by events by session id,
+// preserving order. Events without a session id or without PR URLs are skipped.
+func collectSessionPullRequests(events []agenthook.Event) []sessionPullRequestBatch {
+	var batches []sessionPullRequestBatch
+	bySession := map[string]int{}
+	seen := map[agentHookPRKey]bool{}
+	for _, ev := range events {
+		if ev.SessionID == "" || len(ev.PullRequestURLs) == 0 {
+			continue
+		}
+		for _, u := range ev.PullRequestURLs {
+			if u == "" {
+				continue
+			}
+			key := agentHookPRKey{sessionID: ev.SessionID, url: u}
+			if seen[key] {
+				continue
+			}
+			seen[key] = true
+			idx, ok := bySession[ev.SessionID]
+			if !ok {
+				idx = len(batches)
+				bySession[ev.SessionID] = idx
+				batches = append(batches, sessionPullRequestBatch{sessionID: ev.SessionID})
+			}
+			batches[idx].urls = append(batches[idx].urls, u)
+		}
+	}
+	return batches
+}
+
+// stripDaemonOnlyHookEvents returns events without daemon-only fields so POST /api/v1/agent-hooks
+// never sees them, while leaving the original slice intact in case it must be saved to pending.
+func stripDaemonOnlyHookEvents(events []agenthook.Event) []agenthook.Event {
+	dirty := false
+	for i := range events {
+		if events[i].YieldToUserHooks || len(events[i].PullRequestURLs) > 0 {
+			dirty = true
+			break
+		}
+	}
+	if !dirty {
+		return events
+	}
+	out := make([]agenthook.Event, len(events))
+	copy(out, events)
+	for i := range out {
+		out[i].YieldToUserHooks = false
+		out[i].PullRequestURLs = nil
+	}
+	return out
+}
+
+func (b *AgentHookBatcher) dispatchPullRequests(ctx context.Context, cfg model.ShellTimeConfig, batches []sessionPullRequestBatch) {
+	if b.sendPullRequests == nil || len(batches) == 0 {
+		return
+	}
+	now := b.now()
+	for _, batch := range batches {
+		var fresh []string
+		b.mu.Lock()
+		for _, u := range batch.urls {
+			key := agentHookPRKey{sessionID: batch.sessionID, url: u}
+			if seen, ok := b.sentPRs[key]; ok && now.Sub(seen) < agentHookSessionTTL {
+				continue
+			}
+			fresh = append(fresh, u)
+		}
+		b.mu.Unlock()
+		if len(fresh) == 0 {
+			continue
+		}
+		for start := 0; start < len(fresh); start += maxSessionPullRequestsPerRequest {
+			end := min(start+maxSessionPullRequestsPerRequest, len(fresh))
+			part := fresh[start:end]
+			if err := b.sendPullRequests(ctx, cfg, batch.sessionID, part); err != nil {
+				slog.Warn("Failed to send agent hook session pull requests",
+					slog.String("sessionId", batch.sessionID), slog.Int("count", len(part)), slog.Any("err", err))
+				continue
+			}
+			b.mu.Lock()
+			if b.sentPRs == nil {
+				b.sentPRs = make(map[agentHookPRKey]time.Time)
+			}
+			for _, u := range part {
+				b.sentPRs[agentHookPRKey{sessionID: batch.sessionID, url: u}] = b.now()
+			}
+			b.mu.Unlock()
+			slog.Debug("agent hook session_pull_requests sent",
+				slog.String("sessionId", batch.sessionID), slog.Int("count", len(part)))
+		}
+	}
+}
+
+func dispatchSessionPullRequests(
+	ctx context.Context,
+	cfg model.ShellTimeConfig,
+	send func(ctx context.Context, cfg model.ShellTimeConfig, sessionID string, urls []string) error,
+	batches []sessionPullRequestBatch,
+) {
+	if send == nil || len(batches) == 0 {
+		return
+	}
+	for _, batch := range batches {
+		for start := 0; start < len(batch.urls); start += maxSessionPullRequestsPerRequest {
+			end := min(start+maxSessionPullRequestsPerRequest, len(batch.urls))
+			part := batch.urls[start:end]
+			if err := send(ctx, cfg, batch.sessionID, part); err != nil {
+				slog.Warn("Failed to send resynced agent hook session pull requests",
+					slog.String("sessionId", batch.sessionID), slog.Int("count", len(part)), slog.Any("err", err))
+				continue
+			}
+			slog.Debug("resynced agent hook session_pull_requests sent",
+				slog.String("sessionId", batch.sessionID), slog.Int("count", len(part)))
+		}
+	}
 }
 
 // prepareAgentHookEvents readies events to leave the machine under cfg, for the batcher and

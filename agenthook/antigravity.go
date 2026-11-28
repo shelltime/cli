@@ -54,6 +54,9 @@ func normalizeAntigravity(ev *Event, event string, p payload) {
 		} else {
 			ev.EventType = EventToolUse
 			ev.Status = StatusOK
+			if isPRCreateToolCall(ev.ToolName, ev.Command) {
+				ev.PullRequestURLs = extractAntigravityToolPRURLs(p, transcript)
+			}
 		}
 	case strings.ToLower(AntigravityPostInvocation):
 		ev.EventType = EventAgentResponse

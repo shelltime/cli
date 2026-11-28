@@ -43,7 +43,7 @@ func SendAgentHookEvents(ctx context.Context, cfg ShellTimeConfig, events []agen
 		host = events[0].Hostname
 	}
 	endpoint := Endpoint{APIEndpoint: cfg.APIEndpoint, Token: cfg.Token}
-	for _, chunk := range SplitAgentHookEvents(events, AgentHookMaxEventsPerRequest, AgentHookMaxRequestBytes) {
+	for _, chunk := range SplitAgentHookEvents(stripDaemonOnlyAgentHookEvents(events), AgentHookMaxEventsPerRequest, AgentHookMaxRequestBytes) {
 		var resp AgentHookResponse
 		err := SendHTTPRequestJSON(HTTPRequestOptions[AgentHookRequest, AgentHookResponse]{
 			Context:  ctx,
@@ -59,6 +59,28 @@ func SendAgentHookEvents(ctx context.Context, cfg ShellTimeConfig, events []agen
 		}
 	}
 	return nil
+}
+
+// stripDaemonOnlyAgentHookEvents returns events without daemon-only fields so they never
+// leave the machine in POST /api/v1/agent-hooks.
+func stripDaemonOnlyAgentHookEvents(events []agenthook.Event) []agenthook.Event {
+	dirty := false
+	for i := range events {
+		if events[i].YieldToUserHooks || len(events[i].PullRequestURLs) > 0 {
+			dirty = true
+			break
+		}
+	}
+	if !dirty {
+		return events
+	}
+	out := make([]agenthook.Event, len(events))
+	copy(out, events)
+	for i := range out {
+		out[i].YieldToUserHooks = false
+		out[i].PullRequestURLs = nil
+	}
+	return out
 }
 
 // SplitAgentHookEvents splits events, in order, into chunks of at most maxEvents events whose

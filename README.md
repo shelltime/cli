@@ -275,7 +275,9 @@ shelltime cc pr --session-id <claude-code-session-id> https://github.com/owner/r
 
 The command hands the URLs to the daemon, and the daemon sends them to ShellTime, where they appear on the session. If no daemon is running, the CLI sends them itself. A session can link any number of PRs. Sending the same URL again does nothing. The command does nothing if you are not logged in.
 
-For Codex, and for Claude Code sessions without the mod, the ShellTime server looks for opened PRs in the OTEL data the daemon forwards. It confirms them through the ShellTime GitHub App, so this needs the app connected in your ShellTime settings.
+For **Cursor** and **Google Antigravity**, `shelltime hook-ingest` watches successful `gh pr create` and GitHub MCP `create_pull_request` calls (`postToolUse` / `PostToolUse`, reading the Antigravity `transcript.jsonl` step when present) and extracts only the created pull request URLs — raw tool output is never stored or uploaded — so the daemon links them via `/api/v1/cc/session-pull-requests`.
+
+For Codex, Claude Code sessions without the mod, and Cursor or Antigravity calls whose output was not visible locally, the ShellTime server also looks for opened PRs in the telemetry the daemon forwards. It confirms them through the ShellTime GitHub App, so this needs the app connected in your ShellTime settings.
 
 ## Security and Privacy
 
