@@ -77,6 +77,14 @@ type Event struct {
 	Response  string `json:"response,omitempty"`
 	ToolInput string `json:"tool_input,omitempty"`
 
+	// Token counts for a model turn/invocation when reported. InputTokens excludes cache
+	// reads and cache writes (uncached input).
+	InputTokens         *int `json:"input_tokens,omitempty"`
+	OutputTokens        *int `json:"output_tokens,omitempty"`
+	CacheReadTokens     *int `json:"cache_read_tokens,omitempty"`
+	CacheCreationTokens *int `json:"cache_creation_tokens,omitempty"`
+	ReasoningTokens     *int `json:"reasoning_tokens,omitempty"`
+
 	Metadata map[string]any `json:"metadata,omitempty"`
 
 	// YieldToUserHooks travels from hook-ingest to the daemon only, never to the server: the

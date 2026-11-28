@@ -60,6 +60,8 @@ func normalizeAntigravity(ev *Event, event string, p payload) {
 		// Some builds leave content out
 		ev.Response = p.str("content")
 		p.setNumberMetadata(ev, "invocationNum", "invocation_num")
+		p.setNumberMetadata(ev, "initialNumSteps", "initial_num_steps")
+		applyAntigravityTranscriptUsage(ev, transcript, p)
 	case strings.ToLower(AntigravityStop):
 		ev.EventType = EventStop
 		ev.Status = p.str("terminationReason")

@@ -210,6 +210,65 @@ func (p payload) number(key string) (float64, bool) {
 	return 0, false
 }
 
+// nonNegInt reads a non-negative integer field (JSON integer or ASCII decimal string).
+// Booleans, floats with fractional parts, negative numbers and values that don't fit in int
+// return false so bad counters never silently become zero.
+func (p payload) nonNegInt(key string) (int, bool) {
+	raw, ok := p[key]
+	if !ok {
+		return 0, false
+	}
+	raw = bytes.TrimSpace(raw)
+	if len(raw) == 0 {
+		return 0, false
+	}
+	if raw[0] == '"' {
+		var s string
+		if err := json.Unmarshal(raw, &s); err != nil {
+			return 0, false
+		}
+		return parseNonNegIntBytes([]byte(strings.TrimSpace(s)))
+	}
+	return parseNonNegIntBytes(raw)
+}
+
+func parseNonNegIntBytes(raw []byte) (int, bool) {
+	if len(raw) == 0 {
+		return 0, false
+	}
+	// Fast path: plain ASCII digits.
+	allDigits := true
+	for i := 0; i < len(raw); i++ {
+		if raw[i] < '0' || raw[i] > '9' {
+			allDigits = false
+			break
+		}
+	}
+	if allDigits {
+		v, err := strconv.Atoi(string(raw))
+		if err != nil || v < 0 {
+			return 0, false
+		}
+		return v, true
+	}
+	// Reject booleans, objects, arrays, null, and leading non-numeric tokens before float fallback.
+	if raw[0] < '0' || raw[0] > '9' {
+		return 0, false
+	}
+	f, err := strconv.ParseFloat(string(raw), 64)
+	if err != nil || math.IsNaN(f) || math.IsInf(f, 0) || f < 0 || f >= float64(1<<53) || f != math.Trunc(f) {
+		return 0, false
+	}
+	if f > float64(math.MaxInt) {
+		return 0, false
+	}
+	return int(f), true
+}
+
+func intPtr(v int) *int {
+	return &v
+}
+
 func (p payload) boolean(key string) (bool, bool) {
 	raw, ok := p[key]
 	if !ok {
