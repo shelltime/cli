@@ -59,6 +59,13 @@ func (c ShellTimeConfig) AgentHooksSendContent() bool {
 	return c.AgentHooks == nil || c.AgentHooks.SendContent == nil || *c.AgentHooks.SendContent
 }
 
+// CursorConfig configures optional Cursor API credentials for usage and quota sync.
+// When unset, ShellTime checks CURSOR_AUTH_TOKEN, CURSOR_API_KEY, and local Cursor auth files.
+type CursorConfig struct {
+	APIKey      string `toml:"apiKey,omitempty" yaml:"apiKey,omitempty" json:"apiKey,omitempty"`
+	APIEndpoint string `toml:"apiEndpoint,omitempty" yaml:"apiEndpoint,omitempty" json:"apiEndpoint,omitempty"`
+}
+
 // CodeTracking configuration for coding activity heartbeat tracking
 type CodeTracking struct {
 	Enabled     *bool  `toml:"enabled" yaml:"enabled" json:"enabled"`
@@ -112,6 +119,9 @@ type ShellTimeConfig struct {
 
 	// AgentHooks configures what the Cursor and Antigravity hooks send
 	AgentHooks *AgentHooksConfig `toml:"agentHooks,omitempty" yaml:"agentHooks,omitempty" json:"agentHooks,omitempty"`
+
+	// Cursor configures optional Cursor API credentials for usage and quota collection
+	Cursor *CursorConfig `toml:"cursor,omitempty" yaml:"cursor,omitempty" json:"cursor,omitempty"`
 
 	// AICloudOnly collects only AI coding agent telemetry (aiCodeOtel) and nothing about the
 	// machine: no shell commands, editor heartbeats, aliases or dotfiles, so it never becomes a

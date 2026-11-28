@@ -8,13 +8,15 @@ import (
 	"time"
 )
 
-// usageSyncInterval is how often the daemon syncs Claude and Codex usage in the background.
+// usageSyncInterval is how often the daemon syncs Claude, Codex, Cursor, and Antigravity usage in the background.
 const usageSyncInterval = 10 * time.Minute
 
 // Process name keywords (lowercase) that mean an AI coding client is running.
 var (
-	claudeProcessKeywords = []string{"claude"}
-	codexProcessKeywords  = []string{"codex", "chatgpt"}
+	claudeProcessKeywords      = []string{"claude"}
+	codexProcessKeywords       = []string{"codex", "chatgpt"}
+	cursorProcessKeywords      = []string{"cursor"}
+	antigravityProcessKeywords = []string{"antigravity", "agy"}
 )
 
 // listProcessNamesFunc lists running process names. It is a var so tests can stub it.
@@ -62,4 +64,12 @@ func isClaudeRunning() bool {
 
 func isCodexRunning() bool {
 	return isProcessRunning(codexProcessKeywords)
+}
+
+func isCursorRunning() bool {
+	return isProcessRunning(cursorProcessKeywords)
+}
+
+func isAntigravityRunning() bool {
+	return isProcessRunning(antigravityProcessKeywords)
 }

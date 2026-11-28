@@ -354,6 +354,23 @@ agentHooks:
 
 `shelltime config disable agentHooks.sendContent` writes this for you. The daemon reads the setting for each batch, so no restart is needed.
 
+### Cursor and Antigravity Usage Collection
+
+In addition to hooks, `shelltime-daemon` collects token usage (and Cursor subscription quota) every 10 minutes while the agent is running, and `shelltime cursor backfill` / `shelltime agy backfill` upload historical usage on demand:
+
+- **Cursor**: Reads `CURSOR_AUTH_TOKEN`, `CURSOR_API_KEY`, `cursor.apiKey` in config, `~/.cursor/auth.json`, or Cursor IDE's local `state.vscdb` (read-only). Credentials stay on your machine; only quota windows (`/api/v1/cursor-usage`) and token/cost events (`/api/v1/cc/backfill`) are sent to ShellTime.
+- **Antigravity (`agy`)**: Reads local SQLite conversation databases under `~/.gemini/antigravity*` and `~/.config/antigravity` (or `ANTIGRAVITY_DATA_DIR`).
+
+| Option | Type | Default | Description |
+|--------|------|---------|-------------|
+| `cursor.apiKey` | string | `""` | Optional Cursor API key for usage & quota sync (exchanged locally for a bearer token) |
+| `cursor.apiEndpoint` | string | `"https://api2.cursor.sh"` | Optional custom Cursor API endpoint (also configurable via `CURSOR_API_ENDPOINT`) |
+
+```yaml
+cursor:
+  apiKey: "key_..."
+```
+
 ## Codex Usage Tracking
 
 Codex usage has two separate data paths:

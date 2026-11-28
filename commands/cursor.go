@@ -10,6 +10,7 @@ var CursorCommand = &cli.Command{
 	Subcommands: []*cli.Command{
 		CursorInstallCommand,
 		CursorUninstallCommand,
+		CursorBackfillCommand,
 	},
 }
 

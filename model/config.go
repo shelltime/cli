@@ -231,6 +231,19 @@ func mergeConfig(base, local *ShellTimeConfig) {
 		}
 		base.AgentHooks = &merged
 	}
+	if local.Cursor != nil {
+		if base.Cursor == nil {
+			base.Cursor = &CursorConfig{}
+		}
+		merged := *base.Cursor
+		if local.Cursor.APIKey != "" {
+			merged.APIKey = local.Cursor.APIKey
+		}
+		if local.Cursor.APIEndpoint != "" {
+			merged.APIEndpoint = local.Cursor.APIEndpoint
+		}
+		base.Cursor = &merged
+	}
 	if local.AICloudOnly != nil {
 		base.AICloudOnly = local.AICloudOnly
 	}

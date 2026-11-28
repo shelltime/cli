@@ -33,13 +33,28 @@ var CodexBackfillCommand = &cli.Command{
 	Action: commandCodexBackfill,
 }
 
-// aiCodeBackfillSource describes where a client keeps its transcripts and
+var CursorBackfillCommand = &cli.Command{
+	Name:   "backfill",
+	Usage:  "Upload Cursor token and cost usage from your Cursor account history",
+	Flags:  aiCodeBackfillFlags(),
+	Action: commandCursorBackfill,
+}
+
+var AgyBackfillCommand = &cli.Command{
+	Name:   "backfill",
+	Usage:  "Upload Google Antigravity token usage from local conversation databases",
+	Flags:  aiCodeBackfillFlags(),
+	Action: commandAgyBackfill,
+}
+
+// aiCodeBackfillSource describes where a client keeps its transcripts or usage history and
 // how to read them.
 type aiCodeBackfillSource struct {
 	clientType string
 	name       string
 	roots      func() []string
 	parse      func(roots []string, opts model.BackfillOptions) (*model.BackfillParseResult, error)
+	scan       func(ctx context.Context, cfg model.ShellTimeConfig, opts model.BackfillOptions) (*model.BackfillParseResult, error)
 }
 
 func commandCCBackfill(c *cli.Context) error {
@@ -57,6 +72,34 @@ func commandCodexBackfill(c *cli.Context) error {
 		name:       "Codex",
 		roots:      model.CodexSessionRoots,
 		parse:      model.ParseCodexRollouts,
+	})
+}
+
+var (
+	loadCursorAuthForBackfill   = model.LoadCursorAuth
+	fetchCursorUsageForBackfill = model.FetchCursorUsageSessions
+)
+
+func commandCursorBackfill(c *cli.Context) error {
+	return runAICodeBackfill(c, aiCodeBackfillSource{
+		clientType: model.AICodeClientCursor,
+		name:       "Cursor",
+		scan: func(ctx context.Context, cfg model.ShellTimeConfig, opts model.BackfillOptions) (*model.BackfillParseResult, error) {
+			auth, err := loadCursorAuthForBackfill(ctx, cfg.Cursor)
+			if err != nil {
+				return nil, fmt.Errorf("cursor auth not available (set CURSOR_API_KEY, CURSOR_AUTH_TOKEN, cursor.apiKey, or sign in to Cursor): %w", err)
+			}
+			return fetchCursorUsageForBackfill(ctx, auth, opts)
+		},
+	})
+}
+
+func commandAgyBackfill(c *cli.Context) error {
+	return runAICodeBackfill(c, aiCodeBackfillSource{
+		clientType: model.AICodeClientAntigravity,
+		name:       "Antigravity",
+		roots:      model.AntigravityDataRoots,
+		parse:      model.ParseAntigravityDBs,
 	})
 }
 
@@ -118,10 +161,15 @@ func runAICodeBackfill(c *cli.Context, src aiCodeBackfillSource) error {
 	}
 	endpoint := model.Endpoint{Token: cfg.Token, APIEndpoint: cfg.APIEndpoint}
 
-	color.Yellow.Printf("Scanning %s transcripts...\n", src.name)
-	parsed, err := src.parse(src.roots(), opts)
+	color.Yellow.Printf("Scanning %s usage...\n", src.name)
+	var parsed *model.BackfillParseResult
+	if src.scan != nil {
+		parsed, err = src.scan(ctx, cfg, opts)
+	} else {
+		parsed, err = src.parse(src.roots(), opts)
+	}
 	if err != nil {
-		return fmt.Errorf("failed to read %s transcripts: %w", src.name, err)
+		return fmt.Errorf("failed to read %s usage: %w", src.name, err)
 	}
 	sessions, active := model.SelectBackfillSessions(parsed.Sessions, opts)
 	span.SetAttributes(attribute.Int("files", parsed.Files), attribute.Int("sessions", len(sessions)))
@@ -357,7 +405,7 @@ type backfillDay struct {
 
 // printBackfillDays shows per-day totals of what would be uploaded. Tokens
 // add up input, output and cache tokens; Codex input already includes cached
-// tokens, so cache reads are only added for Claude Code.
+// tokens, so cache reads are added for every other client.
 func printBackfillDays(clientType string, sessions []*model.BackfillSession) {
 	if len(sessions) == 0 {
 		return
@@ -378,7 +426,7 @@ func printBackfillDays(clientType string, sessions []*model.BackfillSession) {
 			case model.AICodeEventApiRequest, model.AICodeEventSSEEvent:
 				d.requests++
 				d.tokens += derefInt(e.InputTokens) + derefInt(e.OutputTokens) + derefInt(e.CacheCreationTokens)
-				if clientType == model.AICodeClientClaudeCode {
+				if clientType != model.AICodeClientCodex {
 					d.tokens += derefInt(e.CacheReadTokens)
 				}
 			}

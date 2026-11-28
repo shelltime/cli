@@ -54,6 +54,12 @@ func (c ShellTimeConfig) LogValue() slog.Value {
 			boolPtrAttr("sendContent", c.AgentHooks.SendContent),
 		))
 	}
+	if c.Cursor != nil {
+		attrs = append(attrs, slog.Group("cursor",
+			slog.String("apiEndpoint", c.Cursor.APIEndpoint),
+			slog.String("apiKey", maskToken(c.Cursor.APIKey)),
+		))
+	}
 	if c.LogCleanup != nil {
 		attrs = append(attrs, slog.Group("logCleanup",
 			boolPtrAttr("enabled", c.LogCleanup.Enabled),
